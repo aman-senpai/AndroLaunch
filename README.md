@@ -1,3 +1,4 @@
+```markdown
 # AndroLaunch - Android Device Management Suite 🚀
 
 ![Swift Version](https://img.shields.io/badge/Swift-5.7+-orange.svg)
@@ -61,3 +62,78 @@ protocol DeviceRepositoryProtocol {
     func launchApp(packageID: String, deviceID: String)
     func mirrorDevice(deviceID: String)
 }
+```
+
+### ViewModel Structure
+```mermaid
+graph TD
+    A[StatusMenuController] --> B[MenuViewModel]
+    B --> C[DeviceRepository]
+    C --> D[ADBService]
+    C --> E[ScrcpyService]
+    F[PreferencesView] --> G[PreferencesViewModel]
+    G --> C
+```
+
+## Data Flow 🔄
+1. **User Action** (e.g., Refresh Devices)
+2. **ViewModel** receives action
+3. **Repository** coordinates services
+4. **Service** executes platform-specific operations
+5. **Combine Publishers** propagate changes back
+6. **UI** updates automatically
+
+## Development Setup 🛠️
+
+### Requirements
+- Xcode 14+
+- macOS 12+
+- [Homebrew](https://brew.sh/)
+
+### Installation
+```bash
+# Install dependencies
+brew install android-platform-tools scrcpy
+
+# Clone repository
+git clone https://github.com/senpai/AndroLaunch.git
+cd AndroLaunch
+
+# Open in Xcode
+xed .
+```
+
+### Configuration
+1. Enable **USB Debugging** on Android devices
+2. Grant security permissions in macOS Settings
+3. Configure signing team in Xcode project
+
+## Code Quality Standards ✅
+- 100% Protocol-Oriented design
+- Combine for all state management
+- Strict access control (`private`, `internal`)
+- Comprehensive error handling
+- Reactive UI updates
+- Documented public interfaces
+
+## Future Roadmap 🗺️
+- [ ] Device groups management
+- [ ] Custom ADB command support
+- [ ] App favoriting system
+- [ ] Wireless debugging support
+- [ ] Plugin system architecture
+
+## Contributing 🤝
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes
+4. Push to branch
+5. Open Pull Request
+
+## License 📄
+This project is licensed under the MIT License.
+
+---
+
+**Powered By**:
+[<img src="https://github.com/Genymobile/scrcpy/raw/master/app/data/icon.svg" width=25>](https://github.com/Genymobile/scrcpy)
