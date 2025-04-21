@@ -2,13 +2,11 @@
 //  StatusMenuController.swift
 //  AndroLaunch
 //
-//  Created by Aman Raj on 21/4/25.
-//
 
 import AppKit
 import Combine
 
-final class StatusMenuController {
+final class StatusMenuController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let viewModel: MenuViewModel
     private var cancellables = Set<AnyCancellable>()
@@ -16,13 +14,14 @@ final class StatusMenuController {
     
     init(viewModel: MenuViewModel) {
         self.viewModel = viewModel
+        super.init()
         setupMenu()
         bindViewModel()
     }
     
     private func setupMenu() {
         statusItem.button?.title = "AndroLaunch"
-        refreshDevices() // Call once during setup
+        refreshDevices()
         updateMenu()
     }
     
@@ -50,6 +49,7 @@ final class StatusMenuController {
     
     private func updateMenu() {
         let menu = NSMenu()
+        menu.delegate = self
         
         // Header
         let headerItem = NSMenuItem(title: "AndroLaunch", action: nil, keyEquivalent: "")
@@ -83,110 +83,121 @@ final class StatusMenuController {
                     action: nil,
                     keyEquivalent: ""
                 )
+                deviceItem.representedObject = device.id
                 
                 let submenu = NSMenu()
-                
-                // Mirror Action
-                let mirrorItem = NSMenuItem(
-                    title: "Mirror Device",
-                    action: #selector(mirrorDevice),
-                    keyEquivalent: ""
-                )
-                mirrorItem.target = self
-                mirrorItem.representedObject = device.id
-                submenu.addItem(mirrorItem)
-                submenu.addItem(NSMenuItem.separator())
-                
-                // Apps Section
-                if viewModel.isLoading && currentDeviceID == device.id {
-                    let loadingItem = NSMenuItem(title: "Loading apps...", action: nil, keyEquivalent: "")
-                    loadingItem.isEnabled = false
-                    submenu.addItem(loadingItem)
-                } else if device.id == currentDeviceID {
-                    if viewModel.apps.isEmpty {
-                        let noAppsItem = NSMenuItem(
-                            title: viewModel.error ?? "No apps found",
-                            action: nil,
-                            keyEquivalent: ""
-                        )
-                        noAppsItem.isEnabled = false
-                        submenu.addItem(noAppsItem)
-                    } else {
-                        viewModel.apps.forEach { app in
-                            let appItem = NSMenuItem(
-                                title: app.id,
-                                action: #selector(launchApp),
-                                keyEquivalent: ""
-                            )
-                            appItem.target = self
-                            appItem.representedObject = (device.id, app.id)
-                            submenu.addItem(appItem)
-                        }
-                    }
-                    submenu.addItem(NSMenuItem.separator())
-                    let refreshAppsItem = NSMenuItem(
-                        title: "Refresh Apps",
-                        action: #selector(refreshApps),
-                        keyEquivalent: ""
-                    )
-                    refreshAppsItem.representedObject = device.id
-                    refreshAppsItem.target = self
-                    submenu.addItem(refreshAppsItem)
-                } else {
-                    let loadAppsItem = NSMenuItem(
-                        title: "List Apps...",
-                        action: #selector(loadApps),
-                        keyEquivalent: ""
-                    )
-                    loadAppsItem.representedObject = device.id
-                    loadAppsItem.target = self
-                    submenu.addItem(loadAppsItem)
-                }
-                
+                self.configureDeviceSubmenu(submenu, for: device)
                 deviceItem.submenu = submenu
                 menu.addItem(deviceItem)
             }
         }
         
         menu.addItem(NSMenuItem.separator())
-        
-        // Preferences
-        let prefsItem = NSMenuItem(
-            title: "Preferences...",
-            action: #selector(showPreferences),
-            keyEquivalent: ","
-        )
-        prefsItem.target = self
-        menu.addItem(prefsItem)
-        
-        // Quit
-        let quitItem = NSMenuItem(
+        menu.addItem(NSMenuItem(
             title: "Quit",
             action: #selector(NSApp.terminate(_:)),
             keyEquivalent: "q"
-        )
-        menu.addItem(quitItem)
+        ))
         
         statusItem.menu = menu
+    }
+    
+    private func configureDeviceSubmenu(_ submenu: NSMenu, for device: AndroidDevice) {
+        // Mirror Action
+        let mirrorItem = NSMenuItem(
+            title: "Mirror Device",
+            action: #selector(mirrorDevice),
+            keyEquivalent: ""
+        )
+        mirrorItem.target = self
+        mirrorItem.representedObject = device.id
+        submenu.addItem(mirrorItem)
+        submenu.addItem(NSMenuItem.separator())
+        
+        // Apps Section
+        if device.id == currentDeviceID {
+            if viewModel.isLoading {
+                let loadingItem = NSMenuItem(title: "Loading apps...", action: nil, keyEquivalent: "")
+                loadingItem.isEnabled = false
+                submenu.addItem(loadingItem)
+            } else if !viewModel.apps.isEmpty {
+                let appsMenuItem = NSMenuItem()
+                appsMenuItem.view = createAppListView(for: viewModel.apps, deviceID: device.id)
+                submenu.addItem(appsMenuItem)
+                submenu.addItem(NSMenuItem.separator())
+            } else if !viewModel.isLoading {
+                let statusItem = NSMenuItem(
+                    title: viewModel.error ?? "No apps found",
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                statusItem.isEnabled = false
+                submenu.addItem(statusItem)
+            }
+            
+            // Refresh Apps
+            let refreshAppsItem = NSMenuItem(
+                title: "Refresh Apps",
+                action: #selector(refreshApps),
+                keyEquivalent: ""
+            )
+            refreshAppsItem.representedObject = device.id
+            refreshAppsItem.target = self
+            submenu.addItem(refreshAppsItem)
+        }
+    }
+    
+    // MARK: - Scrollable App List
+    private var handlerKey: UInt8 = 0
+    
+    private func createAppListView(for apps: [AndroidApp], deviceID: String) -> NSView {
+        let scrollView = NSScrollView(frame: CGRect(x: 0, y: 0, width: 300, height: 220))
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false // Transparent background
+
+        let tableView = NSTableView()
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("AppColumn"))
+        column.width = 200
+        tableView.addTableColumn(column)
+        tableView.headerView = nil
+        tableView.rowHeight = 20
+        tableView.backgroundColor = NSColor.clear
+        tableView.selectionHighlightStyle = .none
+        
+        let handler = AppsTableViewHandler(
+            apps: apps,
+            deviceID: deviceID,
+            controller: self
+        )
+        tableView.dataSource = handler
+        tableView.delegate = handler
+        
+        objc_setAssociatedObject(
+            tableView,
+            &handlerKey,
+            handler,
+            .OBJC_ASSOCIATION_RETAIN
+        )
+        
+        scrollView.documentView = tableView
+        return scrollView
+    }
+    
+    fileprivate func launchApp(deviceID: String, appID: String) {
+        viewModel.launchApp(packageID: appID, deviceID: deviceID)
+        NSApp.stopModal()
     }
     
     // MARK: - Actions
     @objc private func refreshDevices() {
         viewModel.refresh()
-        // Force immediate menu update
-        DispatchQueue.main.async {
-            self.updateMenu()
-        }
-    }
-    
-    @objc private func loadApps(_ sender: NSMenuItem) {
-        guard let deviceID = sender.representedObject as? String else { return }
-        currentDeviceID = deviceID
-        viewModel.fetchApps(for: deviceID)
+        currentDeviceID = nil
     }
     
     @objc private func refreshApps(_ sender: NSMenuItem) {
         guard let deviceID = sender.representedObject as? String else { return }
+        currentDeviceID = deviceID
         viewModel.fetchApps(for: deviceID)
     }
     
@@ -194,26 +205,129 @@ final class StatusMenuController {
         guard let deviceID = sender.representedObject as? String else { return }
         viewModel.mirrorDevice(deviceID: deviceID)
     }
+}
+
+extension StatusMenuController: NSMenuDelegate {
+    func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
+        if let deviceID = item?.representedObject as? String, deviceID != currentDeviceID {
+            currentDeviceID = deviceID
+            viewModel.fetchApps(for: deviceID)
+        }
+    }
+}
+
+// MARK: - Table View Components
+private final class AppsTableViewHandler: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+    let apps: [AndroidApp]
+    let deviceID: String
+    weak var controller: StatusMenuController?
     
-    @objc private func launchApp(_ sender: NSMenuItem) {
-        guard let (deviceID, packageID) = sender.representedObject as? (String, String) else { return }
-        viewModel.launchApp(packageID: packageID, deviceID: deviceID)
+    init(apps: [AndroidApp], deviceID: String, controller: StatusMenuController) {
+        self.apps = apps
+        self.deviceID = deviceID
+        self.controller = controller
     }
     
-    @objc private func showPreferences() {
-        // As recommended, use the standard mechanism for opening the Settings scene.
-        // This aligns with how SwiftUI's SettingsLink operates by sending standard actions.
-        if #available(macOS 13, *) {
-            // Use the modern selector for Settings (macOS 13+)
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        } else {
-            // Use the older selector for Preferences (macOS 12 and earlier)
-            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-        }
-        
-        // Ensure the application is active and the settings window is brought to front
-        NSApp.activate(ignoringOtherApps: true)
-        
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        return apps.count
+    }
+    
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let app = apps[row]
+        let extractedName = extractAppName(from: app.id) // Use regex to extract from package name (app.id)
+            let appName = extractedName.capitalized // Convert the extracted name to title case
 
+        let textField = NSTextField(labelWithString: appName)
+        textField.font = NSFont.menuFont(ofSize: 14)
+        textField.textColor = NSColor.controlTextColor
+        textField.drawsBackground = false
+        return textField
+      }
+
+      private func extractAppName(from packageName: String) -> String {
+        do {
+          let regex = try NSRegularExpression(pattern: "(?!android$|apps$|app|com$)[^.]+$")
+          guard let match = regex.firstMatch(in: packageName, range: NSRange(packageName.startIndex..., in: packageName)) else {
+            return packageName
+          }
+          let range = Range(match.range, in: packageName)!
+          return String(packageName[range])
+        } catch {
+          return packageName
+        }
+      }
+    
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        return MenuTableRowView()
+    }
+    
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        guard let tableView = notification.object as? NSTableView else { return }
+        let row = tableView.selectedRow
+        guard row >= 0 else { return }
+        controller?.launchApp(deviceID: deviceID, appID: apps[row].id)
+    }
+}
+
+private final class MenuTableRowView: NSTableRowView {
+    private let hoverEffectView: NSVisualEffectView = {
+        let view = NSVisualEffectView()
+        view.material = .selection
+        view.state = .active
+        view.blendingMode = .withinWindow
+        view.isEmphasized = true
+        view.wantsLayer = true
+        view.layer?.cornerRadius = 4.0
+        view.layer?.masksToBounds = true
+        view.alphaValue = 0
+        return view
+    }()
+    
+    private var trackingArea: NSTrackingArea?
+    
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        addSubview(hoverEffectView)
+    }
+    
+    required init?(coder: NSCoder) { fatalError() }
+    
+    override func layout() {
+        super.layout()
+        // Match menu item padding
+        hoverEffectView.frame = bounds.insetBy(dx: 4, dy: 0)
+    }
+    
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea = trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .mouseEnteredAndExited],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea!)
+    }
+    
+    override func mouseEntered(with event: NSEvent) {
+        animateHover(visible: true)
+    }
+    
+    override func mouseExited(with event: NSEvent) {
+        animateHover(visible: false)
+    }
+    
+    private func animateHover(visible: Bool) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            hoverEffectView.animator().alphaValue = visible ? 1 : 0
+        }
+    }
+    
+    override func drawSelection(in dirtyRect: NSRect) {
+        // Clear default selection drawing
     }
 }

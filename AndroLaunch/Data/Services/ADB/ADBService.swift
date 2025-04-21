@@ -54,8 +54,6 @@ final class ADBService: ADBServiceProtocol {
     // MARK: - Initialization
     init() {
         print("ADBService: Initializing...")
-        // Initial ADB discovery can be triggered here or externally.
-        // For this setup, it's assumed to be called by refreshDevices() or similar.
     }
 
     // MARK: - Private Helper: Execute Shell Command (For ADB commands like list, start-server, fetch packages)
@@ -268,7 +266,7 @@ final class ADBService: ADBServiceProtocol {
 
          // Use executeADBCommand for the standard ADB shell command
          // Added -3 to list only third-party apps, like in the DeviceManager example
-         executeADBCommand(arguments: ["-s", deviceID, "shell", "pm", "list", "packages", "-3"], completion: { [weak self] success, output, errorOutput in
+         executeADBCommand(arguments: ["-s", deviceID, "shell", "pm", "list", "packages"], completion: { [weak self] success, output, errorOutput in
              guard let self else { return }
              if success {
                  // Basic parsing: extract package names
@@ -339,8 +337,12 @@ final class ADBService: ADBServiceProtocol {
         task.arguments = [
             "--serial", deviceID,
             "--stay-awake",
-            "--window-title", "Running: \(packageID)",
-            "--new-display=720x1400", // Added resolution argument
+            "-S",
+            "--window-title", "\(packageID)",
+            "--new-display",
+            "-m 900",
+            "--no-audio",
+            "--keyboard=aoa",
             "--start-app", packageID
         ]
 
@@ -456,7 +458,7 @@ final class ADBService: ADBServiceProtocol {
          task.executableURL = URL(fileURLWithPath: scrcpyPath)
 
          // scrcpy arguments for mirroring
-         task.arguments = ["--serial", deviceID, "--no-audio", "--window-title", "Mirroring \(deviceID)"]
+         task.arguments = ["--serial", deviceID, "--no-audio", "--window-title", "\(deviceID)"]
 
          var env = ProcessInfo.processInfo.environment
          env["ADB"] = adbPath // Explicitly tell scrcpy where to find adb

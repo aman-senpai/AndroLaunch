@@ -15,10 +15,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Assets.xcassets,
-				concat.sh,
-				file.txt,
 				Info.plist,
-				readme.md,
 			);
 			target = 31A780372DB522BD00C8039D /* AndroLaunch */;
 		};
