@@ -1,4 +1,3 @@
-```markdown
 # AndroLaunch - Android Device Management Suite 🚀
 
 ![Swift Version](https://img.shields.io/badge/Swift-5.7+-orange.svg)
@@ -62,7 +61,6 @@ protocol DeviceRepositoryProtocol {
     func launchApp(packageID: String, deviceID: String)
     func mirrorDevice(deviceID: String)
 }
-```
 
 ### ViewModel Structure
 ```mermaid
