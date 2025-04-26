@@ -1,0 +1,54 @@
+name: Xcode - Build and Analyze
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+    name: Build and analyse default scheme using xcodebuild command
+    runs-on: macos-14  # Use a newer macOS version with recent Xcode
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Select Xcode version
+        run: |
+          sudo xcode-select -switch /Applications/Xcode_15.app/Contents/Developer
+          
+      - name: Show Xcode version
+        run: |
+          xcodebuild -version
+          
+      - name: Get Default Scheme
+        id: scheme
+        run: |
+          # Try to get schemes from workspace first, then project
+          if [ -n "$(find . -name '*.xcworkspace' -maxdepth 1)" ]; then
+            file_to_build="$(find . -name '*.xcworkspace' -maxdepth 1 | head -1)"
+            scheme=$(xcodebuild -workspace "$file_to_build" -list -json | jq -r '.workspace.schemes[0]')
+          else
+            file_to_build="$(find . -name '*.xcodeproj' -maxdepth 1 | head -1)"
+            scheme=$(xcodebuild -project "$file_to_build" -list -json | jq -r '.project.schemes[0]')
+          fi
+          
+          if [ -z "$scheme" ] || [ "$scheme" = "null" ]; then
+            echo "::error::No schemes found"
+            exit 1
+          fi
+          
+          echo "Using scheme: $scheme"
+          echo "scheme=$scheme" >> $GITHUB_OUTPUT
+          
+      - name: Build and Analyze
+        run: |
+          if [ -n "$(find . -name '*.xcworkspace' -maxdepth 1)" ]; then
+            file_to_build="$(find . -name '*.xcworkspace' -maxdepth 1 | head -1)"
+            xcodebuild -workspace "$file_to_build" -scheme "${{ steps.scheme.outputs.scheme }}" clean build analyze | xcpretty && exit ${PIPESTATUS[0]}
+          else
+            file_to_build="$(find . -name '*.xcodeproj' -maxdepth 1 | head -1)"
+            xcodebuild -project "$file_to_build" -scheme "${{ steps.scheme.outputs.scheme }}" clean build analyze | xcpretty && exit ${PIPESTATUS[0]}
+          fi
