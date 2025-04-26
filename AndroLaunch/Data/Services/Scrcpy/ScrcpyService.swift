@@ -8,8 +8,6 @@
 import Foundation
 import Combine
 
-// Ensure ScrcpyServiceProtocol is imported or defined where this file can access it
-
 final class ScrcpyService: ScrcpyServiceProtocol {
     private var scrcpyPath: String?
     private var runningProcesses: [String: Process] = [:]
@@ -36,7 +34,6 @@ final class ScrcpyService: ScrcpyServiceProtocol {
             error.send("SCRCPY not installed. Use `brew install scrcpy`.")
             return
         }
-        // Launch scrcpy with deviceID and adbPath...
     }
 
     func launchApp(packageID: String, deviceID: String, adbPath: String?) {
@@ -44,6 +41,5 @@ final class ScrcpyService: ScrcpyServiceProtocol {
             error.send("SCRCPY not installed. Use `brew install scrcpy`.")
             return
         }
-        // Launch scrcpy with --start-app and packageID...
     }
 }

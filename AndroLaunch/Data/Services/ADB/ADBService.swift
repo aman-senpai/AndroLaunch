@@ -8,7 +8,7 @@
 import Combine
 import Foundation
 #if canImport(AppKit)
-import AppKit // Needed for NSAlert and NSWorkspace
+import AppKit
 #endif
 
 // MARK: - ADB Service Implementation
@@ -24,30 +24,30 @@ final class ADBService: ADBServiceProtocol {
     private var cancellables = Set<AnyCancellable>()
 
     // State for managing scrcpy processes and error reporting
-    private var scrcpyErrorPipeHandlers: [String: Any] = [:] // Dictionary to hold observation tokens/handlers keyed by device ID
-    private var scrcpyErrorOutputs: [String: String] = [:] // Dictionary to collect error output keyed by device ID
-    private var runningScrcpyProcesses: [String: Process] = [:] // To keep track of running scrcpy processes
+    private var scrcpyErrorPipeHandlers: [String: Any] = [:]
+    private var scrcpyErrorOutputs: [String: String] = [:]
+    private var runningScrcpyProcesses: [String: Process] = [:]
 
     // MARK: - Executable Path Discovery
 
     // Common system paths for ADB
     private var systemADBPaths: [String] {
         [
-            "/opt/homebrew/bin/adb", // Homebrew default
-            "/usr/local/bin/adb",    // Older Homebrew or manual install
-            "/usr/bin/adb",          // Sometimes in system path (less common for adb)
-            "\(NSHomeDirectory())/Library/Android/sdk/platform-tools/adb", // Android Studio SDK default
-            "/Library/Android/sdk/platform-tools/adb" // System-wide SDK? (less common)
+            "/opt/homebrew/bin/adb",
+            "/usr/local/bin/adb",
+            "/usr/bin/adb",
+            "\(NSHomeDirectory())/Library/Android/sdk/platform-tools/adb",
+            "/Library/Android/sdk/platform-tools/adb"
         ]
     }
 
     // Common system paths for SCRCPY
     private var scrcpyPaths: [String] {
         [
-            "/opt/homebrew/bin/scrcpy", // Homebrew default
-            "/usr/local/bin/scrcpy",    // Older Homebrew or manual install
-            "\(NSHomeDirectory())/.local/bin/scrcpy", // User bin
-            "/Applications/scrcpy.app/Contents/MacOS/scrcpy" // App bundle location
+            "/opt/homebrew/bin/scrcpy",
+            "/usr/local/bin/scrcpy",
+            "\(NSHomeDirectory())/.local/bin/scrcpy",
+            "/Applications/scrcpy.app/Contents/MacOS/scrcpy"
         ]
     }
 
@@ -77,7 +77,6 @@ final class ADBService: ADBServiceProtocol {
         DispatchQueue.global(qos: .background).async {
             do {
                 try task.run()
-                // Wait for ADB commands to finish. This is appropriate for non-interactive commands.
                 task.waitUntilExit()
 
                 let outputData = standardOutputPipe.fileHandleForReading.readDataToEndOfFile()
@@ -88,18 +87,18 @@ final class ADBService: ADBServiceProtocol {
 
                 // Deliver the result back to the main thread
                 DispatchQueue.main.async {
-                    print("Executed ADB Command: \(adbPath) \(arguments.joined(separator: " "))") // Debug print
-                    print("Output: \(output ?? "nil")") // Debug print
-                    print("Error: \(errorOutput ?? "nil")") // Debug print
-                    print("Termination Status: \(task.terminationStatus)") // Debug print
+                    print("Executed ADB Command: \(adbPath) \(arguments.joined(separator: " "))")
+                    print("Output: \(output ?? "nil")")
+                    print("Error: \(errorOutput ?? "nil")")
+                    print("Termination Status: \(task.terminationStatus)")
 
-                    let success = task.terminationStatus == 0 // Basic check
+                    let success = task.terminationStatus == 0
 
                     completion(success, output, errorOutput)
                 }
             } catch {
                 DispatchQueue.main.async {
-                    print("Process execution error for \(adbPath) \(arguments.joined(separator: " ")): \(error.localizedDescription)") // Debug print
+                    print("Process execution error for \(adbPath) \(arguments.joined(separator: " ")): \(error.localizedDescription)")
                     completion(false, nil, error.localizedDescription)
                 }
             }
@@ -124,27 +123,27 @@ final class ADBService: ADBServiceProtocol {
     // MARK: - ADB Path Discovery
     func findADB() {
         print("Attempting to find ADB...")
-        for path in systemADBPaths { // Use system paths from this service
+        for path in systemADBPaths {
             print("Checking path: \(path)")
             if FileManager.default.isExecutableFile(atPath: path) {
                 print("ADB found at: \(path)")
                 currentADBPath = path
-                error.send(nil) // Clear previous ADB not found error
-                startADBDaemon() // Start daemon once found
+                error.send(nil)
+                startADBDaemon()
                 return
             }
         }
         print("ADB not found in any specified paths.")
         let notFoundError = "ADB not found. Install Android Platform Tools."
         error.send(notFoundError)
-        devices.send([]) // Ensure device list is empty if ADB not found
+        devices.send([])
         currentADBPath = nil
     }
 
     func startADBDaemon() {
         guard let adbPath = currentADBPath else {
-             print("Cannot start daemon, ADB path not set.") // Debug print
-            return // Should not happen if findADB was successful
+             print("Cannot start daemon, ADB path not set.")
+            return
         }
         print("Starting ADB daemon...")
         // Use executeADBCommand for the standard ADB start-server command
@@ -153,13 +152,13 @@ final class ADBService: ADBServiceProtocol {
             if success {
                 print("ADB daemon started successfully.")
                 // Daemon might take a moment, add a small delay before listing devices
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { // Add a small delay
-                     self.listDevices() // Proceed to list devices if daemon starts
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                     self.listDevices()
                 }
             } else {
                 print("ADB daemon failed to start. Error: \(errorOutput ?? "Unknown error")")
                 self.error.send(errorOutput ?? "ADB daemon failed to start")
-                self.devices.send([]) // Send empty devices on error
+                self.devices.send([])
             }
         }
     }
@@ -168,7 +167,6 @@ final class ADBService: ADBServiceProtocol {
     func listDevices() {
         guard currentADBPath != nil else {
             print("ADB path not set, cannot list devices.")
-            // Error already sent by findADB or startADBDaemon
             return
         }
         print("Executing 'adb devices -l'...")
@@ -180,11 +178,11 @@ final class ADBService: ADBServiceProtocol {
                 let devices = self.parseDevices(from: output ?? "")
                 print("Parsed devices: \(devices)")
                 self.devices.send(devices)
-                self.error.send(nil) // Clear any previous errors on success
+                self.error.send(nil)
             } else {
                 print("ADB devices command failed. Error: \(errorOutput ?? "Unknown error")")
                 self.error.send(errorOutput ?? "Device listing failed")
-                self.devices.send([]) // Send empty devices list on error
+                self.devices.send([])
             }
         }
     }
@@ -199,18 +197,18 @@ final class ADBService: ADBServiceProtocol {
         var devices = [AndroidDevice]()
 
         output.enumerateLines { line, _ in
-            guard !line.lowercased().contains("list of devices attached") && !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return } // Skip header and empty lines
+            guard !line.lowercased().contains("list of devices attached") && !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
             let range = NSRange(line.startIndex..., in: line)
             guard let match = regex.firstMatch(in: line, options: [], range: range),
                   match.numberOfRanges >= 3 else {
-                 print("Line did not match device pattern: \(line)") // Debug unmatched lines
+                 print("Line did not match device pattern: \(line)")
                 return
             }
 
             let idRange = match.range(at: 1)
             let stateRange = match.range(at: 2)
-            let detailsRange = match.range(at: 3) // Optional details range
+            let detailsRange = match.range(at: 3)
 
             guard let id = Range(idRange, in: line),
                   let state = Range(stateRange, in: line) else {
@@ -220,7 +218,7 @@ final class ADBService: ADBServiceProtocol {
 
             let deviceID = String(line[id])
             let deviceState = String(line[state])
-            var modelName = "Android Device" // Default name
+            var modelName = "Android Device"
 
             if let detailsRng = Range(detailsRange, in: line) {
                 let details = String(line[detailsRng])
@@ -237,17 +235,15 @@ final class ADBService: ADBServiceProtocol {
                 devices.append(AndroidDevice(
                     id: deviceID,
                     name: modelName,
-                    isConnected: true // State is "device"
+                    isConnected: true
                 ))
-                 print("Found connected device: \(deviceID) (\(modelName))") // Debug found device
+                 print("Found connected device: \(deviceID) (\(modelName))")
             } else {
-                print("Found device in state \(deviceState): \(deviceID)") // Debug non-connected states
-                // You could add devices in 'unauthorized' state with isConnected: false
-                // devices.append(AndroidDevice(id: deviceID, name: modelName, isConnected: false))
+                print("Found device in state \(deviceState): \(deviceID)")
             }
         }
 
-        return devices // Returning all parsed devices, filter in VM/Repo if only 'device' state is needed
+        return devices
     }
 
 
@@ -259,13 +255,10 @@ final class ADBService: ADBServiceProtocol {
              return
          }
          print("Fetching apps for device: \(deviceID)")
-         // Clear previous apps immediately on the main thread
          DispatchQueue.main.async {
              self.apps.send([])
          }
 
-         // Use executeADBCommand for the standard ADB shell command
-         // Added -3 to list only third-party apps, like in the DeviceManager example
          executeADBCommand(arguments: ["-s", deviceID, "shell", "pm", "list", "packages"], completion: { [weak self] success, output, errorOutput in
              guard let self else { return }
              if success {
@@ -282,7 +275,7 @@ final class ADBService: ADBServiceProtocol {
                  }
                  print("Fetched and parsed \(apps.count) apps.")
                  self.apps.send(apps)
-                 self.error.send(nil) // Clear any previous errors on success
+                 self.error.send(nil)
              } else {
                  print("Fetching apps failed. Error: \(errorOutput ?? "Unknown error")")
                  self.error.send(errorOutput ?? "Failed to fetch apps for \(deviceID)")
@@ -297,7 +290,6 @@ final class ADBService: ADBServiceProtocol {
             let errorMessage = "ADB executable path not set. Cannot launch app with scrcpy."
             print("LaunchApp failed: \(errorMessage)")
             self.error.send(errorMessage)
-            // Optionally attempt to find ADB again
             self.findADB()
             return
         }
@@ -309,7 +301,6 @@ final class ADBService: ADBServiceProtocol {
             """
             print("LaunchApp failed: \(errorMessage)")
             self.error.send(errorMessage)
-            // Optionally show an alert directly from here if needed, or rely on UI observing the error publisher
             #if canImport(AppKit)
             DispatchQueue.main.async {
                  let alert = NSAlert()
@@ -347,8 +338,7 @@ final class ADBService: ADBServiceProtocol {
         ]
 
         var env = ProcessInfo.processInfo.environment
-        env["ADB"] = adbPath // Explicitly tell scrcpy where to find adb
-        // Ensure common binary paths are in the PATH for scrcpy if it needs other tools
+        env["ADB"] = adbPath
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
         task.environment = env
 
@@ -458,7 +448,7 @@ final class ADBService: ADBServiceProtocol {
          task.executableURL = URL(fileURLWithPath: scrcpyPath)
 
          // scrcpy arguments for mirroring
-         task.arguments = ["--serial", deviceID, "--no-audio", "--window-title", "\(deviceID)"]
+         task.arguments = ["--serial", deviceID, "--window-title", "\(deviceID)"]
 
          var env = ProcessInfo.processInfo.environment
          env["ADB"] = adbPath // Explicitly tell scrcpy where to find adb

@@ -49,4 +49,5 @@ final class MenuViewModel: ObservableObject {
     }
     func launchApp(packageID: String, deviceID: String) { repository.launchApp(packageID: packageID, deviceID: deviceID) }
     func mirrorDevice(deviceID: String) { repository.mirrorDevice(deviceID: deviceID) }
+    
 }

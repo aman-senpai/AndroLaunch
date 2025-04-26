@@ -14,7 +14,6 @@
 		3150BCB92DB6A6280050A4B1 /* Exceptions for "AndroLaunch" folder in "AndroLaunch" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Assets.xcassets,
 				Info.plist,
 			);
 			target = 31A780372DB522BD00C8039D /* AndroLaunch */;

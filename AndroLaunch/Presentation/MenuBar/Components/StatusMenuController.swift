@@ -12,6 +12,11 @@ final class StatusMenuController: NSObject {
     private var cancellables = Set<AnyCancellable>()
     private var currentDeviceID: String?
     
+    // MARK: - Search Field Subclass
+    private class DeviceSearchField: NSSearchField {
+        var deviceID: String?
+    }
+
     init(viewModel: MenuViewModel) {
         self.viewModel = viewModel
         super.init()
@@ -147,29 +152,36 @@ final class StatusMenuController: NSObject {
         }
     }
     
-    // MARK: - Scrollable App List
+    // MARK: - Scrollable App List with Search
     private var handlerKey: UInt8 = 0
     
     private func createAppListView(for apps: [AndroidApp], deviceID: String) -> NSView {
-        let scrollView = NSScrollView(frame: CGRect(x: 0, y: 0, width: 300, height: 220))
+        let containerView = NSView(frame: CGRect(x: 0, y: 0, width: 300, height: 250))
+        
+        // Add custom search field
+        let searchField = DeviceSearchField(frame: NSRect(x: 8, y: 222, width: 284, height: 22))
+        searchField.placeholderString = "Search apps..."
+        searchField.target = self
+        searchField.action = #selector(searchFieldChanged(_:))
+        searchField.deviceID = deviceID
+        containerView.addSubview(searchField)
+        
+        // Configure scroll view and table view
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 300, height: 220))
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .noBorder
-        scrollView.drawsBackground = false // Transparent background
-
+        scrollView.drawsBackground = false
+        
         let tableView = NSTableView()
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("AppColumn"))
         column.width = 200
         tableView.addTableColumn(column)
         tableView.headerView = nil
         tableView.rowHeight = 20
-        tableView.backgroundColor = NSColor.clear
+        tableView.backgroundColor = .clear
         tableView.selectionHighlightStyle = .none
         
-        let handler = AppsTableViewHandler(
-            apps: apps,
-            deviceID: deviceID,
-            controller: self
-        )
+        let handler = AppsTableViewHandler(originalApps: apps, deviceID: deviceID, controller: self)
         tableView.dataSource = handler
         tableView.delegate = handler
         
@@ -181,7 +193,23 @@ final class StatusMenuController: NSObject {
         )
         
         scrollView.documentView = tableView
-        return scrollView
+        containerView.addSubview(scrollView)
+        
+        return containerView
+    }
+    
+    @objc private func searchFieldChanged(_ sender: DeviceSearchField) {
+        guard sender.deviceID != nil else { return }
+        let searchText = sender.stringValue.lowercased()
+        
+        // Find the associated table view and handler
+        guard let containerView = sender.superview,
+              let scrollView = containerView.subviews.first(where: { $0 is NSScrollView }) as? NSScrollView,
+              let tableView = scrollView.documentView as? NSTableView,
+              let handler = objc_getAssociatedObject(tableView, &handlerKey) as? AppsTableViewHandler else { return }
+        
+        handler.searchText = searchText
+        tableView.reloadData()
     }
     
     fileprivate func launchApp(deviceID: String, appID: String) {
@@ -216,46 +244,65 @@ extension StatusMenuController: NSMenuDelegate {
     }
 }
 
-// MARK: - Table View Components
+// MARK: - Table View Components with Search Support
 private final class AppsTableViewHandler: NSObject, NSTableViewDataSource, NSTableViewDelegate {
-    let apps: [AndroidApp]
+    let originalApps: [AndroidApp]
+    var filteredApps: [AndroidApp] = []
     let deviceID: String
     weak var controller: StatusMenuController?
+    var searchText: String = "" {
+        didSet {
+            filterApps()
+        }
+    }
     
-    init(apps: [AndroidApp], deviceID: String, controller: StatusMenuController) {
-        self.apps = apps
+    init(originalApps: [AndroidApp], deviceID: String, controller: StatusMenuController) {
+        self.originalApps = originalApps
         self.deviceID = deviceID
         self.controller = controller
+        super.init()
+        filterApps()
+    }
+    
+    private func filterApps() {
+        if searchText.isEmpty {
+            filteredApps = originalApps
+        } else {
+            filteredApps = originalApps.filter { app in
+                app.id.lowercased().contains(searchText) ||
+                app.name.lowercased().contains(searchText)
+            }
+        }
     }
     
     func numberOfRows(in tableView: NSTableView) -> Int {
-        return apps.count
+        return filteredApps.count
     }
     
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let app = apps[row]
-        let extractedName = extractAppName(from: app.id) // Use regex to extract from package name (app.id)
-            let appName = extractedName.capitalized // Convert the extracted name to title case
-
+        let app = filteredApps[row]
+        let extractedName = extractAppName(from: app.id)
+        let appName = extractedName.capitalized
+        
         let textField = NSTextField(labelWithString: appName)
         textField.font = NSFont.menuFont(ofSize: 14)
         textField.textColor = NSColor.controlTextColor
         textField.drawsBackground = false
         return textField
-      }
-
-      private func extractAppName(from packageName: String) -> String {
+    }
+    
+    private func extractAppName(from packageName: String) -> String {
         do {
-          let regex = try NSRegularExpression(pattern: "(?!android$|apps$|app|com$)[^.]+$")
-          guard let match = regex.firstMatch(in: packageName, range: NSRange(packageName.startIndex..., in: packageName)) else {
-            return packageName
-          }
-          let range = Range(match.range, in: packageName)!
-          return String(packageName[range])
+            let regex = try NSRegularExpression(pattern: "(?!android$|apps$|app|com$)[^.]+$")
+            guard let match = regex.firstMatch(in: packageName, range: NSRange(packageName.startIndex..., in: packageName)) else {
+                return packageName
+            }
+            let range = Range(match.range, in: packageName)!
+            return String(packageName[range])
         } catch {
-          return packageName
+            return packageName
         }
-      }
+    }
     
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         return MenuTableRowView()
@@ -265,7 +312,7 @@ private final class AppsTableViewHandler: NSObject, NSTableViewDataSource, NSTab
         guard let tableView = notification.object as? NSTableView else { return }
         let row = tableView.selectedRow
         guard row >= 0 else { return }
-        controller?.launchApp(deviceID: deviceID, appID: apps[row].id)
+        controller?.launchApp(deviceID: deviceID, appID: filteredApps[row].id)
     }
 }
 
@@ -294,7 +341,6 @@ private final class MenuTableRowView: NSTableRowView {
     
     override func layout() {
         super.layout()
-        // Match menu item padding
         hoverEffectView.frame = bounds.insetBy(dx: 4, dy: 0)
     }
     
@@ -328,6 +374,5 @@ private final class MenuTableRowView: NSTableRowView {
     }
     
     override func drawSelection(in dirtyRect: NSRect) {
-        // Clear default selection drawing
     }
 }

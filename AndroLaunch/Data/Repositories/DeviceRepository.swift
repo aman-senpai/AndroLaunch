@@ -7,19 +7,15 @@
 
 import Foundation
 import Combine
-import SwiftUI // Import SwiftUI for ObservableObject
+import SwiftUI
 
-    final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the protocol defined in Domain
+final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the protocol defined in Domain
 
-    // @Published properties. These automatically provide a publisher ($propertyName).
-    // These properties are internal to the repository's state management.
     @Published var devices: [AndroidDevice] = []
     @Published var apps: [AndroidApp] = [] // Assuming AndroidApp is also defined in Domain or a shared module
     @Published var error: String? = nil // Changed to String? as per your code
     @Published var isLoading: Bool = false
 
-    // Implement the publisher requirements from the protocol
-    // These provide external access to the published data via the protocol.
     public var errorPublisher: AnyPublisher<String?, Never> { $error.eraseToAnyPublisher() }
     public var devicesPublisher: AnyPublisher<[AndroidDevice], Never> { $devices.eraseToAnyPublisher() }
     public var appsPublisher: AnyPublisher<[AndroidApp], Never> { $apps.eraseToAnyPublisher() } // Assuming AndroidApp is defined
@@ -61,7 +57,6 @@ import SwiftUI // Import SwiftUI for ObservableObject
             .receive(on: DispatchQueue.main)
             .sink { [weak self] (error: String?) in // Explicit type annotation
                 self?.error = error
-                // Set isLoading to false when an error occurs during device refresh
                 if error != nil && self?.isLoading == true {
                     self?.isLoading = false
                 }
@@ -72,27 +67,23 @@ import SwiftUI // Import SwiftUI for ObservableObject
 
     // MARK: - DeviceRepositoryProtocol Methods
 
-        func refreshDevices() {
-            isLoading = true
-            adbService.findADB()
-        }
+    func refreshDevices() {
+        isLoading = true
+        adbService.findADB()
+    }
 
-        func fetchApps(for deviceID: String) {
-            adbService.fetchApps(for: deviceID)
-            // Clear previous apps when fetching new ones
-            DispatchQueue.main.async {
-                self.apps = []
-            }
+    func fetchApps(for deviceID: String) {
+        adbService.fetchApps(for: deviceID)
+        // Clear previous apps when fetching new ones
+        DispatchQueue.main.async {
+            self.apps = []
         }
+    }
     func launchApp(packageID: String, deviceID: String) {
         adbService.launchApp(packageID: packageID, deviceID: deviceID)
-        // Handle potential errors from launching the app
     }
 
     func mirrorDevice(deviceID: String) {
         adbService.mirrorDevice(deviceID: deviceID)
-        // Handle potential errors from mirroring the device
     }
-        
-        
 }
