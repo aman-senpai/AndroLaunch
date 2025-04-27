@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+        
+    - name: Install dependencies
+      run: |
+        brew install create-dmg
+        
+    - name: Build App
+      run: |
+        xcodebuild -project AndroLaunch.xcodeproj -scheme AndroLaunch -configuration Release -derivedDataPath build
+        
+    - name: Create DMG
+      run: |
+        mkdir -p dmg
+        cp -r build/Build/Products/Release/AndroLaunch.app dmg/
+        create-dmg \
+          --volname "AndroLaunch" \
+          --window-pos 200 120 \
+          --window-size 800 400 \
+          --icon-size 100 \
+          --icon "AndroLaunch.app" 200 190 \
+          --hide-extension "AndroLaunch.app" \
+          --app-drop-link 600 185 \
+          "AndroLaunch.dmg" \
+          "dmg/"
+          
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          AndroLaunch.dmg
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
