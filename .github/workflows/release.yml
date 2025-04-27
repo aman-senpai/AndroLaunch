@@ -24,9 +24,26 @@ jobs:
       run: |
         brew install create-dmg
         
+    - name: List Xcode project info
+      run: |
+        xcodebuild -list -project AndroLaunch.xcodeproj
+        
     - name: Build App
       run: |
-        xcodebuild -project AndroLaunch.xcodeproj -scheme AndroLaunch -configuration Release -derivedDataPath build
+        # Create xcodeproj if it doesn't exist
+        if [ ! -d "AndroLaunch.xcodeproj" ]; then
+          xcodebuild -create -scheme AndroLaunch
+        fi
+        
+        # Build the project
+        xcodebuild clean build \
+          -project AndroLaunch.xcodeproj \
+          -scheme AndroLaunch \
+          -configuration Release \
+          -derivedDataPath build \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO
         
     - name: Create DMG
       run: |
@@ -46,6 +63,6 @@ jobs:
     - name: Create Release
       uses: ncipollo/release-action@v1
       with:
-        artifacts: "AndroLaunch.dmg"
+        artifacts: AndroLaunch.dmg
         generateReleaseNotes: true
         token: ${{ secrets.GITHUB_TOKEN }} 
