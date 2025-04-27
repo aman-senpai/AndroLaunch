@@ -15,7 +15,7 @@ enum AppConstants {
         "/Users/\(NSUserName())/Library/Android/sdk/platform-tools/adb" // Standard Android Studio path
         // Add more potential paths here if necessary
     ].map { ($0 as NSString).expandingTildeInPath } // Expand the tilde (~)
-    
+
     static let scrcpyPaths = [
         "/opt/homebrew/bin/scrcpy",
         "/usr/local/bin/scrcpy",

@@ -8,7 +8,7 @@ enum ADBError: LocalizedError {
     case commandFailed(String)
     case permissionDenied
     case unknown(String)
-    
+
     var errorDescription: String? {
         switch self {
         case .adbNotFound:
@@ -27,4 +27,4 @@ enum ADBError: LocalizedError {
             return "Unknown error: \(message)"
         }
     }
-} 
+}

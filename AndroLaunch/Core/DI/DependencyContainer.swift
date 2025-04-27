@@ -17,13 +17,13 @@ protocol DependencyContainerProtocol {
 
 final class DependencyContainer: DependencyContainerProtocol {
     static let shared = DependencyContainer()
-    
+
     // MARK: - Private Properties
     private let adbServiceInstance: ADBServiceProtocol
     private let scrcpyServiceInstance: ScrcpyServiceProtocol
     private let deviceRepositoryInstance: DeviceRepositoryProtocol
     private let menuViewModelInstance: MenuViewModel
-    
+
     // MARK: - Initialization
     init(
         adbService: ADBServiceProtocol = ADBService(),
@@ -39,7 +39,7 @@ final class DependencyContainer: DependencyContainerProtocol {
             deviceRepository: deviceRepositoryInstance
         )
     }
-    
+
     // MARK: - Public Properties
     var adbService: ADBServiceProtocol { adbServiceInstance }
     var scrcpyService: ScrcpyServiceProtocol { scrcpyServiceInstance }

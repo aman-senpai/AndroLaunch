@@ -10,7 +10,7 @@ import SwiftUI
 @main
 struct AndroLaunch: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate: AppDelegate
-    
+
     var body: some Scene {
         // Main window group - required even for menu bar apps
         WindowGroup(id: "main") {
@@ -20,7 +20,7 @@ struct AndroLaunch: App {
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 0, height: 0)
-        
+
         // Settings scene
         Settings {
             PreferencesView()

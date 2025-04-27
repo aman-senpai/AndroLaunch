@@ -9,17 +9,17 @@ import SwiftUI
 
 struct PreferencesView: View {
     @EnvironmentObject var viewModel: PreferencesViewModel
-    
+
     var body: some View {
         VStack(spacing: 20) {
             Text("ADB Status: \(viewModel.adbStatus)")
                 .font(.headline)
-            
+
             if let error = viewModel.errorMessage {
                 Text("Error: \(error)")
                     .foregroundColor(.red)
             }
-            
+
             Button("Check ADB Status") {
                 viewModel.checkAdbStatus()
             }
