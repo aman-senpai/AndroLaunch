@@ -25,7 +25,14 @@ final class StatusMenuController: NSObject {
     }
     
     private func setupMenu() {
-        statusItem.button?.title = "AndroLaunch"
+        if let button = statusItem.button {
+            button.image = NSImage(systemSymbolName: "iphone.and.arrow.forward", accessibilityDescription: "AndroLaunch")
+            button.imagePosition = .imageLeft
+            button.image?.size = NSSize(width: 18, height: 18)
+            button.title = "AndroLaunch"
+            button.font = NSFont.systemFont(ofSize: 13)
+            statusItem.length = 120
+        }
         refreshDevices()
         updateMenu()
     }
@@ -56,19 +63,23 @@ final class StatusMenuController: NSObject {
         let menu = NSMenu()
         menu.delegate = self
         
-        // Header
+        // Header with app icon
         let headerItem = NSMenuItem(title: "AndroLaunch", action: nil, keyEquivalent: "")
         headerItem.isEnabled = false
+        headerItem.image = NSImage(systemSymbolName: "iphone.and.arrow.forward", accessibilityDescription: "AndroLaunch")
+        headerItem.image?.size = NSSize(width: 16, height: 16)
         menu.addItem(headerItem)
         menu.addItem(NSMenuItem.separator())
         
-        // Refresh Item
+        // Refresh Item with icon
         let refreshItem = NSMenuItem(
             title: "Refresh Devices",
             action: #selector(refreshDevices),
             keyEquivalent: "r"
         )
         refreshItem.target = self
+        refreshItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")
+        refreshItem.image?.size = NSSize(width: 16, height: 16)
         menu.addItem(refreshItem)
         menu.addItem(NSMenuItem.separator())
         
@@ -89,6 +100,8 @@ final class StatusMenuController: NSObject {
                     keyEquivalent: ""
                 )
                 deviceItem.representedObject = device.id
+                deviceItem.image = NSImage(systemSymbolName: "iphone", accessibilityDescription: "Device")
+                deviceItem.image?.size = NSSize(width: 16, height: 16)
                 
                 let submenu = NSMenu()
                 self.configureDeviceSubmenu(submenu, for: device)
@@ -98,11 +111,29 @@ final class StatusMenuController: NSObject {
         }
         
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(
+        
+        // About Item
+        let aboutItem = NSMenuItem(
+            title: "About",
+            action: #selector(openGitHub),
+            keyEquivalent: ""
+        )
+        aboutItem.target = self
+        aboutItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "About")
+        aboutItem.image?.size = NSSize(width: 16, height: 16)
+        menu.addItem(aboutItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // Quit Item with icon
+        let quitItem = NSMenuItem(
             title: "Quit",
             action: #selector(NSApp.terminate(_:)),
             keyEquivalent: "q"
-        ))
+        )
+        quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Quit")
+        quitItem.image?.size = NSSize(width: 16, height: 16)
+        menu.addItem(quitItem)
         
         statusItem.menu = menu
     }
@@ -116,6 +147,8 @@ final class StatusMenuController: NSObject {
         )
         mirrorItem.target = self
         mirrorItem.representedObject = device.id
+        mirrorItem.image = NSImage(systemSymbolName: "display", accessibilityDescription: "Mirror")
+        mirrorItem.image?.size = NSSize(width: 16, height: 16)
         submenu.addItem(mirrorItem)
         submenu.addItem(NSMenuItem.separator())
         
@@ -148,6 +181,8 @@ final class StatusMenuController: NSObject {
             )
             refreshAppsItem.representedObject = device.id
             refreshAppsItem.target = self
+            refreshAppsItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")
+            refreshAppsItem.image?.size = NSSize(width: 16, height: 16)
             submenu.addItem(refreshAppsItem)
         }
     }
@@ -158,15 +193,19 @@ final class StatusMenuController: NSObject {
     private func createAppListView(for apps: [AndroidApp], deviceID: String) -> NSView {
         let containerView = NSView(frame: CGRect(x: 0, y: 0, width: 300, height: 250))
         
-        // Add custom search field
+        // Add custom search field with improved styling
         let searchField = DeviceSearchField(frame: NSRect(x: 8, y: 222, width: 284, height: 22))
         searchField.placeholderString = "Search apps..."
         searchField.target = self
         searchField.action = #selector(searchFieldChanged(_:))
         searchField.deviceID = deviceID
+        searchField.focusRingType = .none
+        searchField.bezelStyle = .roundedBezel
+        searchField.font = NSFont.systemFont(ofSize: 13)
+        searchField.isContinuous = false // Disable real-time search
         containerView.addSubview(searchField)
         
-        // Configure scroll view and table view
+        // Configure scroll view and table view with improved styling
         let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 300, height: 220))
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .noBorder
@@ -177,7 +216,7 @@ final class StatusMenuController: NSObject {
         column.width = 200
         tableView.addTableColumn(column)
         tableView.headerView = nil
-        tableView.rowHeight = 20
+        tableView.rowHeight = 28
         tableView.backgroundColor = .clear
         tableView.selectionHighlightStyle = .none
         
@@ -210,6 +249,8 @@ final class StatusMenuController: NSObject {
         
         handler.searchText = searchText
         tableView.reloadData()
+        // Scroll to top when search changes
+        tableView.scrollRowToVisible(0)
     }
     
     fileprivate func launchApp(deviceID: String, appID: String) {
@@ -232,6 +273,12 @@ final class StatusMenuController: NSObject {
     @objc private func mirrorDevice(_ sender: NSMenuItem) {
         guard let deviceID = sender.representedObject as? String else { return }
         viewModel.mirrorDevice(deviceID: deviceID)
+    }
+    
+    @objc private func openGitHub() {
+        if let url = URL(string: "https://github.com/aman-senpai/AndroLaunch") {
+            NSWorkspace.shared.open(url)
+        }
     }
 }
 
@@ -269,8 +316,14 @@ private final class AppsTableViewHandler: NSObject, NSTableViewDataSource, NSTab
             filteredApps = originalApps
         } else {
             filteredApps = originalApps.filter { app in
-                app.id.lowercased().contains(searchText) ||
-                app.name.lowercased().contains(searchText)
+                // Fuzzy search implementation
+                let searchTerms = searchText.lowercased().split(separator: " ")
+                let appName = app.name.lowercased()
+                let appId = app.id.lowercased()
+                
+                return searchTerms.allSatisfy { term in
+                    appName.contains(term) || appId.contains(term)
+                }
             }
         }
     }
@@ -281,31 +334,101 @@ private final class AppsTableViewHandler: NSObject, NSTableViewDataSource, NSTab
     
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let app = filteredApps[row]
-        let extractedName = extractAppName(from: app.id)
-        let appName = extractedName.capitalized
         
-        let textField = NSTextField(labelWithString: appName)
+        let containerView = NSView()
+        
+        // App icon with dynamic selection based on app type
+        let iconView = NSImageView(frame: NSRect(x: 8, y: 4, width: 20, height: 20))
+        let iconName = getAppIconName(for: app)
+        iconView.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "App Icon")
+        iconView.image?.size = NSSize(width: 20, height: 20)
+        containerView.addSubview(iconView)
+        
+        // App name
+        let textField = NSTextField(labelWithString: app.name)
         textField.font = NSFont.menuFont(ofSize: 14)
         textField.textColor = NSColor.controlTextColor
         textField.drawsBackground = false
-        return textField
+        textField.frame = NSRect(x: 36, y: 4, width: 200, height: 20)
+        containerView.addSubview(textField)
+        
+        return containerView
     }
     
-    private func extractAppName(from packageName: String) -> String {
-        do {
-            let regex = try NSRegularExpression(pattern: "(?!android$|apps$|app|com$)[^.]+$")
-            guard let match = regex.firstMatch(in: packageName, range: NSRange(packageName.startIndex..., in: packageName)) else {
-                return packageName
-            }
-            let range = Range(match.range, in: packageName)!
-            return String(packageName[range])
-        } catch {
-            return packageName
+    private func getAppIconName(for app: AndroidApp) -> String {
+        // Determine icon based on app name or package ID
+        let name = app.name.lowercased()
+        let packageId = app.id.lowercased()
+        
+        // System apps
+        if packageId.contains("com.android") || packageId.contains("com.google.android") {
+            return "gear"
         }
+        
+        // Social media apps
+        if name.contains("facebook") || name.contains("twitter") || name.contains("instagram") || name.contains("whatsapp") {
+            return "bubble.left.and.bubble.right"
+        }
+        
+        // Messaging apps
+        if name.contains("message") || name.contains("sms") || name.contains("chat") {
+            return "message"
+        }
+        
+        // Camera/Photo apps
+        if name.contains("camera") || name.contains("photo") || name.contains("gallery") {
+            return "camera"
+        }
+        
+        // Music/Media apps
+        if name.contains("music") || name.contains("player") || name.contains("media") {
+            return "music.note"
+        }
+        
+        // Browser apps
+        if name.contains("browser") || name.contains("chrome") || name.contains("firefox") {
+            return "globe"
+        }
+        
+        // Settings/System apps
+        if name.contains("settings") || name.contains("system") {
+            return "gear"
+        }
+        
+        // Default icon for other apps
+        return "app"
     }
     
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         return MenuTableRowView()
+    }
+    
+    func tableView(_ tableView: NSTableView, keyDown event: NSEvent) {
+        switch event.keyCode {
+        case 125: // Down arrow
+            if tableView.selectedRow < tableView.numberOfRows - 1 {
+                let newRow = tableView.selectedRow + 1
+                tableView.selectRowIndexes(IndexSet(integer: newRow), byExtendingSelection: false)
+                tableView.scrollRowToVisible(newRow)
+            }
+        case 126: // Up arrow
+            if tableView.selectedRow > 0 {
+                let newRow = tableView.selectedRow - 1
+                tableView.selectRowIndexes(IndexSet(integer: newRow), byExtendingSelection: false)
+                tableView.scrollRowToVisible(newRow)
+            }
+        case 36: // Return
+            if tableView.selectedRow >= 0 {
+                let app = filteredApps[tableView.selectedRow]
+                controller?.launchApp(deviceID: deviceID, appID: app.id)
+            }
+        default:
+            break
+        }
+    }
+    
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+        return true
     }
     
     func tableViewSelectionDidChange(_ notification: Notification) {

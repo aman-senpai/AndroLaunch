@@ -183,7 +183,7 @@ final class ADBService: ADBServiceProtocol {
                 print("ADB devices command failed. Error: \(errorOutput ?? "Unknown error")")
                 self.error.send(errorOutput ?? "Device listing failed")
                 self.devices.send([])
-            }
+          }
         }
     }
 
@@ -249,40 +249,74 @@ final class ADBService: ADBServiceProtocol {
 
     // MARK: - App Listing
     func fetchApps(for deviceID: String) {
-         guard currentADBPath != nil else {
-             self.error.send("ADB not found or not set.")
-             self.apps.send([])
-             return
-         }
-         print("Fetching apps for device: \(deviceID)")
-         DispatchQueue.main.async {
-             self.apps.send([])
-         }
-
-         executeADBCommand(arguments: ["-s", deviceID, "shell", "pm", "list", "packages"], completion: { [weak self] success, output, errorOutput in
-             guard let self else { return }
-             if success {
-                 // Basic parsing: extract package names
-                 let packageLines = output?.split(separator: "\n") ?? []
-                 let apps = packageLines.compactMap { line -> AndroidApp? in
-                     let lineString = String(line) // Ensure it's a String
-                     if lineString.starts(with: "package:") {
-                         let packageName = String(lineString.dropFirst("package:".count)).trimmingCharacters(in: .whitespacesAndNewlines) // Trim whitespace
-                         // Use package name as the app name for now
-                         return AndroidApp(id: packageName, name: packageName)
-                     }
-                     return nil
-                 }
-                 print("Fetched and parsed \(apps.count) apps.")
-                 self.apps.send(apps)
-                 self.error.send(nil)
-             } else {
-                 print("Fetching apps failed. Error: \(errorOutput ?? "Unknown error")")
-                 self.error.send(errorOutput ?? "Failed to fetch apps for \(deviceID)")
-                 self.apps.send([])
-             }
-         })
-     }
+        guard let adbPath = currentADBPath else {
+            print("ADB path not set, cannot fetch apps.")
+            return
+        }
+        
+        print("Fetching apps for device: \(deviceID)")
+        // List all apps including system and user-installed
+        executeADBCommand(arguments: ["-s", deviceID, "shell", "pm", "list", "packages"]) { [weak self] success, output, errorOutput in
+            guard let self else { return }
+            
+            if success {
+                print("Raw app list output: \(output ?? "nil")")
+                let apps = self.parseApps(from: output ?? "", deviceID: deviceID)
+                print("Parsed apps: \(apps)")
+                self.apps.send(apps)
+                self.error.send(nil)
+            } else {
+                print("App listing failed. Error: \(errorOutput ?? "Unknown error")")
+                self.error.send(errorOutput ?? "App listing failed")
+                self.apps.send([])
+            }
+        }
+    }
+    
+    private func parseApps(from output: String, deviceID: String) -> [AndroidApp] {
+        var apps: [AndroidApp] = []
+        let lines = output.components(separatedBy: .newlines)
+        
+        for line in lines {
+            guard !line.isEmpty else { continue }
+            
+            // Parse the output format: package:com.example.app
+            let components = line.components(separatedBy: ":")
+            guard components.count == 2 else { continue }
+            
+            // Extract package name from the right side of the colon
+            let packageName = components[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            let app = AndroidApp(
+                id: packageName,
+                name: packageName,
+                iconName: "android",
+                packageName: packageName
+            )
+            apps.append(app)
+        }
+        
+        return apps.sorted { $0.name < $1.name }
+    }
+    
+    private func executeADBCommandSync(arguments: [String]) throws -> String {
+        guard let adbPath = currentADBPath else {
+            throw NSError(domain: "ADBService", code: 1, userInfo: [NSLocalizedDescriptionKey: "ADB path not set"])
+        }
+        
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: adbPath)
+        task.arguments = arguments
+        
+        let outputPipe = Pipe()
+        task.standardOutput = outputPipe
+        
+        try task.run()
+        task.waitUntilExit()
+        
+        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        return String(data: outputData, encoding: .utf8) ?? ""
+    }
 
     // MARK: - App Launching & Mirroring (using SCRCPY)
     func launchApp(packageID: String, deviceID: String) {

@@ -18,23 +18,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func openPreferences() {
-        // Create window if needed
-        if settingsWindow == nil {
-            let settingsView = PreferencesView()
-                .environmentObject(DependencyContainer.shared.menuViewModel)
-            
-            settingsWindow = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 480, height: 300),
-                styleMask: [.titled, .closable, .miniaturizable],
-                backing: .buffered,
-                defer: false
-            )
-            settingsWindow?.contentViewController = NSHostingController(rootView: settingsView)
-            settingsWindow?.title = "Preferences"
-        }
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
         
-        // Bring to front
-        settingsWindow?.makeKeyAndOrderFront(nil)
+        let label = NSTextField(labelWithString: "Settings Window")
+        label.frame = NSRect(x: 20, y: 20, width: 260, height: 160)
+        label.alignment = .center
+        label.font = NSFont.systemFont(ofSize: 24)
+        
+        window.contentView = label
+        window.title = "Settings"
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        
+        settingsWindow = window
         NSApp.activate(ignoringOtherApps: true)
     }
 }

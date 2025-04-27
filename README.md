@@ -32,22 +32,27 @@ A professional macOS menu bar application for managing Android devices through A
   - Error display and recovery guidance
 
 ## Architecture 🏛️
-![Clean Architecture Diagram](https://via.placeholder.com/800x400.png?text=Clean+Architecture+Diagram)
 
-### Core Principles
-- **Clean Architecture** with strict layer separation
-- **MVVM** pattern for UI management
-- **Reactive Programming** with Combine
-- **Protocol-Oriented** design
-- **Dependency Injection** through centralized container
+The project follows Clean Architecture principles with the following layers:
 
-### Layer Structure
-| Layer | Components | Responsibility |
-|-------|------------|-----------------|
-| **Presentation** | `StatusMenuController`, `PreferencesView` | UI rendering, user interactions |
-| **Domain** | `AndroidDevice`, `AndroidApp`, Protocols | Business logic, data models |
-| **Data** | `ADBService`, `ScrcpyService`, `DeviceRepository` | Service implementations, data access |
-| **Core** | `DependencyContainer`, `AppConstants` | DI, configuration, utilities |
+### Core Layer
+- **Services**: Core services like ADB service, device management
+- **DI**: Dependency injection container
+- **Constants**: App-wide constants and configurations
+
+### Data Layer
+- **Repositories**: Implementation of repository interfaces
+- **Parsers**: Data parsing and transformation
+- **Services**: Data-related services
+
+### Domain Layer
+- **Models**: Business models and entities
+- **UseCases**: Business logic and use cases
+- **Repositories**: Repository interfaces
+
+### Presentation Layer
+- **MenuBar**: Menu bar UI components
+- **Preferences**: Settings and preferences UI
 
 ## Key Components 🔑
 
@@ -85,45 +90,32 @@ graph TD
 5. **Combine Publishers** propagate changes back
 6. **UI** updates automatically
 
-## Development Setup 🛠️
+## Setup
 
-### Requirements
-- Xcode 14+
-- macOS 12+
-- [Homebrew](https://brew.sh/)
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   brew install android-platform-tools
+   ```
+3. Open `AndroLaunch.xcodeproj` in Xcode
+4. Build and run the project
 
-### Installation
-```bash
-# Install dependencies
-brew install android-platform-tools scrcpy
+## Development
 
-# Clone repository
-git clone https://github.com/senpai/AndroLaunch.git
-cd AndroLaunch
+### Prerequisites
+- Xcode 15.0+
+- macOS 13.0+
+- Android SDK
+- ADB (Android Debug Bridge)
 
-# Open in Xcode
-xed .
-```
+### Building
+1. Open the project in Xcode
+2. Select your target device
+3. Build and run (⌘R)
 
-### Configuration
-1. Enable **USB Debugging** on Android devices
-2. Grant security permissions in macOS Settings
-3. Configure signing team in Xcode project
-
-## Code Quality Standards ✅
-- 100% Protocol-Oriented design
-- Combine for all state management
-- Strict access control (`private`, `internal`)
-- Comprehensive error handling
-- Reactive UI updates
-- Documented public interfaces
-
-## Future Roadmap 🗺️
-- [ ] Device groups management
-- [ ] Custom ADB command support
-- [ ] App favoriting system
-- [ ] Wireless debugging support
-- [ ] Plugin system architecture
+### Testing
+- Unit tests are located in the `Tests` directory
+- UI tests are located in the `UITests` directory
 
 ## Contributing 🤝
 1. Fork the repository
