@@ -1,0 +1,1442 @@
+{
+  "com.miui.screenrecorder": {
+    "name": "Screen Recorder",
+    "is_background": false
+  },
+  "com.google.android.networkstack.tethering": {
+    "name": "Network Stack Tethering",
+    "is_background": true
+  },
+  "com.google.android.apps.subscriptions.red": {
+    "name": "Google Subscriptions",
+    "is_background": true
+  },
+  "com.android.cts.priv.ctsshim": {
+    "name": "CTS Shim",
+    "is_background": true
+  },
+  "com.qualcomm.qti.qms.service.telemetry": {
+    "name": "Qualcomm Telemetry Service",
+    "is_background": true
+  },
+  "com.google.android.youtube": {
+    "name": "YouTube",
+    "is_background": false
+  },
+  "com.android.internal.display.cutout.emulation.corner": {
+    "name": "Display Cutout Emulation (Corner)",
+    "is_background": true
+  },
+  "com.google.android.ext.services": {
+    "name": "Android Ext Services",
+    "is_background": true
+  },
+  "com.android.internal.display.cutout.emulation.double": {
+    "name": "Display Cutout Emulation (Double)",
+    "is_background": true
+  },
+  "com.android.providers.telephony": {
+    "name": "Telephony Provider",
+    "is_background": true
+  },
+  "com.android.dynsystem": {
+    "name": "Dynamic System",
+    "is_background": true
+  },
+  "com.miui.powerkeeper": {
+    "name": "PowerKeeper",
+    "is_background": true
+  },
+  "com.google.android.googlequicksearchbox": {
+    "name": "Google App",
+    "is_background": false
+  },
+  "cn.wps.xiaomi.abroad.lite": {
+    "name": "WPS Office Lite",
+    "is_background": false
+  },
+  "com.miui.fm": {
+    "name": "FM Radio",
+    "is_background": false
+  },
+  "com.miui.qr": {
+    "name": "QR Scanner",
+    "is_background": false
+  },
+  "com.google.android.cellbroadcastservice": {
+    "name": "Cell Broadcast Service",
+    "is_background": true
+  },
+  "com.android.providers.calendar": {
+    "name": "Calendar Storage",
+    "is_background": true
+  },
+  "com.google.android.apps.googleassistant": {
+    "name": "Assistant",
+    "is_background": false
+  },
+  "com.android.providers.media": {
+    "name": "Media Storage",
+    "is_background": true
+  },
+  "com.milink.service": {
+    "name": "Mi Link Service",
+    "is_background": true
+  },
+  "com.google.android.apps.docs.editors.docs": {
+    "name": "Docs",
+    "is_background": false
+  },
+  "com.google.android.onetimeinitializer": {
+    "name": "One Time Initializer",
+    "is_background": true
+  },
+  "com.google.android.ext.shared": {
+    "name": "Android Shared Library",
+    "is_background": true
+  },
+  "com.android.internal.systemui.navbar.gestural_wide_back": {
+    "name": "System UI Gestural Navigation (Wide Back)",
+    "is_background": true
+  },
+  "com.xiaomi.powerchecker": {
+    "name": "Power Checker",
+    "is_background": true
+  },
+  "com.xiaomi.account": {
+    "name": "Mi Account",
+    "is_background": true
+  },
+  "com.niksoftware.snapseed": {
+    "name": "Snapseed",
+    "is_background": false
+  },
+  "com.android.wallpapercropper": {
+    "name": "Wallpaper Cropper",
+    "is_background": true
+  },
+  "com.bsp.catchlog": {
+    "name": "Catch Log",
+    "is_background": true
+  },
+  "com.xiaomi.cameratools": {
+    "name": "Camera Tools",
+    "is_background": true
+  },
+  "com.activision.callofduty.shooter": {
+    "name": "Call of Duty Mobile",
+    "is_background": false
+  },
+  "miui.systemui.plugin": {
+    "name": "MIUI System UI Plugin",
+    "is_background": true
+  },
+  "com.xiaomi.mi_connect_service": {
+    "name": "Mi Connect Service",
+    "is_background": true
+  },
+  "com.xiaomi.micloud.sdk": {
+    "name": "Mi Cloud SDK",
+    "is_background": true
+  },
+  "net.myanimelist.app": {
+    "name": "MyAnimeList",
+    "is_background": false
+  },
+  "com.android.protips": {
+    "name": "Protips",
+    "is_background": true
+  },
+  "com.google.android.apps.paidtasks": {
+    "name": "Google Paid Tasks",
+    "is_background": true
+  },
+  "com.android.updater": {
+    "name": "Updater",
+    "is_background": true
+  },
+  "com.android.externalstorage": {
+    "name": "External Storage",
+    "is_background": true
+  },
+  "com.qualcomm.uimremoteclient": {
+    "name": "Qualcomm UIM Remote Client",
+    "is_background": true
+  },
+  "com.android.htmlviewer": {
+    "name": "HTML Viewer",
+    "is_background": true
+  },
+  "com.miui.extraphoto": {
+    "name": "Extra Photo",
+    "is_background": true
+  },
+  "com.miui.securityadd": {
+    "name": "Security Add-on",
+    "is_background": true
+  },
+  "com.android.companiondevicemanager": {
+    "name": "Companion Device Manager",
+    "is_background": true
+  },
+  "com.miui.gallery": {
+    "name": "Gallery",
+    "is_background": false
+  },
+  "com.android.mms.service": {
+    "name": "Messaging Service",
+    "is_background": true
+  },
+  "com.google.android.apps.docs.editors.sheets": {
+    "name": "Google Sheets",
+    "is_background": false
+  },
+  "com.mi.healthglobal": {
+    "name": "Mi Health Global",
+    "is_background": false
+  },
+  "com.miui.msa.global": {
+    "name": "MSA Global",
+    "is_background": true
+  },
+  "com.qualcomm.qti.qms.service.connectionsecurity": {
+    "name": "Qualcomm Connection Security Service",
+    "is_background": true
+  },
+  "com.android.providers.downloads": {
+    "name": "Downloads Provider",
+    "is_background": true
+  },
+  "com.xiaomi.payment": {
+    "name": "Mi Payment",
+    "is_background": true
+  },
+  "com.google.android.apps.messaging": {
+    "name": "Google Messages",
+    "is_background": false
+  },
+  "com.miui.securitycenter": {
+    "name": "Security Center",
+    "is_background": true
+  },
+  "com.android.internal.systemui.onehanded.gestural": {
+    "name": "System UI One-Handed Gestural",
+    "is_background": true
+  },
+  "vendor.qti.hardware.cacert.server": {
+    "name": "Qualcomm CA Cert Server",
+    "is_background": true
+  },
+  "com.quicinc.voice.activation": {
+    "name": "Voice Activation",
+    "is_background": true
+  },
+  "android.autoinstalls.config.Xiaomi.qssi": {
+    "name": "Xiaomi Auto Install Config",
+    "is_background": true
+  },
+  "net.hyx.app.volumenotification": {
+    "name": "Volume Notification",
+    "is_background": true
+  },
+  "com.qualcomm.qti.telephonyservice": {
+    "name": "Qualcomm Telephony Service",
+    "is_background": true
+  },
+  "com.qualcomm.qti.ridemodeaudio": {
+    "name": "Ride Mode Audio",
+    "is_background": true
+  },
+  "vendor.qti.iwlan": {
+    "name": "Qualcomm IWLAN",
+    "is_background": true
+  },
+  "com.google.android.configupdater": {
+    "name": "Config Updater",
+    "is_background": true
+  },
+  "com.google.android.providers.media.module": {
+    "name": "Media Provider Module",
+    "is_background": true
+  },
+  "com.google.android.overlay.modules.permissioncontroller": {
+    "name": "Permission Controller Overlay",
+    "is_background": true
+  },
+  "com.criticalforceentertainment.criticalops": {
+    "name": "Critical Ops",
+    "is_background": false
+  },
+  "com.android.soundrecorder": {
+    "name": "Sound Recorder",
+    "is_background": false
+  },
+  "com.qualcomm.uimremoteserver": {
+    "name": "Qualcomm UIM Remote Server",
+    "is_background": true
+  },
+  "com.miui.guardprovider": {
+    "name": "Guard Provider",
+    "is_background": true
+  },
+  "android.qvaoverlay.common": {
+    "name": "QVA Overlay Common",
+    "is_background": true
+  },
+  "com.google.ar.core": {
+    "name": "ARCore",
+    "is_background": true
+  },
+  "com.google.ar.lens": {
+    "name": "AR Lens",
+    "is_background": true
+  },
+  "com.android.providers.downloads.ui": {
+    "name": "Downloads UI",
+    "is_background": true
+  },
+  "com.android.vending": {
+    "name": "Google Play Store",
+    "is_background": false
+  },
+  "com.android.pacprocessor": {
+    "name": "PAC Processor",
+    "is_background": true
+  },
+  "com.android.simappdialog": {
+    "name": "SIM App Dialog",
+    "is_background": true
+  },
+  "com.miui.backup": {
+    "name": "Backup",
+    "is_background": true
+  },
+  "com.android.settings.overlay.miui": {
+    "name": "MIUI Settings Overlay",
+    "is_background": true
+  },
+  "com.miui.notification": {
+    "name": "Notification",
+    "is_background": true
+  },
+  "android.overlay.common": {
+    "name": "Overlay Common",
+    "is_background": true
+  },
+  "com.miui.micloudsync": {
+    "name": "Mi Cloud Sync",
+    "is_background": true
+  },
+  "com.android.internal.display.cutout.emulation.hole": {
+    "name": "Display Cutout Emulation (Hole)",
+    "is_background": true
+  },
+  "com.android.internal.display.cutout.emulation.tall": {
+    "name": "Display Cutout Emulation (Tall)",
+    "is_background": true
+  },
+  "com.miui.daemon": {
+    "name": "Mi Daemon",
+    "is_background": true
+  },
+  "com.android.networkstack.overlay": {
+    "name": "Network Stack Overlay",
+    "is_background": true
+  },
+  "com.android.certinstaller": {
+    "name": "Certificate Installer",
+    "is_background": true
+  },
+  "com.xiaomi.mibrain.speech": {
+    "name": "Mi Brain Speech",
+    "is_background": true
+  },
+  "com.android.carrierconfig": {
+    "name": "Carrier Config",
+    "is_background": true
+  },
+  "com.google.android.marvin.talkback": {
+    "name": "TalkBack",
+    "is_background": false
+  },
+  "com.android.internal.systemui.navbar.threebutton": {
+    "name": "System UI Three-Button Navigation",
+    "is_background": true
+  },
+  "com.qti.qualcomm.datastatusnotification": {
+    "name": "Data Status Notification",
+    "is_background": true
+  },
+  "android": {
+    "name": "Android System",
+    "is_background": true
+  },
+  "com.android.hotwordenrollment.xgoogle": {
+    "name": "Google Hotword Enrollment",
+    "is_background": true
+  },
+  "com.android.systemui.notch.overlay": {
+    "name": "System UI Notch Overlay",
+    "is_background": true
+  },
+  "com.qualcomm.wfd.service": {
+    "name": "Wi-Fi Display Service",
+    "is_background": true
+  },
+  "com.miui.hybrid": {
+    "name": "Hybrid",
+    "is_background": true
+  },
+  "android.miui.overlay": {
+    "name": "MIUI Overlay",
+    "is_background": true
+  },
+  "app.mantispro.mousekeyboard": {
+    "name": "Mantis Mouse & Keyboard",
+    "is_background": false
+  },
+  "com.miui.securitycore": {
+    "name": "Security Core",
+    "is_background": true
+  },
+  "com.qti.qualcomm.deviceinfo": {
+    "name": "Device Info",
+    "is_background": true
+  },
+  "com.android.egg": {
+    "name": "Android Easter Egg",
+    "is_background": false
+  },
+  "com.android.mtp": {
+    "name": "MTP Service",
+    "is_background": true
+  },
+  "com.android.ons": {
+    "name": "ONS Service",
+    "is_background": true
+  },
+  "com.android.stk": {
+    "name": "SIM Toolkit",
+    "is_background": true
+  },
+  "com.android.backupconfirm": {
+    "name": "Backup Confirmation",
+    "is_background": true
+  },
+  "com.xiaomi.simactivate.service": {
+    "name": "SIM Activation Service",
+    "is_background": true
+  },
+  "zombie.survival.craft.z": {
+    "name": "Zombie Survival Craft Z",
+    "is_background": false
+  },
+  "com.goodix.gftest": {
+    "name": "Goodix Test",
+    "is_background": true
+  },
+  "org.localsend.localsend_app": {
+    "name": "LocalSend",
+    "is_background": false
+  },
+  "com.miui.phrase": {
+    "name": "Phrase",
+    "is_background": false
+  },
+  "com.miui.player": {
+    "name": "Music Player",
+    "is_background": false
+  },
+  "com.miui.miservice": {
+    "name": "Services and Feedback",
+    "is_background": true
+  },
+  "com.android.provision": {
+    "name": "Provision",
+    "is_background": true
+  },
+  "org.codeaurora.ims": {
+    "name": "IMS Service",
+    "is_background": true
+  },
+  "com.android.statementservice": {
+    "name": "Statement Service",
+    "is_background": true
+  },
+  "com.google.android.gm": {
+    "name": "Gmail",
+    "is_background": false
+  },
+  "android.overlay.target": {
+    "name": "Overlay Target",
+    "is_background": true
+  },
+  "com.miui.system": {
+    "name": "MIUI System",
+    "is_background": true
+  },
+  "com.google.android.apps.tachyon": {
+    "name": "Google Duo",
+    "is_background": false
+  },
+  "com.google.android.overlay.gmsconfig.common": {
+    "name": "GMS Config Common Overlay",
+    "is_background": true
+  },
+  "com.miui.cleaner": {
+    "name": "Cleaner",
+    "is_background": true
+  },
+  "com.android.settings.intelligence": {
+    "name": "Settings Intelligence",
+    "is_background": true
+  },
+  "com.android.calendar": {
+    "name": "Calendar",
+    "is_background": false
+  },
+  "com.miui.global.packageinstaller": {
+    "name": "Package Installer",
+    "is_background": true
+  },
+  "com.miui.miwallpaper.overlay.customize": {
+    "name": "MI Wallpaper Overlay Customize",
+    "is_background": true
+  },
+  "com.android.internal.systemui.navbar.gestural_extra_wide_back": {
+    "name": "System UI Gestural Navigation (Extra Wide Back)",
+    "is_background": true
+  },
+  "com.google.android.permissioncontroller": {
+    "name": "Permission Controller",
+    "is_background": true
+  },
+  "com.miui.systemui.devices.overlay": {
+    "name": "System UI Devices Overlay",
+    "is_background": true
+  },
+  "com.miui.compass": {
+    "name": "Compass",
+    "is_background": false
+  },
+  "com.wssc.simpleclock": {
+    "name": "Simple Clock",
+    "is_background": false
+  },
+  "com.qualcomm.qti.dynamicddsservice": {
+    "name": "Dynamic DDS Service",
+    "is_background": true
+  },
+  "com.google.android.setupwizard": {
+    "name": "Setup Wizard",
+    "is_background": true
+  },
+  "com.miui.cit": {
+    "name": "CIT",
+    "is_background": true
+  },
+  "com.miui.rom": {
+    "name": "MIUI ROM",
+    "is_background": true
+  },
+  "com.miuix.editor": {
+    "name": "Editor",
+    "is_background": true
+  },
+  "com.qualcomm.qcrilmsgtunnel": {
+    "name": "QCRIL Msg Tunnel",
+    "is_background": true
+  },
+  "com.android.providers.settings": {
+    "name": "Settings Provider",
+    "is_background": true
+  },
+  "com.android.sharedstoragebackup": {
+    "name": "Shared Storage Backup",
+    "is_background": true
+  },
+  "com.facebook.services": {
+    "name": "Facebook Services",
+    "is_background": true
+  },
+  "com.android.printspooler": {
+    "name": "Print Spooler",
+    "is_background": true
+  },
+  "com.android.hotwordenrollment.okgoogle": {
+    "name": "OK Google Enrollment",
+    "is_background": true
+  },
+  "com.miui.misound": {
+    "name": "Mi Sound",
+    "is_background": true
+  },
+  "com.android.wifi.resources.overlay.common": {
+    "name": "Wi-Fi Resources Overlay Common",
+    "is_background": true
+  },
+  "org.ifaa.aidl.manager": {
+    "name": "IFAA Manager",
+    "is_background": true
+  },
+  "com.android.dreams.basic": {
+    "name": "Basic Dreams",
+    "is_background": true
+  },
+  "com.google.android.overlay.modules.ext.services": {
+    "name": "Ext Services Overlay",
+    "is_background": true
+  },
+  "com.android.systemui.gesture.line.overlay": {
+    "name": "System UI Gesture Line Overlay",
+    "is_background": true
+  },
+  "com.fido.xiaomi.uafclient": {
+    "name": "FIDO UAF Client",
+    "is_background": true
+  },
+  "com.duokan.phone.remotecontroller": {
+    "name": "Mi Remote",
+    "is_background": false
+  },
+  "com.miui.bugreport": {
+    "name": "Bug Report",
+    "is_background": true
+  },
+  "com.android.se": {
+    "name": "Secure Element",
+    "is_background": true
+  },
+  "com.android.inputdevices": {
+    "name": "Input Devices",
+    "is_background": true
+  },
+  "com.google.android.apps.wellbeing": {
+    "name": "Digital Wellbeing",
+    "is_background": false
+  },
+  "com.fido.asm": {
+    "name": "FIDO ASM",
+    "is_background": true
+  },
+  "com.google.android.dialer": {
+    "name": "Google Dialer",
+    "is_background": false
+  },
+  "com.qti.slaservice": {
+    "name": "SLA Service",
+    "is_background": true
+  },
+  "com.android.bips": {
+    "name": "Built-in Print Service",
+    "is_background": true
+  },
+  "com.qti.dpmserviceapp": {
+    "name": "DPM Service App",
+    "is_background": true
+  },
+  "com.google.android.captiveportallogin": {
+    "name": "Captive Portal Login",
+    "is_background": true
+  },
+  "com.google.android.overlay.gmsconfig.comms": {
+    "name": "GMS Config Comms Overlay",
+    "is_background": true
+  },
+  "com.google.android.overlay.gmsconfig.geotz": {
+    "name": "GMS Config Geotz Overlay",
+    "is_background": true
+  },
+  "com.qti.xdivert": {
+    "name": "XDivert",
+    "is_background": true
+  },
+  "com.twitter.android": {
+    "name": "Twitter",
+    "is_background": false
+  },
+  "com.android.systemui.overlay.miui": {
+    "name": "System UI MIUI Overlay",
+    "is_background": true
+  },
+  "com.android.settings.overlay.common": {
+    "name": "Settings Overlay Common",
+    "is_background": true
+  },
+  "com.google.android.apps.docs": {
+    "name": "Drive",
+    "is_background": false
+  },
+  "com.google.android.apps.maps": {
+    "name": "Maps",
+    "is_background": false
+  },
+  "com.miui.mediafeature": {
+    "name": "Media Feature",
+    "is_background": true
+  },
+  "com.google.android.modulemetadata": {
+    "name": "Module Metadata",
+    "is_background": true
+  },
+  "com.miui.cloudbackup": {
+    "name": "Cloud Backup",
+    "is_background": true
+  },
+  "com.miui.wallpaper.overlay": {
+    "name": "Wallpaper Overlay",
+    "is_background": true
+  },
+  "com.miui.face.overlay.miui": {
+    "name": "Face Overlay MIUI",
+    "is_background": true
+  },
+  "com.android.cellbroadcastreceiver": {
+    "name": "Cell Broadcast Receiver",
+    "is_background": true
+  },
+  "com.google.android.webview": {
+    "name": "Android WebView",
+    "is_background": true
+  },
+  "com.google.android.overlay.modules.documentsui": {
+    "name": "Documents UI Overlay",
+    "is_background": true
+  },
+  "com.google.android.networkstack": {
+    "name": "Network Stack",
+    "is_background": true
+  },
+  "com.google.android.contactkeys": {
+    "name": "Contact Keys",
+    "is_background": true
+  },
+  "com.google.android.contacts": {
+    "name": "Contacts",
+    "is_background": false
+  },
+  "com.android.server.telecom": {
+    "name": "Telecom",
+    "is_background": true
+  },
+  "com.android.server.telecom.overlay.miui": {
+    "name": "Telecom MIUI Overlay",
+    "is_background": true
+  },
+  "com.google.android.syncadapters.contacts": {
+    "name": "Contacts Sync Adapter",
+    "is_background": true
+  },
+  "com.android.keychain": {
+    "name": "Keychain",
+    "is_background": true
+  },
+  "com.qti.snapdragon.qdcm_ff": {
+    "name": "QDCM FF",
+    "is_background": true
+  },
+  "com.android.wifi.resources.overlay.target": {
+    "name": "Wi-Fi Resources Overlay Target",
+    "is_background": true
+  },
+  "com.android.camera": {
+    "name": "Camera",
+    "is_background": false
+  },
+  "com.android.chrome": {
+    "name": "Chrome",
+    "is_background": false
+  },
+  "com.xiaomi.xmsf": {
+    "name": "Xiaomi Services Framework",
+    "is_background": true
+  },
+  "com.google.android.packageinstaller": {
+    "name": "Package Installer",
+    "is_background": true
+  },
+  "com.miui.mishare.connectivity": {
+    "name": "Mi Share Connectivity",
+    "is_background": true
+  },
+  "com.google.android.gms": {
+    "name": "Google Play Services",
+    "is_background": true
+  },
+  "com.google.android.gsf": {
+    "name": "Google Services Framework",
+    "is_background": true
+  },
+  "com.google.android.ims": {
+    "name": "IMS",
+    "is_background": true
+  },
+  "com.google.android.tts": {
+    "name": "Google Text-to-Speech",
+    "is_background": true
+  },
+  "com.android.wifi.resources": {
+    "name": "Wi-Fi Resources",
+    "is_background": true
+  },
+  "com.android.phone.overlay.common": {
+    "name": "Phone Overlay Common",
+    "is_background": true
+  },
+  "com.android.carrierconfig.overlay.common": {
+    "name": "Carrier Config Overlay Common",
+    "is_background": true
+  },
+  "com.android.calllogbackup": {
+    "name": "Call Log Backup",
+    "is_background": true
+  },
+  "com.miui.freeform": {
+    "name": "Freeform",
+    "is_background": true
+  },
+  "com.xiaomi.miaudiovisual": {
+    "name": "Mi Audio Visual",
+    "is_background": true
+  },
+  "com.google.android.partnersetup": {
+    "name": "Partner Setup",
+    "is_background": true
+  },
+  "android.aosp.overlay": {
+    "name": "AOSP Overlay",
+    "is_background": true
+  },
+  "com.android.systemui.overlay.common": {
+    "name": "System UI Overlay Common",
+    "is_background": true
+  },
+  "com.android.cameraextensions": {
+    "name": "Camera Extensions",
+    "is_background": true
+  },
+  "com.xiaomi.xmsfkeeper": {
+    "name": "Xiaomi Services Framework Keeper",
+    "is_background": true
+  },
+  "com.android.server.telecom.overlay.common": {
+    "name": "Telecom Overlay Common",
+    "is_background": true
+  },
+  "com.android.localtransport": {
+    "name": "Local Transport",
+    "is_background": true
+  },
+  "com.google.android.overlay.gmsconfig.gsa": {
+    "name": "GMS Config GSA Overlay",
+    "is_background": true
+  },
+  "com.miui.miwallpaper.overlay": {
+    "name": "MI Wallpaper Overlay",
+    "is_background": true
+  },
+  "com.android.carrierdefaultapp": {
+    "name": "Carrier Default App",
+    "is_background": true
+  },
+  "com.xiaomi.mipicks": {
+    "name": "GetApps",
+    "is_background": false
+  },
+  "com.miui.wallpaper.overlay.customize": {
+    "name": "Wallpaper Overlay Customize",
+    "is_background": true
+  },
+  "app.mihon": {
+    "name": "Mihon",
+    "is_background": false
+  },
+  "com.qualcomm.qti.remoteSimlockAuth": {
+    "name": "Remote SIM Lock Auth",
+    "is_background": true
+  },
+  "com.mojang.minecraftpe": {
+    "name": "Minecraft",
+    "is_background": false
+  },
+  "com.xiaomi.finddevice": {
+    "name": "Find Device",
+    "is_background": false
+  },
+  "com.qualcomm.qti.devicestatisticsservice": {
+    "name": "Device Statistics Service",
+    "is_background": true
+  },
+  "com.miui.phone.carriers.overlay": {
+    "name": "Phone Carriers Overlay",
+    "is_background": true
+  },
+  "com.android.theme.font.notoserifsource": {
+    "name": "Noto Serif Font",
+    "is_background": true
+  },
+  "com.android.proxyhandler": {
+    "name": "Proxy Handler",
+    "is_background": true
+  },
+  "com.google.android.safetycenter.resources": {
+    "name": "Safety Center Resources",
+    "is_background": true
+  },
+  "com.xiaomi.joyose": {
+    "name": "Joyose",
+    "is_background": true
+  },
+  "com.android.internal.display.cutout.emulation.waterfall": {
+    "name": "Display Cutout Emulation (Waterfall)",
+    "is_background": true
+  },
+  "com.qualcomm.qti.workloadclassifier": {
+    "name": "Workload Classifier",
+    "is_background": true
+  },
+  "com.mi.android.globalFileexplorer": {
+    "name": "File Manager",
+    "is_background": false
+  },
+  "com.miui.notes": {
+    "name": "Notes",
+    "is_background": false
+  },
+  "com.miui.wmsvc": {
+    "name": "WMSVC",
+    "is_background": true
+  },
+  "com.google.android.connectivity.resources": {
+    "name": "Connectivity Resources",
+    "is_background": true
+  },
+  "com.google.android.overlay.modules.permissioncontroller.forframework": {
+    "name": "Permission Controller Overlay for Framework",
+    "is_background": true
+  },
+  "com.xiaomi.misettings": {
+    "name": "Settings",
+    "is_background": false
+  },
+  "com.google.android.feedback": {
+    "name": "Feedback",
+    "is_background": true
+  },
+  "com.google.android.printservice.recommendation": {
+    "name": "Print Service Recommendation",
+    "is_background": true
+  },
+  "com.xiaomi.midrop": {
+    "name": "Mi Drop",
+    "is_background": false
+  },
+  "com.google.android.apps.photos": {
+    "name": "Google Photos",
+    "is_background": false
+  },
+  "com.google.android.calendar": {
+    "name": "Google Calendar",
+    "is_background": false
+  },
+  "com.google.android.syncadapters.calendar": {
+    "name": "Calendar Sync Adapter",
+    "is_background": true
+  },
+  "com.miui.cloudservice": {
+    "name": "Mi Cloud Service",
+    "is_background": true
+  },
+  "com.android.managedprovisioning": {
+    "name": "Managed Provisioning",
+    "is_background": true
+  },
+  "com.miui.hybrid.accessory": {
+    "name": "Hybrid Accessory",
+    "is_background": true
+  },
+  "com.gameloft.android.ANMP.GloftA8HM": {
+    "name": "Asphalt 8",
+    "is_background": false
+  },
+  "com.fingerprints.sensortesttool": {
+    "name": "Fingerprint Sensor Test Tool",
+    "is_background": true
+  },
+  "com.miui.core.internal.editor.services": {
+    "name": "Editor Services",
+    "is_background": true
+  },
+  "com.android.soundpicker": {
+    "name": "Sound Picker",
+    "is_background": true
+  },
+  "com.tencent.soter.soterserver": {
+    "name": "Soter Server",
+    "is_background": true
+  },
+  "com.google.android.documentsui": {
+    "name": "Files",
+    "is_background": false
+  },
+  "com.android.dreams.phototable": {
+    "name": "Photo Screensaver",
+    "is_background": true
+  },
+  "com.miui.audiomonitor": {
+    "name": "Audio Monitor",
+    "is_background": true
+  },
+  "com.miui.touchassistant": {
+    "name": "Touch Assistant",
+    "is_background": true
+  },
+  "com.google.mainline.telemetry": {
+    "name": "Mainline Telemetry",
+    "is_background": true
+  },
+  "com.xiaomi.mtb": {
+    "name": "MTB",
+    "is_background": true
+  },
+  "com.android.providers.partnerbookmarks": {
+    "name": "Partner Bookmarks Provider",
+    "is_background": true
+  },
+  "com.android.smspush": {
+    "name": "SMS Push",
+    "is_background": true
+  },
+  "com.miui.calculator": {
+    "name": "Calculator",
+    "is_background": false
+  },
+  "com.android.wallpaper.livepicker": {
+    "name": "Live Wallpaper Picker",
+    "is_background": true
+  },
+  "com.miui.cloudservice.sysbase": {
+    "name": "Cloud Service Sysbase",
+    "is_background": true
+  },
+  "com.faultexception.reader": {
+    "name": "Lithium",
+    "is_background": false
+  },
+  "com.miui.miwallpaper": {
+    "name": "MI Wallpaper",
+    "is_background": true
+  },
+  "com.facebook.system": {
+    "name": "Facebook App Manager",
+    "is_background": true
+  },
+  "com.android.systemui.navigation.bar.overlay": {
+    "name": "System UI Navigation Bar Overlay",
+    "is_background": true
+  },
+  "com.chess": {
+    "name": "Chess",
+    "is_background": false
+  },
+  "com.xiaomi.bluetooth": {
+    "name": "Bluetooth",
+    "is_background": true
+  },
+  "org.mozilla.firefox": {
+    "name": "Firefox",
+    "is_background": false
+  },
+  "com.google.android.cellbroadcastservice.overlay.miui": {
+    "name": "Cell Broadcast Service MIUI Overlay",
+    "is_background": true
+  },
+  "com.google.android.apps.translate": {
+    "name": "Google Translate",
+    "is_background": false
+  },
+  "com.google.android.networkstack.permissionconfig": {
+    "name": "Network Stack Permission Config",
+    "is_background": true
+  },
+  "com.android.storagemanager": {
+    "name": "Storage Manager",
+    "is_background": true
+  },
+  "com.wdstechnology.android.kryten": {
+    "name": "Kryten",
+    "is_background": false
+  },
+  "com.miui.analytics": {
+    "name": "Analytics",
+    "is_background": true
+  },
+  "com.android.bookmarkprovider": {
+    "name": "Bookmark Provider",
+    "is_background": true
+  },
+  "com.android.settings": {
+    "name": "Settings",
+    "is_background": false
+  },
+  "com.qualcomm.qti.cne": {
+    "name": "Qualcomm CNE",
+    "is_background": true
+  },
+  "com.qualcomm.qti.lpa": {
+    "name": "LPA",
+    "is_background": true
+  },
+  "com.qualcomm.qti.uim": {
+    "name": "UIM",
+    "is_background": true
+  },
+  "com.gallery.player": {
+    "name": "Gallery Player",
+    "is_background": false
+  },
+  "com.miui.weather2": {
+    "name": "Weather",
+    "is_background": false
+  },
+  "com.google.android.apps.nbu.paisa.user": {
+    "name": "Google Pay",
+    "is_background": false
+  },
+  "org.mipay.android.manager": {
+    "name": "Mi Pay",
+    "is_background": false
+  },
+  "com.modemdebug": {
+    "name": "Modem Debug",
+    "is_background": true
+  },
+  "com.google.android.projection.gearhead": {
+    "name": "Android Auto",
+    "is_background": true
+  },
+  "com.qualcomm.location": {
+    "name": "Qualcomm Location",
+    "is_background": true
+  },
+  "com.xiaomi.scanner": {
+    "name": "Scanner",
+    "is_background": false
+  },
+  "com.google.android.apps.turbo": {
+    "name": "Turbo",
+    "is_background": true
+  },
+  "com.android.thememanager.gliobal_config.config.overlay": {
+    "name": "Theme Manager Global Config Overlay",
+    "is_background": true
+  },
+  "com.google.android.safetycore": {
+    "name": "Safety Core",
+    "is_background": true
+  },
+  "com.xiaomi.calendar": {
+    "name": "Mi Calendar",
+    "is_background": false
+  },
+  "com.android.cts.ctsshim": {
+    "name": "CTS Shim",
+    "is_background": true
+  },
+  "com.google.android.overlay.modules.modulemetadata.forframework": {
+    "name": "Module Metadata Overlay for Framework",
+    "is_background": true
+  },
+  "com.miui.yellowpage": {
+    "name": "Yellow Pages",
+    "is_background": false
+  },
+  "com.digilocker.android": {
+    "name": "DigiLocker",
+    "is_background": false
+  },
+  "com.qualcomm.qti.uimGbaApp": {
+    "name": "UIM GBA App",
+    "is_background": true
+  },
+  "com.qti.diagservices": {
+    "name": "Diag Services",
+    "is_background": true
+  },
+  "com.miui.systemui.carriers.overlay": {
+    "name": "System UI Carriers Overlay",
+    "is_background": true
+  },
+  "com.miui.systemui.overlay.devices.android": {
+    "name": "System UI Devices Android Overlay",
+    "is_background": true
+  },
+  "com.android.vpndialogs": {
+    "name": "VPN Dialogs",
+    "is_background": true
+  },
+  "com.google.android.apps.meetings": {
+    "name": "Meet",
+    "is_background": false
+  },
+  "eu.kanade.tachiyomi.revived.all.hentaihand": {
+    "name": "Tachiyomi HentaiHand",
+    "is_background": true
+  },
+  "com.delphicoder.flud.paid": {
+    "name": "Flud",
+    "is_background": false
+  },
+  "com.google.android.keep": {
+    "name": "Keep",
+    "is_background": false
+  },
+  "com.android.phone": {
+    "name": "Phone",
+    "is_background": false
+  },
+  "com.android.overlay.gmstelephony": {
+    "name": "GMS Telephony Overlay",
+    "is_background": true
+  },
+  "com.android.shell": {
+    "name": "Shell",
+    "is_background": true
+  },
+  "com.android.wallpaperbackup": {
+    "name": "Wallpaper Backup",
+    "is_background": true
+  },
+  "com.android.providers.blockednumber": {
+    "name": "Blocked Number Provider",
+    "is_background": true
+  },
+  "com.miui.screenshot": {
+    "name": "Screenshot",
+    "is_background": true
+  },
+  "com.android.overlay.gmstelecomm": {
+    "name": "GMS Telecom Overlay",
+    "is_background": true
+  },
+  "com.google.android.apps.work.clouddpc": {
+    "name": "Google Workspace",
+    "is_background": false
+  },
+  "com.android.providers.userdictionary": {
+    "name": "User Dictionary Provider",
+    "is_background": true
+  },
+  "com.android.emergency": {
+    "name": "Emergency",
+    "is_background": true
+  },
+  "me.livechart.android": {
+    "name": "LiveChart",
+    "is_background": false
+  },
+  "com.android.hotspot2.osulogin": {
+    "name": "Hotspot 2.0 OSU Login",
+    "is_background": true
+  },
+  "com.qualcomm.qti.xrcb": {
+    "name": "XR CB",
+    "is_background": true
+  },
+  "com.google.android.gms.location.history": {
+    "name": "Location History",
+    "is_background": true
+  },
+  "com.android.internal.systemui.navbar.gestural": {
+    "name": "System UI Gestural Navigation",
+    "is_background": true
+  },
+  "com.android.location.fused": {
+    "name": "Fused Location",
+    "is_background": true
+  },
+  "com.android.deskclock": {
+    "name": "Clock",
+    "is_background": false
+  },
+  "com.android.systemui": {
+    "name": "System UI",
+    "is_background": true
+  },
+  "com.locationchanger": {
+    "name": "Location Changer",
+    "is_background": false
+  },
+  "co.pelicanparty.narrowone": {
+    "name": "Narrow One",
+    "is_background": false
+  },
+  "com.google.android.apps.youtube.music": {
+    "name": "YouTube Music",
+    "is_background": false
+  },
+  "com.miui.core.internal.services": {
+    "name": "Core Internal Services",
+    "is_background": true
+  },
+  "com.android.wifi.resources.xiaomi": {
+    "name": "Wi-Fi Resources Xiaomi",
+    "is_background": true
+  },
+  "com.android.bluetoothmidiservice": {
+    "name": "Bluetooth MIDI Service",
+    "is_background": true
+  },
+  "com.qualcomm.qti.poweroffalarm": {
+    "name": "Power Off Alarm",
+    "is_background": true
+  },
+  "com.qti.ltebc": {
+    "name": "LTE BC",
+    "is_background": true
+  },
+  "com.google.android.cellbroadcastreceiver.overlay.miui": {
+    "name": "Cell Broadcast Receiver MIUI Overlay",
+    "is_background": true
+  },
+  "com.qti.phone": {
+    "name": "QTI Phone",
+    "is_background": true
+  },
+  "com.mi.globallayout": {
+    "name": "Global Layout",
+    "is_background": true
+  },
+  "com.facebook.appmanager": {
+    "name": "Facebook App Manager",
+    "is_background": true
+  },
+  "com.xiaomi.discover": {
+    "name": "Discover",
+    "is_background": true
+  },
+  "com.android.thememanager": {
+    "name": "Theme Manager",
+    "is_background": true
+  },
+  "com.android.traceur": {
+    "name": "Traceur",
+    "is_background": true
+  },
+  "com.miui.fmservice": {
+    "name": "FM Service",
+    "is_background": true
+  },
+  "com.qualcomm.qti.gpudrivers.lito.api30": {
+    "name": "Qualcomm GPU Drivers",
+    "is_background": true
+  },
+  "com.google.android.cellbroadcastreceiver": {
+    "name": "Cell Broadcast Receiver",
+    "is_background": true
+  },
+  "com.opera.browser.afin": {
+    "name": "Opera Browser",
+    "is_background": false
+  },
+  "com.lbe.security.miui": {
+    "name": "LBE Security",
+    "is_background": true
+  },
+  "com.google.android.play.games": {
+    "name": "Google Play Games",
+    "is_background": false
+  },
+  "notion.id": {
+    "name": "Notion",
+    "is_background": false
+  },
+  "com.nekki.shadowfight3": {
+    "name": "Shadow Fight 3",
+    "is_background": false
+  },
+  "com.google.android.apps.magazines": {
+    "name": "Google News",
+    "is_background": false
+  },
+  "com.google.android.apps.adm": {
+    "name": "Android Device Manager",
+    "is_background": false
+  },
+  "com.android.bluetooth": {
+    "name": "Bluetooth",
+    "is_background": true
+  },
+  "com.qualcomm.timeservice": {
+    "name": "Time Service",
+    "is_background": true
+  },
+  "com.mi.globalminusscreen": {
+    "name": "Global Minus Screen",
+    "is_background": true
+  },
+  "com.qualcomm.atfwd": {
+    "name": "ATFWD",
+    "is_background": true
+  },
+  "com.qualcomm.embms": {
+    "name": "eMBMS",
+    "is_background": true
+  },
+  "com.android.providers.contacts": {
+    "name": "Contacts Provider",
+    "is_background": true
+  },
+  "vendor.qti.imsrcs": {
+    "name": "IMS RCS",
+    "is_background": true
+  },
+  "com.facemoji.lite.xiaomi": {
+    "name": "Facemoji Keyboard",
+    "is_background": true
+  },
+  "com.android.internal.systemui.navbar.gestural_narrow_back": {
+    "name": "System UI Gestural Navigation (Narrow Back)",
+    "is_background": true
+  },
+  "com.android.cellbroadcastreceiver.overlay.common": {
+    "name": "Cell Broadcast Receiver Overlay Common",
+    "is_background": true
+  },
+  "com.google.android.photopicker": {
+    "name": "Photo Picker",
+    "is_background": true
+  },
+  "eu.kanade.tachiyomi.revived.en.allporncomic": {
+    "name": "Tachiyomi AllPornComic",
+    "is_background": true
+  },
+  "com.miui.core": {
+    "name": "MIUI Core",
+    "is_background": true
+  },
+  "com.miui.face": {
+    "name": "Face",
+    "is_background": true
+  },
+  "com.miui.home": {
+    "name": "MIUI Launcher",
+    "is_background": true
+  },
+  "com.google.android.inputmethod.latin": {
+    "name": "Gboard",
+    "is_background": true
+  },
+  "com.softmedia.receiver.lite": {
+    "name": "AirReceiver Lite",
+    "is_background": false
+  },
+  "com.miui.audioeffect": {
+    "name": "Audio Effect",
+    "is_background": true
+  },
+  "com.google.android.apps.restore": {
+    "name": "Google Restore",
+    "is_background": false
+  }
+}

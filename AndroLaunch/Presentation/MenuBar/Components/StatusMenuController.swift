@@ -26,12 +26,12 @@ final class StatusMenuController: NSObject {
     
     private func setupMenu() {
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "iphone.and.arrow.forward", accessibilityDescription: "AndroLaunch")
+            let config = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+            button.image = NSImage(systemSymbolName: "iphone.and.arrow.forward", accessibilityDescription: "AndroLaunch")?.withSymbolConfiguration(config)
             button.imagePosition = .imageLeft
-            button.image?.size = NSSize(width: 18, height: 18)
-            button.title = "AndroLaunch"
-            button.font = NSFont.systemFont(ofSize: 13)
-            statusItem.length = 120
+            button.title = "Launch"
+            button.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+            statusItem.length = 80
         }
         refreshDevices()
         updateMenu()
@@ -66,8 +66,8 @@ final class StatusMenuController: NSObject {
         // Header with app icon
         let headerItem = NSMenuItem(title: "AndroLaunch", action: nil, keyEquivalent: "")
         headerItem.isEnabled = false
-        headerItem.image = NSImage(systemSymbolName: "iphone.and.arrow.forward", accessibilityDescription: "AndroLaunch")
-        headerItem.image?.size = NSSize(width: 16, height: 16)
+        let headerConfig = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+        headerItem.image = NSImage(systemSymbolName: "iphone.and.arrow.forward", accessibilityDescription: "AndroLaunch")?.withSymbolConfiguration(headerConfig)
         menu.addItem(headerItem)
         menu.addItem(NSMenuItem.separator())
         
@@ -204,6 +204,11 @@ final class StatusMenuController: NSObject {
         searchField.font = NSFont.systemFont(ofSize: 13)
         searchField.isContinuous = false // Disable real-time search
         containerView.addSubview(searchField)
+        
+        // Make search field first responder when menu opens
+        DispatchQueue.main.async {
+            searchField.becomeFirstResponder()
+        }
         
         // Configure scroll view and table view with improved styling
         let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 300, height: 220))
@@ -356,47 +361,7 @@ private final class AppsTableViewHandler: NSObject, NSTableViewDataSource, NSTab
     }
     
     private func getAppIconName(for app: AndroidApp) -> String {
-        // Determine icon based on app name or package ID
-        let name = app.name.lowercased()
-        let packageId = app.id.lowercased()
-        
-        // System apps
-        if packageId.contains("com.android") || packageId.contains("com.google.android") {
-            return "gear"
-        }
-        
-        // Social media apps
-        if name.contains("facebook") || name.contains("twitter") || name.contains("instagram") || name.contains("whatsapp") {
-            return "bubble.left.and.bubble.right"
-        }
-        
-        // Messaging apps
-        if name.contains("message") || name.contains("sms") || name.contains("chat") {
-            return "message"
-        }
-        
-        // Camera/Photo apps
-        if name.contains("camera") || name.contains("photo") || name.contains("gallery") {
-            return "camera"
-        }
-        
-        // Music/Media apps
-        if name.contains("music") || name.contains("player") || name.contains("media") {
-            return "music.note"
-        }
-        
-        // Browser apps
-        if name.contains("browser") || name.contains("chrome") || name.contains("firefox") {
-            return "globe"
-        }
-        
-        // Settings/System apps
-        if name.contains("settings") || name.contains("system") {
-            return "gear"
-        }
-        
-        // Default icon for other apps
-        return "app"
+        return AppIconMapper.getIconName(for: app)
     }
     
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {

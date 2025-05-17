@@ -277,6 +277,38 @@ final class ADBService: ADBServiceProtocol {
         var apps: [AndroidApp] = []
         let lines = output.components(separatedBy: .newlines)
         
+        // Read package names mapping from Data/Resources directory
+        let packageMapping: [String: [String: Any]]
+        let fileManager = FileManager.default
+        
+        // Use absolute path to the JSON file
+        let jsonPath = "/Users/senpai/Developer/AndroLaunch/AndroLaunch/Data/Resources/package_names_mapping.json"
+        
+        print("🔍 Looking for package mapping file at: \(jsonPath)")
+        
+        if fileManager.fileExists(atPath: jsonPath) {
+            print("📂 Found package mapping file")
+            do {
+                let data = try Data(contentsOf: URL(fileURLWithPath: jsonPath))
+                print("📄 Successfully read file data: \(data.count) bytes")
+                if let mapping = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] {
+                    packageMapping = mapping
+                    print("✅ Successfully parsed JSON with \(mapping.count) entries")
+                } else {
+                    print("❌ Failed to parse JSON data")
+                    packageMapping = [:]
+                }
+            } catch {
+                print("❌ Failed to read file data: \(error.localizedDescription)")
+                packageMapping = [:]
+            }
+        } else {
+            print("❌ Could not find package mapping file at path: \(jsonPath)")
+            packageMapping = [:]
+        }
+        
+        print("📱 Processing \(lines.count) package names from device")
+        
         for line in lines {
             guard !line.isEmpty else { continue }
             
@@ -287,15 +319,29 @@ final class ADBService: ADBServiceProtocol {
             // Extract package name from the right side of the colon
             let packageName = components[1].trimmingCharacters(in: .whitespacesAndNewlines)
             
+            // Debug logging for each package
+            if let appInfo = packageMapping[packageName] {
+                print("📦 Found mapping for \(packageName): \(appInfo)")
+            }
+            
+            // Only include if in mapping and not background
+            guard let appInfo = packageMapping[packageName],
+                  let isBackground = appInfo["is_background"] as? Bool,
+                  isBackground == false,
+                  let appName = appInfo["name"] as? String else {
+                continue
+            }
+            
             let app = AndroidApp(
                 id: packageName,
-                name: packageName,
+                name: appName,
                 iconName: "android",
                 packageName: packageName
             )
             apps.append(app)
         }
         
+        print("🎯 Final app list contains \(apps.count) apps")
         return apps.sorted { $0.name < $1.name }
     }
     
