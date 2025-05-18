@@ -27,9 +27,9 @@ final class StatusMenuController: NSObject {
     private func setupMenu() {
         if let button = statusItem.button {
             let config = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
-            button.image = NSImage(systemSymbolName: "iphone.and.arrow.forward", accessibilityDescription: "AndroLaunch")?.withSymbolConfiguration(config)
+            button.image = NSImage(systemSymbolName: "square.grid.2x2.fill", accessibilityDescription: "AndroLaunch")?.withSymbolConfiguration(config)
             button.imagePosition = .imageLeft
-            button.title = "Launch"
+            button.title = "Launcher"
             button.font = NSFont.systemFont(ofSize: 13, weight: .medium)
             statusItem.length = 80
         }
@@ -67,7 +67,7 @@ final class StatusMenuController: NSObject {
         let headerItem = NSMenuItem(title: "AndroLaunch", action: nil, keyEquivalent: "")
         headerItem.isEnabled = false
         let headerConfig = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-        headerItem.image = NSImage(systemSymbolName: "iphone.and.arrow.forward", accessibilityDescription: "AndroLaunch")?.withSymbolConfiguration(headerConfig)
+        headerItem.image = NSImage(systemSymbolName: "square.grid.2x2.fill", accessibilityDescription: "AndroLaunch")?.withSymbolConfiguration(headerConfig)
         menu.addItem(headerItem)
         menu.addItem(NSMenuItem.separator())
         
