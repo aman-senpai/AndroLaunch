@@ -89,6 +89,7 @@ struct AppIconMapper {
         "hbo": "play.tv.fill",
         "youtube": "play.rectangle.fill",
         "twitch": "play.tv.fill",
+        "YTMusic": "music.note",
         "default": "play.fill"
     ]
     

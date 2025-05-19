@@ -31,7 +31,7 @@ final class StatusMenuController: NSObject {
             button.imagePosition = .imageLeft
             button.title = "Launcher"
             button.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-            statusItem.length = 80
+            statusItem.length = 100
         }
         refreshDevices()
         updateMenu()

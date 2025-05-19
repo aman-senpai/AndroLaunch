@@ -281,8 +281,13 @@ final class ADBService: ADBServiceProtocol {
         let packageMapping: [String: [String: Any]]
         let fileManager = FileManager.default
         
-        // Use absolute path to the JSON file
-        let jsonPath = "/Users/senpai/Developer/AndroLaunch/AndroLaunch/Data/Resources/package_names_mapping.json"
+        // Use bundle path for the JSON file
+        let bundle = Bundle.main
+        guard let jsonPath = bundle.path(forResource: "package_names_mapping", ofType: "json") else {
+            print("❌ Could not find package_names_mapping.json in bundle")
+            packageMapping = [:]
+            return []
+        }
         
         print("🔍 Looking for package mapping file at: \(jsonPath)")
         
@@ -322,6 +327,8 @@ final class ADBService: ADBServiceProtocol {
             // Debug logging for each package
             if let appInfo = packageMapping[packageName] {
                 print("📦 Found mapping for \(packageName): \(appInfo)")
+            } else {
+                print("⚠️ No mapping found for package: \(packageName)")
             }
             
             // Only include if in mapping and not background
