@@ -70,6 +70,7 @@ protocol DeviceRepositoryProtocol {
     func launchApp(packageID: String, deviceID: String)
     func mirrorDevice(deviceID: String)
 }
+```
 
 ### ViewModel Structure
 ```mermaid
