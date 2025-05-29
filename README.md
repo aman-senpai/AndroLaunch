@@ -6,7 +6,6 @@
 
 ![Swift Version](https://img.shields.io/badge/Swift-5.7+-orange.svg)
 ![Platform](https://img.shields.io/badge/macOS-12+-blue.svg)
-![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)
 
 A professional macOS menu bar application for managing Android devices through ADB and Scrcpy, built with modern Swift architecture patterns.
 
