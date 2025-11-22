@@ -28,10 +28,9 @@ final class StatusMenuController: NSObject {
         if let button = statusItem.button {
             let config = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
             button.image = NSImage(systemSymbolName: "square.grid.2x2.fill", accessibilityDescription: "AndroLaunch")?.withSymbolConfiguration(config)
-            button.imagePosition = .imageLeft
-            button.title = "Launcher"
+            button.imagePosition = .imageOnly
+            button.title = ""
             button.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-            statusItem.length = 100
         }
         refreshDevices()
         updateMenu()
@@ -63,13 +62,7 @@ final class StatusMenuController: NSObject {
         let menu = NSMenu()
         menu.delegate = self
         
-        // Header with app icon
-        let headerItem = NSMenuItem(title: "AndroLaunch", action: nil, keyEquivalent: "")
-        headerItem.isEnabled = false
-        let headerConfig = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-        headerItem.image = NSImage(systemSymbolName: "square.grid.2x2.fill", accessibilityDescription: "AndroLaunch")?.withSymbolConfiguration(headerConfig)
-        menu.addItem(headerItem)
-        menu.addItem(NSMenuItem.separator())
+        
         
         // Refresh Item with icon
         let refreshItem = NSMenuItem(

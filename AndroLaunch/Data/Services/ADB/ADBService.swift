@@ -327,29 +327,57 @@ final class ADBService: ADBServiceProtocol {
             // Debug logging for each package
             if let appInfo = packageMapping[packageName] {
                 print("📦 Found mapping for \(packageName): \(appInfo)")
+                
+                // Only include if in mapping and not background
+                guard let isBackground = appInfo["is_background"] as? Bool,
+                      isBackground == false,
+                      let appName = appInfo["name"] as? String else {
+                    continue
+                }
+                
+                let app = AndroidApp(
+                    id: packageName,
+                    name: appName,
+                    iconName: "android",
+                    packageName: packageName
+                )
+                apps.append(app)
+                
             } else {
-                print("⚠️ No mapping found for package: \(packageName)")
+                print("⚠️ No mapping found for package: \(packageName), using formatted name")
+                
+                // Fallback for unmapped apps
+                let appName = formatPackageName(packageName)
+                let app = AndroidApp(
+                    id: packageName,
+                    name: appName,
+                    iconName: "android",
+                    packageName: packageName
+                )
+                apps.append(app)
             }
-            
-            // Only include if in mapping and not background
-            guard let appInfo = packageMapping[packageName],
-                  let isBackground = appInfo["is_background"] as? Bool,
-                  isBackground == false,
-                  let appName = appInfo["name"] as? String else {
-                continue
-            }
-            
-            let app = AndroidApp(
-                id: packageName,
-                name: appName,
-                iconName: "android",
-                packageName: packageName
-            )
-            apps.append(app)
         }
         
         print("🎯 Final app list contains \(apps.count) apps")
         return apps.sorted { $0.name < $1.name }
+    }
+    
+    private func formatPackageName(_ packageName: String) -> String {
+        var name = packageName
+        
+        // Remove common prefixes
+        if name.hasPrefix("com.") {
+            name = String(name.dropFirst(4))
+        } else if name.hasPrefix("org.") {
+            name = String(name.dropFirst(4))
+        }
+        
+        // Replace dots and underscores with spaces
+        name = name.replacingOccurrences(of: ".", with: " ")
+                   .replacingOccurrences(of: "_", with: " ")
+        
+        // Capitalize each word
+        return name.capitalized
     }
     
     private func executeADBCommandSync(arguments: [String]) throws -> String {
