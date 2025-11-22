@@ -134,7 +134,7 @@ final class StatusMenuController: NSObject {
 
         // Pair Device Item
         let pairItem = NSMenuItem(
-            title: "Pair Device Wirelessly",
+            title: "Wireless Pair",
             action: #selector(pairDeviceWirelessly),
             keyEquivalent: "p"
         )
@@ -158,10 +158,20 @@ final class StatusMenuController: NSObject {
         statusItem.menu = menu
     }
     
+    private func truncateDeviceID(_ deviceID: String, maxLength: Int = 30) -> String {
+        guard deviceID.count > maxLength else { return deviceID }
+        let prefixLength = maxLength / 2 - 2
+        let suffixLength = maxLength / 2 - 2
+        let prefix = deviceID.prefix(prefixLength)
+        let suffix = deviceID.suffix(suffixLength)
+        return "\(prefix)...\(suffix)"
+    }
+    
     private func configureDeviceSubmenu(_ submenu: NSMenu, for device: AndroidDevice) {
         // Device Info Section
+        let truncatedID = truncateDeviceID(device.id)
         let deviceInfoItem = NSMenuItem(
-            title: "ID: \(device.id)",
+            title: "ID: \(truncatedID)",
             action: nil,
             keyEquivalent: ""
         )

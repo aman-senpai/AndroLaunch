@@ -11,10 +11,7 @@ struct PairingView: View {
     @StateObject private var viewModel = PairingViewModel()
     
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Pair Device Wirelessly")
-                .font(.headline)
-            
+        VStack(spacing: 20) {            
             if let qrImage = viewModel.qrCodeImage {
                 Image(nsImage: qrImage)
                     .resizable()
@@ -38,6 +35,8 @@ struct PairingView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(nil)
                     .padding(.horizontal)
             }
             
@@ -50,12 +49,17 @@ struct PairingView: View {
                 Text(viewModel.statusMessage)
                     .font(.body)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(nil)
+                    .padding(.horizontal)
             }
             
             if !viewModel.pairingCode.isEmpty {
-                Text("Pairing Code: \(viewModel.pairingCode)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                Text(viewModel.pairingCode)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                    .padding(.bottom)
             }
         }
         .padding()
