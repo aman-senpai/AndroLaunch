@@ -20,7 +20,9 @@ final class ADBService: ADBServiceProtocol {
     let error = PassthroughSubject<String?, Never>()
 
     // MARK: - Internal State
+    // MARK: - Internal State
     private var currentADBPath: String?
+    var adbPath: String? { currentADBPath }
     private var cancellables = Set<AnyCancellable>()
 
     // State for managing scrcpy processes and error reporting
@@ -217,8 +219,14 @@ final class ADBService: ADBServiceProtocol {
             }
 
             let deviceID = String(line[id])
+            var cleanDeviceID = deviceID
+            if let range = cleanDeviceID.range(of: ".:") {
+                cleanDeviceID = cleanDeviceID.replacingOccurrences(of: ".:", with: ":")
+            }
+            
             let deviceState = String(line[state])
             var modelName = "Android Device"
+            var rawModel: String?
 
             if let detailsRng = Range(detailsRange, in: line) {
                 let details = String(line[detailsRng])
@@ -226,20 +234,22 @@ final class ADBService: ADBServiceProtocol {
                 if let modelMatch = try? NSRegularExpression(pattern: modelPattern)
                     .firstMatch(in: details, range: NSRange(details.startIndex..., in: details)),
                     let modelRng = Range(modelMatch.range(at: 1), in: details) {
-                    modelName = String(details[modelRng]).replacingOccurrences(of: "_", with: " ")
+                    rawModel = String(details[modelRng])
+                    modelName = rawModel!.replacingOccurrences(of: "_", with: " ")
                 }
             }
 
             // Only add devices that are successfully connected
             if deviceState == "device" {
                 devices.append(AndroidDevice(
-                    id: deviceID,
+                    id: cleanDeviceID,
                     name: modelName,
+                    model: rawModel,
                     isConnected: true
                 ))
-                 print("Found connected device: \(deviceID) (\(modelName))")
+                 print("Found connected device: \(cleanDeviceID) (\(modelName))")
             } else {
-                print("Found device in state \(deviceState): \(deviceID)")
+                print("Found device in state \(deviceState): \(cleanDeviceID)")
             }
         }
 
@@ -432,25 +442,44 @@ final class ADBService: ADBServiceProtocol {
             #endif
             return
         }
+        
+        // Sanitize deviceID (remove trailing dot from hostname if present)
+        var cleanDeviceID = deviceID
+        if let range = cleanDeviceID.range(of: ".:") {
+            cleanDeviceID = cleanDeviceID.replacingOccurrences(of: ".:", with: ":")
+        }
 
-        print("Attempting to launch app \(packageID) on device \(deviceID) using scrcpy...")
+        print("Attempting to launch app \(packageID) on device \(cleanDeviceID) using scrcpy...")
 
 
 
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: scrcpyPath)
-        task.arguments = [
-            "--serial", deviceID,
+        var args = [
+            "--serial", cleanDeviceID,
             "--stay-awake",
 //            "--turn-screen-off",
             "--window-title", "\(packageID)",
             "--new-display",
             "-m 900",
             "--no-audio",
-            "--keyboard=aoa",
             "--start-app", packageID
         ]
+        
+        // --keyboard=aoa only works over USB
+        // Check for IP:Port format OR mDNS service names (containing _tcp or _udp)
+        let isWireless = cleanDeviceID.contains(":") || 
+                        cleanDeviceID.contains("_tcp") || 
+                        cleanDeviceID.contains("_udp")
+        
+        if !isWireless {
+            args.append("--keyboard=aoa")
+        } else {
+            print("Wireless device detected (\(cleanDeviceID)), skipping --keyboard=aoa")
+        }
+        
+        task.arguments = args
 
         var env = ProcessInfo.processInfo.environment
         env["ADB"] = adbPath
@@ -691,4 +720,27 @@ final class ADBService: ADBServiceProtocol {
             print("No running SCRCPY process found for device \(deviceID).")
         }
     }
+    
+    // MARK: - Disconnect Device
+    func disconnectDevice(deviceID: String) {
+        guard currentADBPath != nil else {
+            print("ADB path not set, cannot disconnect device.")
+            return
+        }
+        
+        print("Disconnecting device: \(deviceID)")
+        executeADBCommand(arguments: ["disconnect", deviceID]) { [weak self] success, output, errorOutput in
+            guard let self else { return }
+            if success {
+                print("Device disconnected successfully: \(deviceID)")
+                print("Output: \(output ?? "nil")")
+                // Refresh the device list after disconnection
+                self.listDevices()
+            } else {
+                print("Failed to disconnect device \(deviceID). Error: \(errorOutput ?? "Unknown error")")
+                self.error.send(errorOutput ?? "Failed to disconnect device")
+            }
+        }
+    }
+
 }

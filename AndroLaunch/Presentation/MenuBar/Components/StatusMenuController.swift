@@ -5,12 +5,14 @@
 
 import AppKit
 import Combine
+import SwiftUI
 
 final class StatusMenuController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let viewModel: MenuViewModel
     private var cancellables = Set<AnyCancellable>()
     private var currentDeviceID: String?
+    private var pairingWindow: NSWindow?
     
     // MARK: - Search Field Subclass
     private class DeviceSearchField: NSSearchField {
@@ -42,10 +44,11 @@ final class StatusMenuController: NSObject {
             .sink { [weak self] _ in self?.updateMenu() }
             .store(in: &cancellables)
         
-        viewModel.$apps
+        viewModel.$deviceApps
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.updateMenu() }
             .store(in: &cancellables)
+
         
         viewModel.$error
             .receive(on: DispatchQueue.main)
@@ -87,14 +90,25 @@ final class StatusMenuController: NSObject {
             menu.addItem(item)
         } else {
             for device in viewModel.devices {
+                // Determine if device is wireless
+                let isWireless = device.id.contains(":") || 
+                                device.id.contains("_tcp") || 
+                                device.id.contains("_udp")
+                
                 let deviceItem = NSMenuItem(
-                    title: "\(device.name) (\(device.id))",
+                    title: "\(device.name)",
                     action: nil,
                     keyEquivalent: ""
                 )
                 deviceItem.representedObject = device.id
-                deviceItem.image = NSImage(systemSymbolName: "iphone", accessibilityDescription: "Device")
-                deviceItem.image?.size = NSSize(width: 16, height: 16)
+                
+                // Create a custom view for the device item with connection indicator and hover effect
+                let itemView = DeviceMenuItemView(
+                    deviceName: device.name,
+                    isWireless: isWireless
+                )
+                
+                deviceItem.view = itemView
                 
                 let submenu = NSMenu()
                 self.configureDeviceSubmenu(submenu, for: device)
@@ -117,6 +131,19 @@ final class StatusMenuController: NSObject {
         menu.addItem(aboutItem)
         
         menu.addItem(NSMenuItem.separator())
+
+        // Pair Device Item
+        let pairItem = NSMenuItem(
+            title: "Pair Device Wirelessly",
+            action: #selector(pairDeviceWirelessly),
+            keyEquivalent: "p"
+        )
+        pairItem.target = self
+        pairItem.image = NSImage(systemSymbolName: "qrcode", accessibilityDescription: "Pair")
+        pairItem.image?.size = NSSize(width: 16, height: 16)
+        menu.addItem(pairItem)
+        
+        menu.addItem(NSMenuItem.separator())
         
         // Quit Item with icon
         let quitItem = NSMenuItem(
@@ -132,6 +159,28 @@ final class StatusMenuController: NSObject {
     }
     
     private func configureDeviceSubmenu(_ submenu: NSMenu, for device: AndroidDevice) {
+        // Device Info Section
+        let deviceInfoItem = NSMenuItem(
+            title: "ID: \(device.id)",
+            action: nil,
+            keyEquivalent: ""
+        )
+        deviceInfoItem.isEnabled = false
+        submenu.addItem(deviceInfoItem)
+        
+        // Show model if available and different from name
+        if let model = device.model, model != device.name {
+            let modelInfoItem = NSMenuItem(
+                title: "Model: \(model)",
+                action: nil,
+                keyEquivalent: ""
+            )
+            modelInfoItem.isEnabled = false
+            submenu.addItem(modelInfoItem)
+        }
+        
+        submenu.addItem(NSMenuItem.separator())
+        
         // Mirror Action
         let mirrorItem = NSMenuItem(
             title: "Mirror Device",
@@ -143,41 +192,61 @@ final class StatusMenuController: NSObject {
         mirrorItem.image = NSImage(systemSymbolName: "display", accessibilityDescription: "Mirror")
         mirrorItem.image?.size = NSSize(width: 16, height: 16)
         submenu.addItem(mirrorItem)
-        submenu.addItem(NSMenuItem.separator())
         
-        // Apps Section
-        if device.id == currentDeviceID {
-            if viewModel.isLoading {
-                let loadingItem = NSMenuItem(title: "Loading apps...", action: nil, keyEquivalent: "")
-                loadingItem.isEnabled = false
-                submenu.addItem(loadingItem)
-            } else if !viewModel.apps.isEmpty {
-                let appsMenuItem = NSMenuItem()
-                appsMenuItem.view = createAppListView(for: viewModel.apps, deviceID: device.id)
-                submenu.addItem(appsMenuItem)
-                submenu.addItem(NSMenuItem.separator())
-            } else if !viewModel.isLoading {
-                let statusItem = NSMenuItem(
-                    title: viewModel.error ?? "No apps found",
-                    action: nil,
-                    keyEquivalent: ""
-                )
-                statusItem.isEnabled = false
-                submenu.addItem(statusItem)
-            }
-            
-            // Refresh Apps
-            let refreshAppsItem = NSMenuItem(
-                title: "Refresh Apps",
-                action: #selector(refreshApps),
+        // Disconnect Action (only for wireless devices)
+        let isWireless = device.id.contains(":") || 
+                        device.id.contains("_tcp") || 
+                        device.id.contains("_udp")
+        
+        if isWireless {
+            let disconnectItem = NSMenuItem(
+                title: "Disconnect Device",
+                action: #selector(disconnectDevice),
                 keyEquivalent: ""
             )
-            refreshAppsItem.representedObject = device.id
-            refreshAppsItem.target = self
-            refreshAppsItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")
-            refreshAppsItem.image?.size = NSSize(width: 16, height: 16)
-            submenu.addItem(refreshAppsItem)
+            disconnectItem.target = self
+            disconnectItem.representedObject = device.id
+            disconnectItem.image = NSImage(systemSymbolName: "wifi.slash", accessibilityDescription: "Disconnect")
+            disconnectItem.image?.size = NSSize(width: 16, height: 16)
+            submenu.addItem(disconnectItem)
         }
+        
+        submenu.addItem(NSMenuItem.separator())
+
+        
+        // Apps Section - check if apps exist for this specific device
+        let deviceApps = viewModel.deviceApps[device.id] ?? []
+        
+        if viewModel.isLoading && device.id == currentDeviceID {
+            let loadingItem = NSMenuItem(title: "Loading apps...", action: nil, keyEquivalent: "")
+            loadingItem.isEnabled = false
+            submenu.addItem(loadingItem)
+        } else if !deviceApps.isEmpty {
+            let appsMenuItem = NSMenuItem()
+            appsMenuItem.view = createAppListView(for: deviceApps, deviceID: device.id)
+            submenu.addItem(appsMenuItem)
+            submenu.addItem(NSMenuItem.separator())
+        } else if device.id == currentDeviceID && !viewModel.isLoading {
+            let statusItem = NSMenuItem(
+                title: viewModel.error ?? "No apps found",
+                action: nil,
+                keyEquivalent: ""
+            )
+            statusItem.isEnabled = false
+            submenu.addItem(statusItem)
+        }
+        
+        // Refresh Apps
+        let refreshAppsItem = NSMenuItem(
+            title: "Refresh Apps",
+            action: #selector(refreshApps),
+            keyEquivalent: ""
+        )
+        refreshAppsItem.representedObject = device.id
+        refreshAppsItem.target = self
+        refreshAppsItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")
+        refreshAppsItem.image?.size = NSSize(width: 16, height: 16)
+        submenu.addItem(refreshAppsItem)
     }
     
     // MARK: - Scrollable App List with Search
@@ -265,7 +334,7 @@ final class StatusMenuController: NSObject {
     @objc private func refreshApps(_ sender: NSMenuItem) {
         guard let deviceID = sender.representedObject as? String else { return }
         currentDeviceID = deviceID
-        viewModel.fetchApps(for: deviceID)
+        viewModel.forceRefreshApps(for: deviceID)
     }
     
     @objc private func mirrorDevice(_ sender: NSMenuItem) {
@@ -273,18 +342,50 @@ final class StatusMenuController: NSObject {
         viewModel.mirrorDevice(deviceID: deviceID)
     }
     
+    @objc private func disconnectDevice(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        viewModel.disconnectDevice(deviceID: deviceID)
+    }
+
+    
     @objc private func openGitHub() {
         if let url = URL(string: "https://github.com/aman-senpai/AndroLaunch") {
             NSWorkspace.shared.open(url)
         }
     }
+    
+    @objc private func pairDeviceWirelessly() {
+        if pairingWindow == nil {
+            let pairingView = PairingView()
+            let hostingController = NSHostingController(rootView: pairingView)
+            
+            let window = NSWindow(contentViewController: hostingController)
+            window.title = "Pair Device"
+            window.styleMask = [.titled, .closable, .miniaturizable]
+            window.center()
+            window.isReleasedWhenClosed = false
+            
+            self.pairingWindow = window
+        }
+        
+        pairingWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 }
 
 extension StatusMenuController: NSMenuDelegate {
     func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
-        if let deviceID = item?.representedObject as? String, deviceID != currentDeviceID {
-            currentDeviceID = deviceID
-            viewModel.fetchApps(for: deviceID)
+        if let deviceID = item?.representedObject as? String {
+            // Always fetch - the repository will use cache if available
+            // This ensures the menu updates even when using cached data
+            if deviceID != currentDeviceID {
+                currentDeviceID = deviceID
+                viewModel.fetchApps(for: deviceID)
+                // Force menu update after a short delay to show cached apps
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                    self?.updateMenu()
+                }
+            }
         }
     }
 }
@@ -455,5 +556,94 @@ private final class MenuTableRowView: NSTableRowView {
     }
     
     override func drawSelection(in dirtyRect: NSRect) {
+    }
+}
+
+// MARK: - Device Menu Item View with Hover Effect
+private final class DeviceMenuItemView: NSView {
+    private let hoverEffectView: NSVisualEffectView = {
+        let view = NSVisualEffectView()
+        view.material = .selection
+        view.state = .active
+        view.blendingMode = .withinWindow
+        view.isEmphasized = true
+        view.wantsLayer = true
+        view.layer?.cornerRadius = 4.0
+        view.layer?.masksToBounds = true
+        view.alphaValue = 0
+        return view
+    }()
+    
+    private let deviceIconView = NSImageView()
+    private let nameLabel = NSTextField()
+    private let connectionIconView = NSImageView()
+    private var trackingArea: NSTrackingArea?
+    
+    init(deviceName: String, isWireless: Bool) {
+        super.init(frame: NSRect(x: 0, y: 0, width: 250, height: 20))
+        
+        // Add hover effect view
+        addSubview(hoverEffectView)
+        
+        // Device icon (left)
+        deviceIconView.frame = NSRect(x: 8, y: 2, width: 16, height: 16)
+        deviceIconView.image = NSImage(systemSymbolName: "iphone", accessibilityDescription: "Device")
+        deviceIconView.contentTintColor = .controlTextColor
+        addSubview(deviceIconView)
+        
+        // Device name (center)
+        nameLabel.stringValue = deviceName
+        nameLabel.font = NSFont.menuFont(ofSize: 14)
+        nameLabel.textColor = .controlTextColor
+        nameLabel.frame = NSRect(x: 30, y: 2, width: 180, height: 16)
+        nameLabel.drawsBackground = false
+        nameLabel.isBordered = false
+        nameLabel.isEditable = false
+        nameLabel.isSelectable = false
+        addSubview(nameLabel)
+        
+        // Connection type indicator (right)
+        connectionIconView.frame = NSRect(x: 215, y: 2, width: 16, height: 16)
+        let connectionIcon = isWireless ? "wifi" : "cable.connector"
+        connectionIconView.image = NSImage(systemSymbolName: connectionIcon, accessibilityDescription: isWireless ? "Wireless" : "USB")
+        addSubview(connectionIconView)
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    override func layout() {
+        super.layout()
+        hoverEffectView.frame = bounds.insetBy(dx: 4, dy: 0)
+    }
+    
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea = trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .mouseEnteredAndExited],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea!)
+    }
+    
+    override func mouseEntered(with event: NSEvent) {
+        animateHover(visible: true)
+    }
+    
+    override func mouseExited(with event: NSEvent) {
+        animateHover(visible: false)
+    }
+    
+    private func animateHover(visible: Bool) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            hoverEffectView.animator().alphaValue = visible ? 1 : 0
+        }
     }
 }

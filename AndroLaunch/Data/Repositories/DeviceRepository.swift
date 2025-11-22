@@ -26,6 +26,10 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
     private let adbService: ADBServiceProtocol // Assuming ADBServiceProtocol is defined elsewhere
     private let scrcpyService: ScrcpyServiceProtocol // Assuming ScrcpyServiceProtocol is defined elsewhere
     private var cancellables = Set<AnyCancellable>()
+    
+    // App cache storage: [deviceID: [apps]]
+    private var appCache: [String: [AndroidApp]] = [:]
+    private var currentFetchingDeviceID: String?
 
     // Initialize with dependencies
     init(adbService: ADBServiceProtocol, scrcpyService: ScrcpyServiceProtocol) {
@@ -49,7 +53,14 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         adbService.apps
             .receive(on: DispatchQueue.main)
             .sink { [weak self] (apps: [AndroidApp]) in // Explicit type annotation
-                self?.apps = apps
+                guard let self = self else { return }
+                self.apps = apps
+                
+                // Store in cache for the current device
+                if let deviceID = self.currentFetchingDeviceID {
+                    self.appCache[deviceID] = apps
+                    print("📦 Cached \(apps.count) apps for device: \(deviceID)")
+                }
             }
             .store(in: &cancellables)
 
@@ -69,16 +80,44 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
 
     func refreshDevices() {
         isLoading = true
+        // Clear all app caches when refreshing devices
+        appCache.removeAll()
+        currentFetchingDeviceID = nil
+        print("🗑️ Cleared all app caches on device refresh")
         adbService.findADB()
     }
 
     func fetchApps(for deviceID: String) {
+        // Check if apps are already cached for this device
+        if let cachedApps = appCache[deviceID] {
+            print("⚡ Using cached apps for device: \(deviceID) (\(cachedApps.count) apps)")
+            DispatchQueue.main.async {
+                self.apps = cachedApps
+            }
+            return
+        }
+        
+        // Not cached, fetch from ADB service
+        print("🔄 Fetching apps for device: \(deviceID)")
+        currentFetchingDeviceID = deviceID
         adbService.fetchApps(for: deviceID)
         // Clear previous apps when fetching new ones
         DispatchQueue.main.async {
             self.apps = []
         }
     }
+    
+    func forceRefreshApps(for deviceID: String) {
+        // Clear cache for this device and force a fresh fetch
+        appCache.removeValue(forKey: deviceID)
+        print("🔄 Force refreshing apps for device: \(deviceID)")
+        currentFetchingDeviceID = deviceID
+        adbService.fetchApps(for: deviceID)
+        DispatchQueue.main.async {
+            self.apps = []
+        }
+    }
+    
     func launchApp(packageID: String, deviceID: String) {
         adbService.launchApp(packageID: packageID, deviceID: deviceID)
     }
@@ -86,4 +125,12 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
     func mirrorDevice(deviceID: String) {
         adbService.mirrorDevice(deviceID: deviceID)
     }
+    
+    func disconnectDevice(deviceID: String) {
+        // Clear app cache for this device when disconnecting
+        appCache.removeValue(forKey: deviceID)
+        print("🗑️ Cleared app cache for disconnected device: \(deviceID)")
+        adbService.disconnectDevice(deviceID: deviceID)
+    }
+
 }
