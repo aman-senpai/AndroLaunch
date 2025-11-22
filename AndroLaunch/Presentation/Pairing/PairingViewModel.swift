@@ -25,6 +25,7 @@ final class PairingViewModel: ObservableObject {
     }
     
     func startPairing() {
+        // This generates a NEW password and QR string every time it's called
         let (qrString, password) = pairingService.startPairing()
         self.pairingCode = password
         generateQRCode(from: qrString)
@@ -43,6 +44,16 @@ final class PairingViewModel: ObservableObject {
         pairingService.isPairing
             .receive(on: DispatchQueue.main)
             .assign(to: \.isPairing, on: self)
+            .store(in: &cancellables)
+        
+        // NEW: Listen for successful connection and loop
+        pairingService.pairingComplete
+            .receive(on: DispatchQueue.main)
+            .delay(for: .seconds(3.0), scheduler: DispatchQueue.main) // Delay to show "Connected" status
+            .sink { [weak self] in
+                print("PairingViewModel: Device connected. Restarting pairing for next device...")
+                self?.startPairing() // Generate new QR and restart process
+            }
             .store(in: &cancellables)
     }
     
