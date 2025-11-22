@@ -16,7 +16,8 @@ import AppKit
 final class ADBService: ADBServiceProtocol {
     // MARK: - Protocol Requirements (Publishers)
     let devices = PassthroughSubject<[AndroidDevice], Never>()
-    let apps = PassthroughSubject<[AndroidApp], Never>()
+    // Updated apps publisher to emit deviceID along with apps
+    let apps = PassthroughSubject<(String, [AndroidApp]), Never>()
     let error = PassthroughSubject<String?, Never>()
 
     // MARK: - Internal State
@@ -55,13 +56,11 @@ final class ADBService: ADBServiceProtocol {
 
     // MARK: - Initialization
     init() {
-        print("ADBService: Initializing...")
     }
 
     // MARK: - Private Helper: Execute Shell Command (For ADB commands like list, start-server, fetch packages)
     private func executeADBCommand(arguments: [String], path: String? = nil, completion: @escaping (Bool, String?, String?) -> Void) {
         guard let adbPath = path ?? currentADBPath else {
-            print("ExecuteADBCommand failed: ADB executable path not set.")
             completion(false, nil, "ADB executable path not set.")
             return
         }
@@ -89,18 +88,12 @@ final class ADBService: ADBServiceProtocol {
 
                 // Deliver the result back to the main thread
                 DispatchQueue.main.async {
-                    print("Executed ADB Command: \(adbPath) \(arguments.joined(separator: " "))")
-                    print("Output: \(output ?? "nil")")
-                    print("Error: \(errorOutput ?? "nil")")
-                    print("Termination Status: \(task.terminationStatus)")
-
                     let success = task.terminationStatus == 0
 
                     completion(success, output, errorOutput)
                 }
             } catch {
                 DispatchQueue.main.async {
-                    print("Process execution error for \(adbPath) \(arguments.joined(separator: " ")): \(error.localizedDescription)")
                     completion(false, nil, error.localizedDescription)
                 }
             }
@@ -109,33 +102,25 @@ final class ADBService: ADBServiceProtocol {
 
     // MARK: - Private Helper: Find SCRCPY Executable
     private func findScrcpyPath() -> String? {
-         print("Attempting to find scrcpy...")
          for path in scrcpyPaths {
-             print("Checking scrcpy path: \(path)")
              if FileManager.default.fileExists(atPath: path) && FileManager.default.isExecutableFile(atPath: path) {
-                 print("SCRCPY found at: \(path)")
                  return path
              }
          }
-         print("SCRCPY not found in any specified paths.")
          return nil
      }
 
 
     // MARK: - ADB Path Discovery
     func findADB() {
-        print("Attempting to find ADB...")
         for path in systemADBPaths {
-            print("Checking path: \(path)")
             if FileManager.default.isExecutableFile(atPath: path) {
-                print("ADB found at: \(path)")
                 currentADBPath = path
                 error.send(nil)
                 startADBDaemon()
                 return
             }
         }
-        print("ADB not found in any specified paths.")
         let notFoundError = "ADB not found. Install Android Platform Tools."
         error.send(notFoundError)
         devices.send([])
@@ -144,21 +129,17 @@ final class ADBService: ADBServiceProtocol {
 
     func startADBDaemon() {
         guard let adbPath = currentADBPath else {
-             print("Cannot start daemon, ADB path not set.")
+            error.send("Cannot start daemon, ADB path not set.")
             return
         }
-        print("Starting ADB daemon...")
         // Use executeADBCommand for the standard ADB start-server command
         executeADBCommand(arguments: ["start-server"], path: adbPath) { [weak self] success, _, errorOutput in
             guard let self else { return }
             if success {
-                print("ADB daemon started successfully.")
-                // Daemon might take a moment, add a small delay before listing devices
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                      self.listDevices()
                 }
             } else {
-                print("ADB daemon failed to start. Error: \(errorOutput ?? "Unknown error")")
                 self.error.send(errorOutput ?? "ADB daemon failed to start")
                 self.devices.send([])
             }
@@ -168,21 +149,18 @@ final class ADBService: ADBServiceProtocol {
     // MARK: - Device Listing
     func listDevices() {
         guard currentADBPath != nil else {
-            print("ADB path not set, cannot list devices.")
+            error.send("ADB path not set, cannot list devices.")
+            devices.send([])
             return
         }
-        print("Executing 'adb devices -l'...")
          // Use executeADBCommand for the standard ADB devices command
         executeADBCommand(arguments: ["devices", "-l"]) { [weak self] success, output, errorOutput in
             guard let self else { return }
             if success {
-                print("Raw ADB devices output: \(output ?? "nil")")
                 let devices = self.parseDevices(from: output ?? "")
-                print("Parsed devices: \(devices)")
                 self.devices.send(devices)
                 self.error.send(nil)
             } else {
-                print("ADB devices command failed. Error: \(errorOutput ?? "Unknown error")")
                 self.error.send(errorOutput ?? "Device listing failed")
                 self.devices.send([])
           }
@@ -193,10 +171,11 @@ final class ADBService: ADBServiceProtocol {
     private func parseDevices(from output: String) -> [AndroidDevice] {
         let pattern = #"^(\S+)\s+(device|unauthorized|offline|no permissions)\s*(.*)$"# // Adjusted regex slightly for end of line
         guard let regex = try? NSRegularExpression(pattern: pattern, options: .anchorsMatchLines) else {
-             print("Failed to create regex for device parsing.")
+            self.error.send("Failed to create regex for device parsing.")
             return []
         }
         var devices = [AndroidDevice]()
+        var seenDeviceNames = Set<String>() // To track unique device names
 
         output.enumerateLines { line, _ in
             guard !line.lowercased().contains("list of devices attached") && !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -204,7 +183,7 @@ final class ADBService: ADBServiceProtocol {
             let range = NSRange(line.startIndex..., in: line)
             guard let match = regex.firstMatch(in: line, options: [], range: range),
                   match.numberOfRanges >= 3 else {
-                 print("Line did not match device pattern: \(line)")
+                self.error.send("Line did not match device pattern: \(line)")
                 return
             }
 
@@ -214,7 +193,7 @@ final class ADBService: ADBServiceProtocol {
 
             guard let id = Range(idRange, in: line),
                   let state = Range(stateRange, in: line) else {
-                 print("Could not extract ID or state from line: \(line)")
+                self.error.send("Could not extract ID or state from line: \(line)")
                 return
             }
 
@@ -222,6 +201,18 @@ final class ADBService: ADBServiceProtocol {
             var cleanDeviceID = deviceID
             if let range = cleanDeviceID.range(of: ".:") {
                 cleanDeviceID = cleanDeviceID.replacingOccurrences(of: ".:", with: ":")
+            }
+            
+            // Fetch serial number for this device
+            var serialNumber: String?
+            do {
+                let serialOutput = try self.executeADBCommandSync(arguments: ["-s", cleanDeviceID, "shell", "getprop", "ro.serialno"])
+                serialNumber = serialOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+                if serialNumber?.isEmpty == true {
+                    serialNumber = nil
+                }
+            } catch {
+                self.error.send("Failed to get serial number for \(cleanDeviceID): \(error.localizedDescription)")
             }
             
             let deviceState = String(line[state])
@@ -241,15 +232,22 @@ final class ADBService: ADBServiceProtocol {
 
             // Only add devices that are successfully connected
             if deviceState == "device" {
-                devices.append(AndroidDevice(
-                    id: cleanDeviceID,
-                    name: modelName,
-                    model: rawModel,
-                    isConnected: true
-                ))
-                 print("Found connected device: \(cleanDeviceID) (\(modelName))")
+                // Check for duplicate names before adding
+                if !seenDeviceNames.contains(modelName) {
+                    let newDevice = AndroidDevice(
+                        id: cleanDeviceID,
+                        name: modelName,
+                        model: rawModel,
+                        isConnected: true,
+                        serialNumber: serialNumber
+                    )
+                    devices.append(newDevice)
+                    seenDeviceNames.insert(modelName) // Add name to seen set
+                } else {
+                    self.error.send("Skipping duplicate device name: \(modelName) (ID: \(cleanDeviceID))")
+                }
             } else {
-                print("Found device in state \(deviceState): \(cleanDeviceID)")
+                self.error.send("Found device in state \(deviceState): \(cleanDeviceID)")
             }
         }
 
@@ -260,25 +258,22 @@ final class ADBService: ADBServiceProtocol {
     // MARK: - App Listing
     func fetchApps(for deviceID: String) {
         guard let adbPath = currentADBPath else {
-            print("ADB path not set, cannot fetch apps.")
+            error.send("ADB path not set, cannot fetch apps.")
             return
         }
         
-        print("Fetching apps for device: \(deviceID)")
         // List all apps including system and user-installed
         executeADBCommand(arguments: ["-s", deviceID, "shell", "pm", "list", "packages"]) { [weak self] success, output, errorOutput in
             guard let self else { return }
             
             if success {
-                print("Raw app list output: \(output ?? "nil")")
                 let apps = self.parseApps(from: output ?? "", deviceID: deviceID)
-                print("Parsed apps: \(apps)")
-                self.apps.send(apps)
+                // Emit deviceID along with the app list
+                self.apps.send((deviceID, apps))
                 self.error.send(nil)
             } else {
-                print("App listing failed. Error: \(errorOutput ?? "Unknown error")")
                 self.error.send(errorOutput ?? "App listing failed")
-                self.apps.send([])
+                self.apps.send((deviceID, [])) // Emit empty array with deviceID on failure
             }
         }
     }
@@ -294,35 +289,25 @@ final class ADBService: ADBServiceProtocol {
         // Use bundle path for the JSON file
         let bundle = Bundle.main
         guard let jsonPath = bundle.path(forResource: "package_names_mapping", ofType: "json") else {
-            print("❌ Could not find package_names_mapping.json in bundle")
             packageMapping = [:]
             return []
         }
-        
-        print("🔍 Looking for package mapping file at: \(jsonPath)")
-        
+                
         if fileManager.fileExists(atPath: jsonPath) {
-            print("📂 Found package mapping file")
             do {
                 let data = try Data(contentsOf: URL(fileURLWithPath: jsonPath))
-                print("📄 Successfully read file data: \(data.count) bytes")
                 if let mapping = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] {
                     packageMapping = mapping
-                    print("✅ Successfully parsed JSON with \(mapping.count) entries")
                 } else {
-                    print("❌ Failed to parse JSON data")
                     packageMapping = [:]
                 }
             } catch {
-                print("❌ Failed to read file data: \(error.localizedDescription)")
                 packageMapping = [:]
             }
         } else {
-            print("❌ Could not find package mapping file at path: \(jsonPath)")
             packageMapping = [:]
         }
         
-        print("📱 Processing \(lines.count) package names from device")
         
         for line in lines {
             guard !line.isEmpty else { continue }
@@ -336,7 +321,6 @@ final class ADBService: ADBServiceProtocol {
             
             // Debug logging for each package
             if let appInfo = packageMapping[packageName] {
-                print("📦 Found mapping for \(packageName): \(appInfo)")
                 
                 // Only include if in mapping and not background
                 guard let isBackground = appInfo["is_background"] as? Bool,
@@ -354,7 +338,7 @@ final class ADBService: ADBServiceProtocol {
                 apps.append(app)
                 
             } else {
-                print("⚠️ No mapping found for package: \(packageName), using formatted name")
+                self.error.send("⚠️ No mapping found for package: \(packageName), using formatted name")
                 
                 // Fallback for unmapped apps
                 let appName = formatPackageName(packageName)
@@ -368,7 +352,6 @@ final class ADBService: ADBServiceProtocol {
             }
         }
         
-        print("🎯 Final app list contains \(apps.count) apps")
         return apps.sorted { $0.name < $1.name }
     }
     
@@ -410,12 +393,11 @@ final class ADBService: ADBServiceProtocol {
     }
 
     // MARK: - App Launching & Mirroring (using SCRCPY)
-    func launchApp(packageID: String, deviceID: String) {
+    func launchApp(packageID: String, deviceID: String, audioEnabled: Bool, resolution: Int) {
         guard let adbPath = currentADBPath else {
             let errorMessage = "ADB executable path not set. Cannot launch app with scrcpy."
-            print("LaunchApp failed: \(errorMessage)")
-            self.error.send(errorMessage)
-            self.findADB()
+            error.send(errorMessage)
+            findADB()
             return
         }
 
@@ -424,8 +406,7 @@ final class ADBService: ADBServiceProtocol {
             SCRCPY executable not found.
             Please install scrcpy (e.g., `brew install scrcpy` on macOS).
             """
-            print("LaunchApp failed: \(errorMessage)")
-            self.error.send(errorMessage)
+            error.send(errorMessage)
             #if canImport(AppKit)
             DispatchQueue.main.async {
                  let alert = NSAlert()
@@ -449,23 +430,20 @@ final class ADBService: ADBServiceProtocol {
             cleanDeviceID = cleanDeviceID.replacingOccurrences(of: ".:", with: ":")
         }
 
-        print("Attempting to launch app \(packageID) on device \(cleanDeviceID) using scrcpy...")
-
-
-
-
         let task = Process()
         task.executableURL = URL(fileURLWithPath: scrcpyPath)
         var args = [
             "--serial", cleanDeviceID,
             "--stay-awake",
-//            "--turn-screen-off",
             "--window-title", "\(packageID)",
             "--new-display",
-            "-m 900",
-            "--no-audio",
+            "-m \(resolution)",
             "--start-app", packageID
         ]
+        
+        if !audioEnabled {
+            args.append("--no-audio")
+        }
         
         // --keyboard=aoa only works over USB
         // Check for IP:Port format OR mDNS service names (containing _tcp or _udp)
@@ -476,7 +454,7 @@ final class ADBService: ADBServiceProtocol {
         if !isWireless {
             args.append("--keyboard=aoa")
         } else {
-            print("Wireless device detected (\(cleanDeviceID)), skipping --keyboard=aoa")
+            self.error.send("Wireless device detected (\(cleanDeviceID)), skipping --keyboard=aoa")
         }
         
         task.arguments = args
@@ -505,8 +483,6 @@ final class ADBService: ADBServiceProtocol {
                 }
                 errorFileHandle.readInBackgroundAndNotify()
             } else {
-                 // End of file - scrcpy process likely terminated
-                 print("End of SCRCPY error output for \(deviceID).")
                  // Clean up the observer for this device
                  if let obs = self.scrcpyErrorPipeHandlers.removeValue(forKey: deviceID) as? NSObjectProtocol {
                      NotificationCenter.default.removeObserver(obs)
@@ -521,13 +497,10 @@ final class ADBService: ADBServiceProtocol {
             try task.run()
             // Store the process reference
             runningScrcpyProcesses[deviceID] = task
-            print("✅ SCRCPY process launched successfully for device \(deviceID) to launch app \(packageID).")
-
 
         } catch {
             // Error launching the process itself (e.g., scrcpy path invalid, permissions)
             let errorMessage = "Failed to launch SCRCPY process for \(deviceID): \(error.localizedDescription)"
-            print("❌ \(errorMessage)")
             self.error.send(errorMessage)
 
             // Clean up error pipe reader if the process didn't even start
@@ -545,16 +518,97 @@ final class ADBService: ADBServiceProtocol {
                  alert.alertStyle = .critical
                  alert.runModal()
             }
+    
             #endif
         }
     }
 
+    func launchCamera(deviceID: String, facing: CameraFacing) {
+        guard let adbPath = currentADBPath else {
+            let errorMessage = "ADB executable path not set. Cannot launch camera with scrcpy."
+            error.send(errorMessage)
+            findADB()
+            return
+        }
+
+        guard let scrcpyPath = findScrcpyPath() else {
+            let errorMessage = "SCRCPY executable not found. Please install scrcpy."
+            error.send(errorMessage)
+            showScrcpyErrorAlert(errorMessage: errorMessage)
+            return
+        }
+        
+        // Sanitize deviceID
+        var cleanDeviceID = deviceID
+        if let range = cleanDeviceID.range(of: ".:") {
+            cleanDeviceID = cleanDeviceID.replacingOccurrences(of: ".:", with: ":")
+        }
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: scrcpyPath)
+        
+        var args = [
+            "--serial", cleanDeviceID,
+            "--video-source=camera",
+            "--camera-facing=\(facing.rawValue)",
+            "--camera-size=1280x720",
+            "--window-title", "\(facing.rawValue.capitalized) Camera - \(cleanDeviceID)"
+        ]
+        
+        args.append("--no-audio")
+        
+        task.arguments = args
+
+        var env = ProcessInfo.processInfo.environment
+        env["ADB"] = adbPath
+        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+        task.environment = env
+
+        let errorPipe = Pipe()
+        task.standardError = errorPipe
+        let errorFileHandle = errorPipe.fileHandleForReading
+        scrcpyErrorOutputs[deviceID] = ""
+
+         if let obs = scrcpyErrorPipeHandlers.removeValue(forKey: deviceID) as? NSObjectProtocol {
+             NotificationCenter.default.removeObserver(obs)
+         }
+
+        let observer = NotificationCenter.default.addObserver(forName: FileHandle.readCompletionNotification, object: errorFileHandle, queue: nil) { [weak self] notification in
+            guard let self else { return }
+            if let data = notification.userInfo?[FileHandle.readCompletionNotification] as? Data, !data.isEmpty {
+                if let output = String(data: data, encoding: .utf8) {
+                    self.scrcpyErrorOutputs[deviceID, default: ""] += output
+                }
+                errorFileHandle.readInBackgroundAndNotify()
+            } else {
+                 if let obs = self.scrcpyErrorPipeHandlers.removeValue(forKey: deviceID) as? NSObjectProtocol {
+                     NotificationCenter.default.removeObserver(obs)
+                 }
+            }
+        }
+        scrcpyErrorPipeHandlers[deviceID] = observer
+        errorFileHandle.readInBackgroundAndNotify()
+
+        do {
+            try task.run()
+            runningScrcpyProcesses[deviceID] = task
+        } catch {
+            let errorMessage = "Failed to launch camera for \(deviceID): \(error.localizedDescription)"
+            self.error.send(errorMessage)
+            if let obs = self.scrcpyErrorPipeHandlers.removeValue(forKey: deviceID) as? NSObjectProtocol {
+                 NotificationCenter.default.removeObserver(obs)
+             }
+             scrcpyErrorOutputs[deviceID] = nil
+             showScrcpyErrorAlert(errorMessage: errorMessage)
+        }
+    }
+
+
     // MARK: - Optional Mirroring Function
      // Mirrors the entire device screen using scrcpy (without launching a specific app)
-     func mirrorDevice(deviceID: String) {
+     func mirrorDevice(deviceID: String, audioEnabled: Bool) {
          guard let adbPath = currentADBPath else {
              let errorMessage = "ADB executable path not set. Cannot mirror device with scrcpy."
-             print("MirrorDevice failed: \(errorMessage)")
              self.error.send(errorMessage)
              self.findADB() // Attempt to find ADB
              return
@@ -565,7 +619,6 @@ final class ADBService: ADBServiceProtocol {
              SCRCPY executable not found.
              Please install scrcpy (e.g., `brew install scrcpy` on macOS).
              """
-             print("MirrorDevice failed: \(errorMessage)")
              self.error.send(errorMessage)
              #if canImport(AppKit)
              DispatchQueue.main.async {
@@ -585,14 +638,15 @@ final class ADBService: ADBServiceProtocol {
              return
          }
 
-         print("Attempting to mirror device \(deviceID) using scrcpy...")
-
-
          let task = Process()
          task.executableURL = URL(fileURLWithPath: scrcpyPath)
 
          // scrcpy arguments for mirroring
-         task.arguments = ["--serial", deviceID, "--window-title", "\(deviceID)"]
+         var args = ["--serial", deviceID, "--window-title", "\(deviceID)"]
+         if !audioEnabled {
+             args.append("--no-audio")
+         }
+         task.arguments = args
 
          var env = ProcessInfo.processInfo.environment
          env["ADB"] = adbPath // Explicitly tell scrcpy where to find adb
@@ -615,11 +669,9 @@ final class ADBService: ADBServiceProtocol {
               if let data = notification.userInfo?[FileHandle.readCompletionNotification] as? Data, !data.isEmpty {
                   if let output = String(data: data, encoding: .utf8) {
                       self.scrcpyErrorOutputs[deviceID, default: ""] += output
-                      // print("SCRCPY Error Output (\(deviceID)): \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
                   }
                   errorFileHandle.readInBackgroundAndNotify()
               } else {
-                  print("End of SCRCPY error output for \(deviceID).")
                   if let obs = self.scrcpyErrorPipeHandlers.removeValue(forKey: deviceID) as? NSObjectProtocol {
                       NotificationCenter.default.removeObserver(obs)
                   }
@@ -632,7 +684,6 @@ final class ADBService: ADBServiceProtocol {
              DispatchQueue.main.async { [weak self] in
                  guard let self else { return }
                  let exitCode = terminatedTask.terminationStatus
-                 print("SCRCPY process for \(deviceID) terminated with status \(exitCode)")
 
                  let collectedErrorOutput = self.scrcpyErrorOutputs[deviceID] ?? "No error output captured."
 
@@ -641,7 +692,6 @@ final class ADBService: ADBServiceProtocol {
 
                  if exitCode != 0 {
                      let errorMessage = "SCRCPY mirroring failed for device \(deviceID) (Exit code: \(exitCode)).\nError Output:\n\(collectedErrorOutput.trimmingCharacters(in: .whitespacesAndNewlines))"
-                     print("❌ \(errorMessage)")
                      self.error.send(errorMessage)
                      #if canImport(AppKit)
                      DispatchQueue.main.async {
@@ -653,8 +703,6 @@ final class ADBService: ADBServiceProtocol {
                           alert.runModal()
                      }
                      #endif
-                 } else {
-                     print("SCRCPY mirroring for \(deviceID) exited cleanly.")
                  }
                  if let obs = self.scrcpyErrorPipeHandlers.removeValue(forKey: deviceID) as? NSObjectProtocol {
                      NotificationCenter.default.removeObserver(obs)
@@ -665,11 +713,9 @@ final class ADBService: ADBServiceProtocol {
          do {
              try task.run()
              runningScrcpyProcesses[deviceID] = task
-             print("✅ SCRCPY mirroring process launched successfully for device \(deviceID).")
 
          } catch {
              let errorMessage = "Failed to launch SCRCPY mirroring process for \(deviceID): \(error.localizedDescription)"
-             print("❌ \(errorMessage)")
              self.error.send(errorMessage)
              if let obs = self.scrcpyErrorPipeHandlers.removeValue(forKey: deviceID) as? NSObjectProtocol {
                   NotificationCenter.default.removeObserver(obs)
@@ -713,31 +759,25 @@ final class ADBService: ADBServiceProtocol {
     // MARK: - Optional Stop Mirroring Function
     func stopMirroring(deviceID: String) {
         if let task = runningScrcpyProcesses[deviceID] {
-            print("Attempting to terminate SCRCPY process for device \(deviceID)...")
             task.terminate() // Request termination
             // The terminationHandler will handle cleanup
         } else {
-            print("No running SCRCPY process found for device \(deviceID).")
+            self.error.send("No running SCRCPY process found for device \(deviceID).")
         }
     }
     
     // MARK: - Disconnect Device
     func disconnectDevice(deviceID: String) {
         guard currentADBPath != nil else {
-            print("ADB path not set, cannot disconnect device.")
+            self.error.send("ADB path not set, cannot disconnect device.")
             return
         }
         
-        print("Disconnecting device: \(deviceID)")
         executeADBCommand(arguments: ["disconnect", deviceID]) { [weak self] success, output, errorOutput in
             guard let self else { return }
             if success {
-                print("Device disconnected successfully: \(deviceID)")
-                print("Output: \(output ?? "nil")")
-                // Refresh the device list after disconnection
                 self.listDevices()
             } else {
-                print("Failed to disconnect device \(deviceID). Error: \(errorOutput ?? "Unknown error")")
                 self.error.send(errorOutput ?? "Failed to disconnect device")
             }
         }

@@ -191,6 +191,35 @@ final class StatusMenuController: NSObject {
         
         submenu.addItem(NSMenuItem.separator())
         
+        // Controls Section (Audio Toggle + Camera Buttons)
+        let controlsItem = NSMenuItem()
+        let isAudioEnabled = viewModel.isAudioEnabled(for: device.id)
+        
+        let controlsView = ControlsMenuItemView(
+            isAudioEnabled: isAudioEnabled,
+            deviceID: device.id,
+            target: self,
+            audioAction: #selector(toggleAudio(_:)),
+            frontCamAction: #selector(launchFrontCamera(_:)),
+            backCamAction: #selector(launchBackCamera(_:))
+        )
+        controlsItem.view = controlsView
+        submenu.addItem(controlsItem)
+        
+        // Resolution Section (Radio Buttons)
+        let resItem = NSMenuItem()
+        let currentResolution = viewModel.getResolution(for: device.id)
+        let resView = ResolutionMenuItemView(
+            currentResolution: currentResolution,
+            deviceID: device.id,
+            target: self,
+            action: #selector(changeResolution(_:))
+        )
+        resItem.view = resView
+        submenu.addItem(resItem)
+        
+        submenu.addItem(NSMenuItem.separator())
+        
         // Mirror Action
         let mirrorItem = NSMenuItem(
             title: "Mirror Device",
@@ -355,6 +384,59 @@ final class StatusMenuController: NSObject {
     @objc private func disconnectDevice(_ sender: NSMenuItem) {
         guard let deviceID = sender.representedObject as? String else { return }
         viewModel.disconnectDevice(deviceID: deviceID)
+    }
+    
+    @objc private func toggleAudio(_ sender: NSButton) {
+        // For NSButton sender (from custom view), we store deviceID in a property or tag?
+        // Actually, ControlsMenuItemView can handle the action dispatch or we pass deviceID via sender if possible.
+        // Better approach: The custom view buttons target specific actions.
+        // We need a way to pass the deviceID.
+        // Let's use the sender's tag or representedObject if it was a MenuItem, but here it's a Button.
+        // We can subclass NSButton or use associated objects, OR just have the view handle it and call a closure?
+        // Since we are using selectors, let's look at how ControlsMenuItemView sets up the target/action.
+        // We can set the button's tag to something? No, tag is Int.
+        // Let's use a custom button class in ControlsMenuItemView that holds the deviceID.
+        
+        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+            viewModel.toggleAudio(for: deviceID)
+            // Update the button state immediately for responsiveness?
+            // The menu might close or refresh. If it stays open, we should update the icon.
+            // But usually clicking a menu item closes the menu. Clicking a view in a menu item might not close it unless we tell it to.
+            // If we want it to stay open, we don't call cancelTracking().
+            // If we want it to close, we call cancelTracking().
+            // Let's assume standard menu behavior (click -> action -> close).
+            
+            // To close the menu:
+            if let menu = statusItem.menu {
+                menu.cancelTracking()
+            }
+        }
+    }
+    
+    @objc private func launchFrontCamera(_ sender: NSButton) {
+        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+            viewModel.launchCamera(deviceID: deviceID, facing: .front)
+            if let menu = statusItem.menu { menu.cancelTracking() }
+        }
+    }
+    
+    @objc private func launchBackCamera(_ sender: NSButton) {
+        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+            viewModel.launchCamera(deviceID: deviceID, facing: .back)
+            if let menu = statusItem.menu { menu.cancelTracking() }
+        }
+    }
+    
+    @objc private func changeResolution(_ sender: NSButton) {
+        // Use custom button class to get resolution and deviceID
+        if let resButton = sender as? DeviceResolutionRadioButton, let deviceID = resButton.deviceID {
+            let resolution = resButton.resolutionValue
+            viewModel.setResolution(for: deviceID, resolution: resolution)
+            // We might want to update the UI state (radio selection) if the menu stays open,
+            // but usually it closes. If it stays open, the ViewModel update should trigger a refresh
+            // if we are observing it correctly, but NSMenu items don't auto-update views easily without reload.
+            // Since clicking usually closes the menu, this is fine.
+        }
     }
 
     
@@ -656,4 +738,120 @@ private final class DeviceMenuItemView: NSView {
             hoverEffectView.animator().alphaValue = visible ? 1 : 0
         }
     }
+}
+
+// MARK: - Custom Controls View
+private class DeviceActionButton: NSButton {
+    var deviceID: String?
+}
+
+private class DeviceResolutionRadioButton: NSButton {
+    var deviceID: String?
+    var resolutionValue: Int = 900
+}
+
+private final class ControlsMenuItemView: NSView {
+    
+    init(isAudioEnabled: Bool, deviceID: String, target: AnyObject, audioAction: Selector, frontCamAction: Selector, backCamAction: Selector) {
+        super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 30))
+        
+        let stackView = NSStackView()
+        stackView.orientation = .horizontal
+        stackView.spacing = 16
+        stackView.distribution = .fill
+        stackView.alignment = .centerY
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stackView)
+        
+        // Center the stack view
+        NSLayoutConstraint.activate([
+            stackView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            stackView.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+        
+        // Audio Button
+        let audioBtn = createButton(
+            imageName: isAudioEnabled ? "speaker.slash" : "speaker.wave.2",
+            tooltip: isAudioEnabled ? "Disable Audio" : "Enable Audio",
+            target: target,
+            action: audioAction,
+            deviceID: deviceID
+        )
+        stackView.addArrangedSubview(audioBtn)
+        
+        // Camera Group (Front + Back)
+        let camStack = NSStackView()
+        camStack.orientation = .horizontal
+        camStack.spacing = 8
+        
+        let frontCamBtn = createButton(
+            imageName: "person.fill.viewfinder",
+            tooltip: "Front Camera",
+            target: target,
+            action: frontCamAction,
+            deviceID: deviceID
+        )
+        camStack.addArrangedSubview(frontCamBtn)
+        
+        let backCamBtn = createButton(
+            imageName: "camera",
+            tooltip: "Back Camera",
+            target: target,
+            action: backCamAction,
+            deviceID: deviceID
+        )
+        camStack.addArrangedSubview(backCamBtn)
+        
+        stackView.addArrangedSubview(camStack)
+    }
+    
+    required init?(coder: NSCoder) { fatalError() }
+    
+    private func createButton(imageName: String, tooltip: String, target: AnyObject, action: Selector, deviceID: String) -> NSButton {
+        let btn = DeviceActionButton()
+        btn.deviceID = deviceID
+        btn.bezelStyle = .inline
+        btn.image = NSImage(systemSymbolName: imageName, accessibilityDescription: tooltip)
+        btn.image?.size = NSSize(width: 14, height: 14)
+        btn.toolTip = tooltip
+        btn.target = target
+        btn.action = action
+        btn.isBordered = false
+        return btn
+    }
+}
+
+private final class ResolutionMenuItemView: NSView {
+    
+    init(currentResolution: Int, deviceID: String, target: AnyObject, action: Selector) {
+        super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        
+        let stackView = NSStackView()
+        stackView.orientation = .horizontal
+        stackView.spacing = 8
+        stackView.distribution = .fillEqually
+        stackView.alignment = .centerY
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stackView)
+        
+        NSLayoutConstraint.activate([
+            stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            stackView.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+        
+        let resolutions = [540, 720, 900, 1080]
+        
+        for res in resolutions {
+            let btn = DeviceResolutionRadioButton(radioButtonWithTitle: "\(res)p", target: target, action: action)
+            btn.deviceID = deviceID
+            btn.resolutionValue = res
+            btn.state = (res == currentResolution) ? .on : .off
+            btn.controlSize = .small
+            btn.font = NSFont.systemFont(ofSize: 10)
+            stackView.addArrangedSubview(btn)
+        }
+    }
+    
+    required init?(coder: NSCoder) { fatalError() }
 }

@@ -58,7 +58,26 @@ final class MenuViewModel: ObservableObject {
     }
     func launchApp(packageID: String, deviceID: String) { repository.launchApp(packageID: packageID, deviceID: deviceID) }
     func mirrorDevice(deviceID: String) { repository.mirrorDevice(deviceID: deviceID) }
+    func launchCamera(deviceID: String, facing: CameraFacing) { repository.launchCamera(deviceID: deviceID, facing: facing) }
     func disconnectDevice(deviceID: String) { repository.disconnectDevice(deviceID: deviceID) }
+    
+    func toggleAudio(for deviceID: String) {
+        repository.toggleAudio(for: deviceID)
+        objectWillChange.send() // Notify UI of change
+    }
+    
+    func isAudioEnabled(for deviceID: String) -> Bool {
+        return repository.isAudioEnabled(for: deviceID)
+    }
+    
+    func setResolution(for deviceID: String, resolution: Int) {
+        repository.setResolution(for: deviceID, resolution: resolution)
+        objectWillChange.send()
+    }
+    
+    func getResolution(for deviceID: String) -> Int {
+        return repository.getResolution(for: deviceID)
+    }
 
     
 }

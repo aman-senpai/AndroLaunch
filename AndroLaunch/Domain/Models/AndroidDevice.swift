@@ -12,11 +12,14 @@ public struct AndroidDevice: Identifiable, Equatable {
     public let name: String
     public let model: String?
     public let isConnected: Bool
+    public let serialNumber: String? // Add this line
     
-    public init(id: String, name: String, model: String? = nil, isConnected: Bool) {
+    public init(id: String, name: String, model: String? = nil, isConnected: Bool, serialNumber: String? = nil) { // Update initializer
         self.id = id
         self.name = name
         self.model = model
         self.isConnected = isConnected
+        self.serialNumber = serialNumber // Initialize the new property
     }
 }
+

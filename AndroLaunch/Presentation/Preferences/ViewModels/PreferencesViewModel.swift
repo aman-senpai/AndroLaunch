@@ -28,7 +28,6 @@ final class PreferencesViewModel: ObservableObject {
         repository.errorPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] (error: String?) in
-                print("PreferencesViewModel: Received error update: \(error ?? "nil")")
                 self?.adbStatus = error == nil ? "Connected" : "Error"
                 self?.errorMessage = error
             }
@@ -38,7 +37,6 @@ final class PreferencesViewModel: ObservableObject {
     }
 
     func checkAdbStatus() {
-        print("PreferencesViewModel: Requesting refreshDevices to check status...")
         repository.refreshDevices()
     }
 }
