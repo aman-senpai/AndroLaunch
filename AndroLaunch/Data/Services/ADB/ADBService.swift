@@ -438,7 +438,9 @@ final class ADBService: ADBServiceProtocol {
             "--window-title", "\(packageID)",
             "--new-display",
             "-m \(resolution)",
-            "--start-app", packageID
+            "--start-app", packageID,
+            "--audio-bit-rate=10000",
+            "--audio-output-buffer=10"
         ]
         
         if !audioEnabled {
