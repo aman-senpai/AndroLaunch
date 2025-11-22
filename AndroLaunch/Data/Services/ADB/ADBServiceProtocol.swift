@@ -31,5 +31,6 @@ protocol ADBServiceProtocol {
     func launchCamera(deviceID: String, facing: CameraFacing)
     func mirrorDevice(deviceID: String, audioEnabled: Bool)
     func disconnectDevice(deviceID: String)
+    func installAPK(deviceID: String, apkPath: String)
 
 }

@@ -227,5 +227,9 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         }
         adbService.disconnectDevice(deviceID: deviceID)
     }
+    
+    func installAPK(deviceID: String, apkPath: String) {
+        adbService.installAPK(deviceID: deviceID, apkPath: apkPath)
+    }
 
 }

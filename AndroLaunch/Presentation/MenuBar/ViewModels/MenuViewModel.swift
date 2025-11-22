@@ -60,6 +60,7 @@ final class MenuViewModel: ObservableObject {
     func mirrorDevice(deviceID: String) { repository.mirrorDevice(deviceID: deviceID) }
     func launchCamera(deviceID: String, facing: CameraFacing) { repository.launchCamera(deviceID: deviceID, facing: facing) }
     func disconnectDevice(deviceID: String) { repository.disconnectDevice(deviceID: deviceID) }
+    func installAPK(deviceID: String, apkPath: String) { repository.installAPK(deviceID: deviceID, apkPath: apkPath) }
     
     func toggleAudio(for deviceID: String) {
         repository.toggleAudio(for: deviceID)

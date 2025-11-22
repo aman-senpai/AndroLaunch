@@ -766,6 +766,25 @@ final class ADBService: ADBServiceProtocol {
         }
     }
     
+    // MARK: - Install APK
+    func installAPK(deviceID: String, apkPath: String) {
+        guard currentADBPath != nil else {
+            self.error.send("ADB path not set, cannot install APK.")
+            return
+        }
+        
+        executeADBCommand(arguments: ["-s", deviceID, "install", "-r", apkPath]) { [weak self] success, output, errorOutput in
+            guard let self else { return }
+            if success {
+                self.error.send(nil) // Clear any previous errors
+                // Optionally refresh apps after install
+                self.fetchApps(for: deviceID)
+            } else {
+                self.error.send(errorOutput ?? "Failed to install APK")
+            }
+        }
+    }
+    
     // MARK: - Disconnect Device
     func disconnectDevice(deviceID: String) {
         guard currentADBPath != nil else {

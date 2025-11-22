@@ -191,17 +191,26 @@ final class StatusMenuController: NSObject {
         
         submenu.addItem(NSMenuItem.separator())
         
-        // Controls Section (Audio Toggle + Camera Buttons)
+        // Controls Section (Audio, Camera, Mirror, Disconnect)
         let controlsItem = NSMenuItem()
         let isAudioEnabled = viewModel.isAudioEnabled(for: device.id)
+        
+        // Determine if device is wireless for disconnect button
+        let isWireless = device.id.contains(":") || 
+                        device.id.contains("_tcp") || 
+                        device.id.contains("_udp")
         
         let controlsView = ControlsMenuItemView(
             isAudioEnabled: isAudioEnabled,
             deviceID: device.id,
+            isWireless: isWireless,
             target: self,
             audioAction: #selector(toggleAudio(_:)),
             frontCamAction: #selector(launchFrontCamera(_:)),
-            backCamAction: #selector(launchBackCamera(_:))
+            backCamAction: #selector(launchBackCamera(_:)),
+            mirrorAction: #selector(mirrorDevice(_:)),
+            installAction: #selector(installAPK(_:)),
+            disconnectAction: #selector(disconnectDevice(_:))
         )
         controlsItem.view = controlsView
         submenu.addItem(controlsItem)
@@ -219,36 +228,6 @@ final class StatusMenuController: NSObject {
         submenu.addItem(resItem)
         
         submenu.addItem(NSMenuItem.separator())
-        
-        // Mirror Action
-        let mirrorItem = NSMenuItem(
-            title: "Mirror Device",
-            action: #selector(mirrorDevice),
-            keyEquivalent: ""
-        )
-        mirrorItem.target = self
-        mirrorItem.representedObject = device.id
-        mirrorItem.image = NSImage(systemSymbolName: "display", accessibilityDescription: "Mirror")
-        mirrorItem.image?.size = NSSize(width: 16, height: 16)
-        submenu.addItem(mirrorItem)
-        
-        // Disconnect Action (only for wireless devices)
-        let isWireless = device.id.contains(":") || 
-                        device.id.contains("_tcp") || 
-                        device.id.contains("_udp")
-        
-        if isWireless {
-            let disconnectItem = NSMenuItem(
-                title: "Disconnect Device",
-                action: #selector(disconnectDevice),
-                keyEquivalent: ""
-            )
-            disconnectItem.target = self
-            disconnectItem.representedObject = device.id
-            disconnectItem.image = NSImage(systemSymbolName: "wifi.slash", accessibilityDescription: "Disconnect")
-            disconnectItem.image?.size = NSSize(width: 16, height: 16)
-            submenu.addItem(disconnectItem)
-        }
         
         submenu.addItem(NSMenuItem.separator())
 
@@ -376,14 +355,44 @@ final class StatusMenuController: NSObject {
         viewModel.forceRefreshApps(for: deviceID)
     }
     
-    @objc private func mirrorDevice(_ sender: NSMenuItem) {
-        guard let deviceID = sender.representedObject as? String else { return }
-        viewModel.mirrorDevice(deviceID: deviceID)
+    @objc private func mirrorDevice(_ sender: NSButton) {
+        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+             viewModel.mirrorDevice(deviceID: deviceID)
+             if let menu = statusItem.menu { menu.cancelTracking() }
+        }
     }
     
-    @objc private func disconnectDevice(_ sender: NSMenuItem) {
-        guard let deviceID = sender.representedObject as? String else { return }
-        viewModel.disconnectDevice(deviceID: deviceID)
+    @objc private func disconnectDevice(_ sender: NSButton) {
+        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+            viewModel.disconnectDevice(deviceID: deviceID)
+            if let menu = statusItem.menu { menu.cancelTracking() }
+        }
+    }
+    
+    @objc private func installAPK(_ sender: NSButton) {
+        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+            let openPanel = NSOpenPanel()
+            openPanel.title = "Select APK to Install"
+            openPanel.showsResizeIndicator = true
+            openPanel.showsHiddenFiles = false
+            openPanel.canChooseDirectories = false
+            openPanel.canCreateDirectories = false
+            openPanel.allowsMultipleSelection = false
+            openPanel.allowedContentTypes = [.init(filenameExtension: "apk")!]
+            
+            // Bring open panel to front
+            NSApp.activate(ignoringOtherApps: true)
+            
+            openPanel.begin { [weak self] (result) in
+                if result == .OK {
+                    if let url = openPanel.url {
+                        self?.viewModel.installAPK(deviceID: deviceID, apkPath: url.path)
+                        // Close menu after selection
+                        if let menu = self?.statusItem.menu { menu.cancelTracking() }
+                    }
+                }
+            }
+        }
     }
     
     @objc private func toggleAudio(_ sender: NSButton) {
@@ -752,7 +761,7 @@ private class DeviceResolutionRadioButton: NSButton {
 
 private final class ControlsMenuItemView: NSView {
     
-    init(isAudioEnabled: Bool, deviceID: String, target: AnyObject, audioAction: Selector, frontCamAction: Selector, backCamAction: Selector) {
+    init(isAudioEnabled: Bool, deviceID: String, isWireless: Bool, target: AnyObject, audioAction: Selector, frontCamAction: Selector, backCamAction: Selector, mirrorAction: Selector, installAction: Selector, disconnectAction: Selector) {
         super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 30))
         
         let stackView = NSStackView()
@@ -768,6 +777,26 @@ private final class ControlsMenuItemView: NSView {
             stackView.centerXAnchor.constraint(equalTo: centerXAnchor),
             stackView.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
+        
+        // Mirror Button
+        let mirrorBtn = createButton(
+            imageName: "display",
+            tooltip: "Mirror Device",
+            target: target,
+            action: mirrorAction,
+            deviceID: deviceID
+        )
+        stackView.addArrangedSubview(mirrorBtn)
+        
+        // Install APK Button
+        let installBtn = createButton(
+            imageName: "shippingbox",
+            tooltip: "Install APK",
+            target: target,
+            action: installAction,
+            deviceID: deviceID
+        )
+        stackView.addArrangedSubview(installBtn)
         
         // Audio Button
         let audioBtn = createButton(
@@ -803,6 +832,18 @@ private final class ControlsMenuItemView: NSView {
         camStack.addArrangedSubview(backCamBtn)
         
         stackView.addArrangedSubview(camStack)
+        
+        // Disconnect Button (if wireless)
+        if isWireless {
+            let disconnectBtn = createButton(
+                imageName: "wifi.slash",
+                tooltip: "Disconnect Device",
+                target: target,
+                action: disconnectAction,
+                deviceID: deviceID
+            )
+            stackView.addArrangedSubview(disconnectBtn)
+        }
     }
     
     required init?(coder: NSCoder) { fatalError() }

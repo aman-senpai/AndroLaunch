@@ -27,6 +27,7 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     func mirrorDevice(deviceID: String)
     func launchCamera(deviceID: String, facing: CameraFacing)
     func disconnectDevice(deviceID: String)
+    func installAPK(deviceID: String, apkPath: String)
     
     func toggleAudio(for deviceID: String)
     func isAudioEnabled(for deviceID: String) -> Bool
