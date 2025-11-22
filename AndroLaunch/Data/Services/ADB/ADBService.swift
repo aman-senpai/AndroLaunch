@@ -443,7 +443,7 @@ final class ADBService: ADBServiceProtocol {
         task.arguments = [
             "--serial", deviceID,
             "--stay-awake",
-            "-S",
+//            "--turn-screen-off",
             "--window-title", "\(packageID)",
             "--new-display",
             "-m 900",
