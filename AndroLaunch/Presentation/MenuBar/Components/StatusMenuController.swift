@@ -111,6 +111,59 @@ final class StatusMenuController: NSObject {
     }
     
     private func updateMenu() {
+        // If menu doesn't exist, create it
+        guard let menu = statusItem.menu else {
+            rebuildMenu()
+            return
+        }
+        
+        // Check if we need to rebuild (e.g. device count changed)
+        // For simplicity, if the number of device items doesn't match, we rebuild.
+        // We can be smarter, but this covers the main case of "refreshing details".
+        
+        // Count device items (excluding static items)
+        // Static items: Refresh (2), Separator (1), Pair (2), About (2), Quit (1) -> Total ~8 items + devices
+        // This is fragile. Better to check representedObjects.
+        
+        let deviceItems = menu.items.filter { $0.representedObject is String }
+        let currentDeviceIDs = Set(viewModel.devices.map { $0.id })
+        let menuDeviceIDs = Set(deviceItems.compactMap { $0.representedObject as? String })
+        
+        if currentDeviceIDs != menuDeviceIDs {
+            rebuildMenu()
+            return
+        }
+        
+        // Update existing items in place
+        for device in viewModel.devices {
+            guard let item = menu.items.first(where: { ($0.representedObject as? String) == device.id }) else { continue }
+            
+            // Update Title / View if needed
+            // The view is DeviceMenuItemView. We might need to update it.
+            if let itemView = item.view as? DeviceMenuItemView {
+                // Update connection status or name if changed
+                // For now, we assume name doesn't change often, but we can update it.
+                // itemView.update(...) // If we had an update method.
+                // Recreating the view is cheap enough if we don't lose state.
+            }
+            
+            // Update Submenu (Battery, Version, etc.)
+            if let submenu = item.submenu {
+                configureDeviceSubmenu(submenu, for: device)
+            }
+        }
+        
+        // Update Error Item if needed
+        if viewModel.devices.isEmpty {
+            // If empty, we should have rebuilt above because IDs wouldn't match (0 vs N)
+            // But if we went from 0 to 0, we might need to update error text.
+            if let item = menu.items.first, item.action == nil, item.representedObject == nil {
+                 item.title = viewModel.error ?? "No devices found"
+            }
+        }
+    }
+    
+    private func rebuildMenu() {
         let menu = NSMenu()
         menu.delegate = self
         
@@ -209,6 +262,11 @@ final class StatusMenuController: NSObject {
         statusItem.menu = menu
     }
     
+    func menuWillOpen(_ menu: NSMenu) {
+        // Trigger refresh when menu opens
+        viewModel.refresh()
+    }
+    
     private func truncateDeviceID(_ deviceID: String, maxLength: Int = 30) -> String {
         guard deviceID.count > maxLength else { return deviceID }
         let prefixLength = maxLength / 2 - 2
@@ -219,6 +277,9 @@ final class StatusMenuController: NSObject {
     }
     
     private func configureDeviceSubmenu(_ submenu: NSMenu, for device: AndroidDevice, isLoadingOverride: Bool = false) {
+        // Clear existing items to prevent duplicates during refresh
+        submenu.removeAllItems()
+        
         // Device Info Section
         let truncatedID = truncateDeviceID(device.id)
         let deviceInfoItem = NSMenuItem(
@@ -238,6 +299,55 @@ final class StatusMenuController: NSObject {
             )
             modelInfoItem.isEnabled = false
             submenu.addItem(modelInfoItem)
+        }
+        
+        // Show Device Info (Version + Battery)
+        let infoString = NSMutableAttributedString()
+        
+        if let version = device.androidVersion, let apiLevel = device.apiLevel {
+            infoString.append(NSAttributedString(string: "\(version) (API \(apiLevel))"))
+        }
+        
+        if let batteryLevel = device.batteryLevel {
+            if infoString.length > 0 {
+                infoString.append(NSAttributedString(string: "  |  "))
+            }
+            
+            // Determine icon name
+            let iconName: String
+            if let isCharging = device.isCharging, isCharging {
+                iconName = "battery.100.bolt"
+            } else {
+                switch batteryLevel {
+                case 0...15: iconName = "battery.0"
+                case 16...35: iconName = "battery.25"
+                case 36...60: iconName = "battery.50"
+                case 61...85: iconName = "battery.75"
+                default: iconName = "battery.100"
+                }
+            }
+            
+            // Create attachment
+            let attachment = NSTextAttachment()
+            let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+            if let image = NSImage(systemSymbolName: iconName, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
+                attachment.image = image
+                // Adjust bounds for vertical alignment if needed, but default is usually okay-ish. 
+                // Often needs a slight offset.
+                attachment.bounds = CGRect(x: 0, y: -2, width: image.size.width, height: image.size.height)
+            }
+            infoString.append(NSAttributedString(attachment: attachment))
+            
+            infoString.append(NSAttributedString(string: " \(batteryLevel)%"))
+        }
+        
+        if infoString.length > 0 {
+            let infoItem = NSMenuItem()
+            infoItem.attributedTitle = infoString
+            infoItem.isEnabled = false
+            infoItem.image = NSImage(systemSymbolName: "info.circle.fill", accessibilityDescription: "Device Info")
+            infoItem.image?.size = NSSize(width: 16, height: 16)
+            submenu.addItem(infoItem)
         }
         
         submenu.addItem(NSMenuItem.separator())
@@ -288,7 +398,8 @@ final class StatusMenuController: NSObject {
         // Apps Section - check if apps exist for this specific device
         let deviceApps = viewModel.deviceApps[device.id] ?? []
         
-        let shouldShowLoading = (viewModel.isLoading || isLoadingOverride) && device.id == currentDeviceID
+        // Only show loading if we don't have apps yet
+        let shouldShowLoading = (viewModel.isLoading || isLoadingOverride) && device.id == currentDeviceID && deviceApps.isEmpty
         
         if shouldShowLoading {
             let loadingItem = NSMenuItem(title: "Loading apps...", action: nil, keyEquivalent: "")

@@ -157,9 +157,15 @@ final class ADBService: ADBServiceProtocol {
         executeADBCommand(arguments: ["devices", "-l"]) { [weak self] success, output, errorOutput in
             guard let self else { return }
             if success {
-                let devices = self.parseDevices(from: output ?? "")
-                self.devices.send(devices)
-                self.error.send(nil)
+                // Move parsing to background to avoid blocking main thread with sync ADB calls
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let devices = self.parseDevices(from: output ?? "")
+                    
+                    DispatchQueue.main.async {
+                        self.devices.send(devices)
+                        self.error.send(nil)
+                    }
+                }
             } else {
                 self.error.send(errorOutput ?? "Device listing failed")
                 self.devices.send([])
@@ -239,7 +245,11 @@ final class ADBService: ADBServiceProtocol {
                         name: modelName,
                         model: rawModel,
                         isConnected: true,
-                        serialNumber: serialNumber
+                        serialNumber: serialNumber,
+                        androidVersion: self.fetchAndroidVersion(deviceID: cleanDeviceID),
+                        apiLevel: self.fetchAPILevel(deviceID: cleanDeviceID),
+                        batteryLevel: self.fetchBatteryLevel(deviceID: cleanDeviceID),
+                        isCharging: self.fetchIsCharging(deviceID: cleanDeviceID)
                     )
                     devices.append(newDevice)
                     seenDeviceNames.insert(modelName) // Add name to seen set
@@ -390,6 +400,63 @@ final class ADBService: ADBServiceProtocol {
         
         let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
         return String(data: outputData, encoding: .utf8) ?? ""
+    }
+
+    private func fetchAndroidVersion(deviceID: String) -> String? {
+        do {
+            let output = try executeADBCommandSync(arguments: ["-s", deviceID, "shell", "getprop", "ro.build.version.release"])
+            return output.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            return nil
+        }
+    }
+
+    private func fetchAPILevel(deviceID: String) -> String? {
+        do {
+            let output = try executeADBCommandSync(arguments: ["-s", deviceID, "shell", "getprop", "ro.build.version.sdk"])
+            return output.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            return nil
+        }
+    }
+
+    private func fetchBatteryLevel(deviceID: String) -> Int? {
+        do {
+            let output = try executeADBCommandSync(arguments: ["-s", deviceID, "shell", "dumpsys", "battery"])
+            let lines = output.components(separatedBy: .newlines)
+            for line in lines {
+                if line.contains("level") {
+                    let components = line.components(separatedBy: ":")
+                    if components.count == 2 {
+                        return Int(components[1].trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+                }
+            }
+            return nil
+        } catch {
+            return nil
+        }
+    }
+
+    private func fetchIsCharging(deviceID: String) -> Bool? {
+        do {
+            let output = try executeADBCommandSync(arguments: ["-s", deviceID, "shell", "dumpsys", "battery"])
+            let lines = output.components(separatedBy: .newlines)
+            for line in lines {
+                if line.contains("AC powered") || line.contains("USB powered") || line.contains("Wireless powered") {
+                     let components = line.components(separatedBy: ":")
+                     if components.count == 2 {
+                         let value = components[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                         if value == "true" {
+                             return true
+                         }
+                     }
+                }
+            }
+            return false
+        } catch {
+            return nil
+        }
     }
     
     // MARK: - App Launching & Mirroring (using SCRCPY)

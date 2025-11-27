@@ -114,9 +114,8 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
 
     func refreshDevices() {
         isLoading = true
-        // Clear all app caches and the deviceID-to-serial map
-        // as the device list (and their connections/serials) might entirely change.
-        appCache.removeAll()
+        // Clear deviceID-to-serial map as IDs might change, but KEEP app cache (keyed by serial)
+        // so we don't re-fetch apps unnecessarily when just refreshing device status.
         deviceIDToSerialNumberMap.removeAll()
         currentFetchingDeviceID = nil // Reset this
         adbService.findADB()
