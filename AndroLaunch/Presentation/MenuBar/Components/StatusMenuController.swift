@@ -222,6 +222,7 @@ final class StatusMenuController: NSObject {
             backCamAction: #selector(launchBackCamera(_:)),
             mirrorAction: #selector(mirrorDevice(_:)),
             installAction: #selector(installAPK(_:)),
+            shellAction: #selector(launchShell(_:)),
             disconnectAction: #selector(disconnectDevice(_:))
         )
         controlsItem.view = controlsView
@@ -404,6 +405,92 @@ final class StatusMenuController: NSObject {
                     }
                 }
             }
+        }
+    }
+    
+    @objc private func launchShell(_ sender: NSButton) {
+        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+            // Use AppleScript to open Terminal and run adb shell
+            // We need to find the adb path first.
+            // Since ADBService is internal, we might not have direct access to the path string easily 
+            // without exposing it or asking ViewModel.
+            // However, we can assume 'adb' is in the path if we are running, or we can try to use the one from service.
+            
+            // Better approach: Ask ViewModel to get the ADB path or just assume it's in a standard location / user's path.
+            // But to be robust, let's try to construct a command that sources zshrc or similar, 
+            // OR better, use the absolute path if we can get it.
+            
+            // Let's get the ADB path from the ViewModel if possible, or just use "adb" and hope it's in the path 
+            // that Terminal uses (which it usually is if installed via brew).
+            
+            // For now, let's try just "adb". If that fails, we might need to be more specific.
+            // Actually, ADBService has `adbPath`. Let's expose it in ViewModel or just access it if we can.
+            // ViewModel doesn't expose it currently.
+            
+            // Let's use a simple AppleScript that tries to run it.
+            
+            // We need to ensure adb is in the path.
+            // A common issue is that the environment variables aren't loaded in the `do script` context the same way.
+            // We can try to export the path or source the profile.
+            
+            print("DEBUG: Launching shell for device: \(deviceID)")
+            
+            // Create a temporary .command file to launch the shell
+            let fileManager = FileManager.default
+            let tempDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            
+            do {
+                try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true, attributes: nil)
+                let fileName = "ADB Shell.command"
+                let fileURL = tempDir.appendingPathComponent(fileName)
+                
+                // Determine ADB directory
+                var adbDir = "$HOME/Library/Android/sdk/platform-tools" // Default fallback
+                if let adbPath = self.viewModel.adbPath {
+                    let url = URL(fileURLWithPath: adbPath)
+                    adbDir = url.deletingLastPathComponent().path
+                }
+                
+                let scriptContent = """
+                #!/bin/bash
+                clear
+                # Set window title
+                echo -n -e "\\033]0;ADB Shell - \(deviceID)\\007"
+                
+                echo "Starting ADB Shell for device: \(deviceID)"
+                export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(adbDir)
+                
+                # Check if adb is available
+                if ! command -v adb &> /dev/null; then
+                    echo "Error: adb not found in PATH."
+                    echo "PATH is: $PATH"
+                    read -n 1 -s -r -p "Press any key to close..."
+                    exit 1
+                fi
+                
+                adb -s \(deviceID) shell
+                
+                # Keep window open if shell exits unexpectedly
+                if [ $? -ne 0 ]; then
+                    echo "ADB shell exited with error."
+                    read -n 1 -s -r -p "Press any key to close..."
+                fi
+                """
+                
+                try scriptContent.write(to: fileURL, atomically: true, encoding: .utf8)
+                
+                // Make executable
+                let attributes: [FileAttributeKey: Any] = [.posixPermissions: 0o755]
+                try fileManager.setAttributes(attributes, ofItemAtPath: fileURL.path)
+                
+                // Open with Terminal
+                NSWorkspace.shared.open(fileURL)
+                print("DEBUG: Opened command file at \(fileURL.path)")
+            } catch {
+                print("ERROR: Failed to create or open command file: \(error)")
+            }
+            
+            if let menu = statusItem.menu { menu.cancelTracking() }
         }
     }
     
@@ -825,7 +912,7 @@ private final class ControlsMenuItemView: NSView {
     
     private var audioButton: NSButton?
     
-    init(isAudioEnabled: Bool, deviceID: String, isWireless: Bool, target: AnyObject, audioAction: Selector, frontCamAction: Selector, backCamAction: Selector, mirrorAction: Selector, installAction: Selector, disconnectAction: Selector) {
+    init(isAudioEnabled: Bool, deviceID: String, isWireless: Bool, target: AnyObject, audioAction: Selector, frontCamAction: Selector, backCamAction: Selector, mirrorAction: Selector, installAction: Selector, shellAction: Selector, disconnectAction: Selector) {
         super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 30))
         
         let stackView = NSStackView()
@@ -861,6 +948,16 @@ private final class ControlsMenuItemView: NSView {
             deviceID: deviceID
         )
         stackView.addArrangedSubview(installBtn)
+        
+        // Shell Button
+        let shellBtn = createButton(
+            imageName: "terminal",
+            tooltip: "Open ADB Shell",
+            target: target,
+            action: shellAction,
+            deviceID: deviceID
+        )
+        stackView.addArrangedSubview(shellBtn)
         
         // Audio Button
         let audioBtn = createButton(

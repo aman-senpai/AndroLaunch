@@ -20,6 +20,8 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
     public var devicesPublisher: AnyPublisher<[AndroidDevice], Never> { $devices.eraseToAnyPublisher() }
     public var appsPublisher: AnyPublisher<[AndroidApp], Never> { $apps.eraseToAnyPublisher() } // Assuming AndroidApp is defined
     public var isLoadingPublisher: AnyPublisher<Bool, Never> { $isLoading.eraseToAnyPublisher() }
+    
+    public var adbPath: String? { adbService.adbPath }
 
 
     // Dependencies (assuming these protocols are defined elsewhere, e.g., in a Service layer)

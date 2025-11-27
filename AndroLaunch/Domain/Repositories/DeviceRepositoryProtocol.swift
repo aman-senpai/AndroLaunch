@@ -19,6 +19,7 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     var apps: [AndroidApp] { get }
     var error: String? { get }
     var isLoading: Bool { get }
+    var adbPath: String? { get }
     
     func refreshDevices()
     func fetchApps(for deviceID: String)

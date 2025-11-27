@@ -80,6 +80,8 @@ final class MenuViewModel: ObservableObject {
     func getResolution(for deviceID: String) -> Int {
         return repository.getResolution(for: deviceID)
     }
+    
+    var adbPath: String? { repository.adbPath }
 
     
 }
