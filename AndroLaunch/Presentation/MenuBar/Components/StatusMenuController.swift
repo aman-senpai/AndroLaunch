@@ -59,6 +59,18 @@ final class StatusMenuController: NSObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.updateMenu() }
             .store(in: &cancellables)
+            
+        // Listen for object changes (like audio toggle) to update specific rows without full rebuild
+        viewModel.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                // We don't want to rebuild the whole menu for a simple toggle if we can avoid it.
+                // But since objectWillChange is generic, we might need to check what changed or just rely on the fact that
+                // we are manually updating the UI in the action methods.
+                // However, if the change comes from elsewhere, we might want to refresh.
+                // For now, let's rely on manual UI updates for responsiveness and full refresh for data changes.
+            }
+            .store(in: &cancellables)
     }
     
     private func updateMenu() {
@@ -396,29 +408,24 @@ final class StatusMenuController: NSObject {
     }
     
     @objc private func toggleAudio(_ sender: NSButton) {
-        // For NSButton sender (from custom view), we store deviceID in a property or tag?
-        // Actually, ControlsMenuItemView can handle the action dispatch or we pass deviceID via sender if possible.
-        // Better approach: The custom view buttons target specific actions.
-        // We need a way to pass the deviceID.
-        // Let's use the sender's tag or representedObject if it was a MenuItem, but here it's a Button.
-        // We can subclass NSButton or use associated objects, OR just have the view handle it and call a closure?
-        // Since we are using selectors, let's look at how ControlsMenuItemView sets up the target/action.
-        // We can set the button's tag to something? No, tag is Int.
-        // Let's use a custom button class in ControlsMenuItemView that holds the deviceID.
-        
         if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
-            viewModel.toggleAudio(for: deviceID)
-            // Update the button state immediately for responsiveness?
-            // The menu might close or refresh. If it stays open, we should update the icon.
-            // But usually clicking a menu item closes the menu. Clicking a view in a menu item might not close it unless we tell it to.
-            // If we want it to stay open, we don't call cancelTracking().
-            // If we want it to close, we call cancelTracking().
-            // Let's assume standard menu behavior (click -> action -> close).
+            // 1. Optimistic UI Update
+            let currentAudioState = viewModel.isAudioEnabled(for: deviceID)
+            let newAudioState = !currentAudioState
             
-            // To close the menu:
-            if let menu = statusItem.menu {
-                menu.cancelTracking()
+            // Find the ControlsMenuItemView and update it directly
+            if let controlsView = sender.superview?.superview as? ControlsMenuItemView {
+                 controlsView.setAudioEnabled(newAudioState)
             }
+            
+            // 2. Perform Action
+            viewModel.toggleAudio(for: deviceID)
+            
+            // 3. Prevent Menu Closure (optional, but good for toggles)
+            // If we want the menu to stay open, we do nothing.
+            // If we want it to close, we call cancelTracking().
+            // Standard behavior for toggles in menus is often to stay open or close depending on UX.
+            // Given the user complaint about "sluggish", keeping it open and showing instant change is better.
         }
     }
     
@@ -761,6 +768,8 @@ private class DeviceResolutionRadioButton: NSButton {
 
 private final class ControlsMenuItemView: NSView {
     
+    private var audioButton: NSButton?
+    
     init(isAudioEnabled: Bool, deviceID: String, isWireless: Bool, target: AnyObject, audioAction: Selector, frontCamAction: Selector, backCamAction: Selector, mirrorAction: Selector, installAction: Selector, disconnectAction: Selector) {
         super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 30))
         
@@ -806,6 +815,7 @@ private final class ControlsMenuItemView: NSView {
             action: audioAction,
             deviceID: deviceID
         )
+        self.audioButton = audioBtn
         stackView.addArrangedSubview(audioBtn)
         
         // Camera Group (Front + Back)
@@ -847,6 +857,16 @@ private final class ControlsMenuItemView: NSView {
     }
     
     required init?(coder: NSCoder) { fatalError() }
+    
+    func setAudioEnabled(_ isEnabled: Bool) {
+        guard let btn = audioButton else { return }
+        let imageName = isEnabled ? "speaker.slash" : "speaker.wave.2"
+        let tooltip = isEnabled ? "Disable Audio" : "Enable Audio"
+        
+        btn.image = NSImage(systemSymbolName: imageName, accessibilityDescription: tooltip)
+        btn.image?.size = NSSize(width: 14, height: 14)
+        btn.toolTip = tooltip
+    }
     
     private func createButton(imageName: String, tooltip: String, target: AnyObject, action: Selector, deviceID: String) -> NSButton {
         let btn = DeviceActionButton()
