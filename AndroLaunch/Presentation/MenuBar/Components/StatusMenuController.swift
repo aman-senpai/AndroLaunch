@@ -978,9 +978,17 @@ private final class MenuTableRowView: NSTableRowView {
     }
     
     private func animateHover(visible: Bool) {
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.15
-            hoverEffectView.animator().alphaValue = visible ? 1 : 0
+        if visible {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.05
+                hoverEffectView.animator().alphaValue = 1
+            }
+        } else {
+            // Instant removal to prevent ghosting/multiple highlights when moving fast
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0
+                hoverEffectView.animator().alphaValue = 0
+            }
         }
     }
     
@@ -1071,9 +1079,16 @@ private final class DeviceMenuItemView: NSView {
     }
     
     private func animateHover(visible: Bool) {
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.15
-            hoverEffectView.animator().alphaValue = visible ? 1 : 0
+        if visible {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.05
+                hoverEffectView.animator().alphaValue = 1
+            }
+        } else {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0
+                hoverEffectView.animator().alphaValue = 0
+            }
         }
     }
 }
