@@ -37,5 +37,19 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     func setResolution(for deviceID: String, resolution: Int)
     func getResolution(for deviceID: String) -> Int
 
-
+    // Quick Actions
+    func reboot(deviceID: String, mode: RebootMode)
+    func toggleWiFi(deviceID: String, enable: Bool)
+    func toggleBluetooth(deviceID: String, enable: Bool)
+    func toggleDarkMode(deviceID: String, enable: Bool)
+    
+    func toggleAirplaneMode(deviceID: String, enable: Bool)
+    func toggleMobileData(deviceID: String, enable: Bool)
+    func toggleLocation(deviceID: String, enable: Bool)
+    func toggleDoNotDisturb(deviceID: String, enable: Bool)
+    func toggleAutoRotate(deviceID: String, enable: Bool)
+    func setRingerMode(deviceID: String, mode: RingerMode)
+    func toggleAdaptiveBrightness(deviceID: String, enable: Bool)
+    
+    func fetchQuickActionsState(deviceID: String, completion: @escaping (QuickActionsState) -> Void)
 }

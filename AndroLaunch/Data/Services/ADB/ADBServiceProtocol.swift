@@ -14,6 +14,12 @@ enum CameraFacing: String {
     case back
 }
 
+enum RebootMode: String {
+    case normal = ""
+    case bootloader = "bootloader"
+    case recovery = "recovery"
+}
+
 protocol ADBServiceProtocol {
     // Publishers for reactive updates
     var devices: PassthroughSubject<[AndroidDevice], Never> { get }
@@ -33,5 +39,26 @@ protocol ADBServiceProtocol {
     func disconnectDevice(deviceID: String)
     func installAPK(deviceID: String, apkPath: String)
     func uninstallApp(deviceID: String, packageID: String)
+    
+    // Quick Actions
+    func reboot(deviceID: String, mode: RebootMode)
+    func toggleWiFi(deviceID: String, enable: Bool)
+    func toggleBluetooth(deviceID: String, enable: Bool)
+    func toggleDarkMode(deviceID: String, enable: Bool)
+    
+    func toggleAirplaneMode(deviceID: String, enable: Bool)
+    func toggleMobileData(deviceID: String, enable: Bool)
+    func toggleLocation(deviceID: String, enable: Bool)
+    func toggleDoNotDisturb(deviceID: String, enable: Bool)
+    func toggleAutoRotate(deviceID: String, enable: Bool)
+    func setRingerMode(deviceID: String, mode: RingerMode)
+    func toggleAdaptiveBrightness(deviceID: String, enable: Bool)
+    
+    func fetchQuickActionsState(deviceID: String, completion: @escaping (QuickActionsState) -> Void)
+}
 
+enum RingerMode: String {
+    case normal = "normal"
+    case vibrate = "vibrate"
+    case silent = "silent"
 }

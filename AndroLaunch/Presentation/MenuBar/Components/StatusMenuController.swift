@@ -13,6 +13,7 @@ final class StatusMenuController: NSObject {
     private var cancellables = Set<AnyCancellable>()
     private var currentDeviceID: String?
     private var pairingWindow: NSWindow?
+    private var quickActionsWindow: NSWindow?
     
     // MARK: - Search Field Subclass
     private class DeviceSearchField: NSSearchField {
@@ -46,7 +47,13 @@ final class StatusMenuController: NSObject {
         
         viewModel.$deviceApps
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.updateMenu() }
+            .sink { [weak self] appsMap in
+                // Update submenus for all devices that have apps loaded
+                // Ideally we would know which one changed, but iterating is cheap enough for a menu
+                for (deviceID, _) in appsMap {
+                    self?.updateDeviceSubmenu(for: deviceID)
+                }
+            }
             .store(in: &cancellables)
 
         
@@ -57,7 +64,12 @@ final class StatusMenuController: NSObject {
         
         viewModel.$isLoading
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.updateMenu() }
+            .sink { [weak self] isLoading in
+                // When loading state changes, update the current device's submenu if we know it
+                if let currentDeviceID = self?.currentDeviceID {
+                    self?.updateDeviceSubmenu(for: currentDeviceID)
+                }
+            }
             .store(in: &cancellables)
             
         // Listen for object changes (like audio toggle) to update specific rows without full rebuild
@@ -71,6 +83,31 @@ final class StatusMenuController: NSObject {
                 // For now, let's rely on manual UI updates for responsiveness and full refresh for data changes.
             }
             .store(in: &cancellables)
+    }
+    
+    private func updateDeviceSubmenu(for deviceID: String, isLoadingOverride: Bool = false) {
+        guard let menu = statusItem.menu else { return }
+        
+        // Find the item for this device
+        // We stored deviceID in representedObject
+        guard let deviceItem = menu.items.first(where: { ($0.representedObject as? String) == deviceID }) else { return }
+        
+        // Get or create submenu
+        let submenu = deviceItem.submenu ?? NSMenu()
+        if deviceItem.submenu == nil {
+            deviceItem.submenu = submenu
+        }
+        
+        // Clear and rebuild
+        submenu.removeAllItems()
+        
+        // We need the device object. Find it in viewModel
+        if let device = viewModel.devices.first(where: { $0.id == deviceID }) {
+            configureDeviceSubmenu(submenu, for: device, isLoadingOverride: isLoadingOverride)
+        }
+        
+        // Important: If the menu is currently open, we might need to force a layout update
+        // But usually modifying the submenu items is enough for AppKit to reflect changes
     }
     
     private func updateMenu() {
@@ -181,7 +218,7 @@ final class StatusMenuController: NSObject {
         return "\(prefix)...\(suffix)"
     }
     
-    private func configureDeviceSubmenu(_ submenu: NSMenu, for device: AndroidDevice) {
+    private func configureDeviceSubmenu(_ submenu: NSMenu, for device: AndroidDevice, isLoadingOverride: Bool = false) {
         // Device Info Section
         let truncatedID = truncateDeviceID(device.id)
         let deviceInfoItem = NSMenuItem(
@@ -225,6 +262,7 @@ final class StatusMenuController: NSObject {
             mirrorAction: #selector(mirrorDevice(_:)),
             installAction: #selector(installAPK(_:)),
             shellAction: #selector(launchShell(_:)),
+            quickActionsAction: #selector(launchQuickActions(_:)),
             disconnectAction: #selector(disconnectDevice(_:))
         )
         controlsItem.view = controlsView
@@ -250,7 +288,9 @@ final class StatusMenuController: NSObject {
         // Apps Section - check if apps exist for this specific device
         let deviceApps = viewModel.deviceApps[device.id] ?? []
         
-        if viewModel.isLoading && device.id == currentDeviceID {
+        let shouldShowLoading = (viewModel.isLoading || isLoadingOverride) && device.id == currentDeviceID
+        
+        if shouldShowLoading {
             let loadingItem = NSMenuItem(title: "Loading apps...", action: nil, keyEquivalent: "")
             loadingItem.isEnabled = false
             submenu.addItem(loadingItem)
@@ -259,7 +299,7 @@ final class StatusMenuController: NSObject {
             appsMenuItem.view = createAppListView(for: deviceApps, deviceID: device.id)
             submenu.addItem(appsMenuItem)
             submenu.addItem(NSMenuItem.separator())
-        } else if device.id == currentDeviceID && !viewModel.isLoading {
+        } else if device.id == currentDeviceID {
             let statusItem = NSMenuItem(
                 title: viewModel.error ?? "No apps found",
                 action: nil,
@@ -569,6 +609,39 @@ final class StatusMenuController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
     }
     
+    @objc private func launchQuickActions(_ sender: NSButton) {
+        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+            if quickActionsWindow == nil {
+                let viewModel = QuickActionsViewModel(deviceID: deviceID, repository: self.viewModel.repository)
+                let view = QuickActionsView(viewModel: viewModel)
+                let hostingController = NSHostingController(rootView: view)
+                
+                let window = NSWindow(contentViewController: hostingController)
+                window.title = "Quick Actions - \(deviceID)"
+                window.styleMask = [.titled, .closable, .miniaturizable]
+                window.center()
+                window.isReleasedWhenClosed = false
+                
+                self.quickActionsWindow = window
+            } else {
+                // Update existing window if needed, or just show it
+                // Ideally we should update the ViewModel if the deviceID changed, but for now let's just show it.
+                // To be correct, we should probably recreate it or update the VM.
+                // Let's recreate it if the device ID is different, or just close and reopen.
+                // Simpler: Just close old and open new.
+                quickActionsWindow?.close()
+                quickActionsWindow = nil
+                launchQuickActions(sender)
+                return
+            }
+            
+            quickActionsWindow?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            
+            if let menu = statusItem.menu { menu.cancelTracking() }
+        }
+    }
+    
     func uninstallApp(deviceID: String, app: AndroidApp) {
         let alert = NSAlert()
         alert.messageText = "Uninstall \(app.name)?"
@@ -595,10 +668,8 @@ extension StatusMenuController: NSMenuDelegate {
             if deviceID != currentDeviceID {
                 currentDeviceID = deviceID
                 viewModel.fetchApps(for: deviceID)
-                // Force menu update after a short delay to show cached apps
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                    self?.updateMenu()
-                }
+                // Update just this device's submenu to show loading state or cached apps immediately
+                self.updateDeviceSubmenu(for: deviceID, isLoadingOverride: true)
             }
         }
     }
@@ -915,7 +986,7 @@ private final class ControlsMenuItemView: NSView {
     
     private var audioButton: NSButton?
     
-    init(isAudioEnabled: Bool, deviceID: String, isWireless: Bool, target: AnyObject, audioAction: Selector, frontCamAction: Selector, backCamAction: Selector, mirrorAction: Selector, installAction: Selector, shellAction: Selector, disconnectAction: Selector) {
+    init(isAudioEnabled: Bool, deviceID: String, isWireless: Bool, target: AnyObject, audioAction: Selector, frontCamAction: Selector, backCamAction: Selector, mirrorAction: Selector, installAction: Selector, shellAction: Selector, quickActionsAction: Selector, disconnectAction: Selector) {
         super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 30))
         
         let stackView = NSStackView()
@@ -961,6 +1032,16 @@ private final class ControlsMenuItemView: NSView {
             deviceID: deviceID
         )
         stackView.addArrangedSubview(shellBtn)
+        
+        // Quick Actions Button (Bolt)
+        let quickActionsBtn = createButton(
+            imageName: "bolt.fill",
+            tooltip: "Quick Actions",
+            target: target,
+            action: quickActionsAction,
+            deviceID: deviceID
+        )
+        stackView.addArrangedSubview(quickActionsBtn)
         
         // Audio Button
         let audioBtn = createButton(

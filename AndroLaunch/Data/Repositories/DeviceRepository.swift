@@ -238,4 +238,53 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         adbService.uninstallApp(deviceID: deviceID, packageID: packageID)
     }
 
+    // MARK: - Quick Actions
+    func reboot(deviceID: String, mode: RebootMode) {
+        adbService.reboot(deviceID: deviceID, mode: mode)
+    }
+    
+    func toggleWiFi(deviceID: String, enable: Bool) {
+        adbService.toggleWiFi(deviceID: deviceID, enable: enable)
+    }
+    
+    func toggleBluetooth(deviceID: String, enable: Bool) {
+        adbService.toggleBluetooth(deviceID: deviceID, enable: enable)
+    }
+    
+    func toggleDarkMode(deviceID: String, enable: Bool) {
+        adbService.toggleDarkMode(deviceID: deviceID, enable: enable)
+    }
+    
+    func toggleAirplaneMode(deviceID: String, enable: Bool) {
+        adbService.toggleAirplaneMode(deviceID: deviceID, enable: enable)
+    }
+    
+    func toggleMobileData(deviceID: String, enable: Bool) {
+        adbService.toggleMobileData(deviceID: deviceID, enable: enable)
+    }
+    
+    func toggleLocation(deviceID: String, enable: Bool) {
+        adbService.toggleLocation(deviceID: deviceID, enable: enable)
+    }
+    
+    func toggleDoNotDisturb(deviceID: String, enable: Bool) {
+        adbService.toggleDoNotDisturb(deviceID: deviceID, enable: enable)
+    }
+    
+    func toggleAutoRotate(deviceID: String, enable: Bool) {
+        adbService.toggleAutoRotate(deviceID: deviceID, enable: enable)
+    }
+    
+    func setRingerMode(deviceID: String, mode: RingerMode) {
+        adbService.setRingerMode(deviceID: deviceID, mode: mode)
+    }
+    
+    func toggleAdaptiveBrightness(deviceID: String, enable: Bool) {
+        adbService.toggleAdaptiveBrightness(deviceID: deviceID, enable: enable)
+    }
+    
+    func fetchQuickActionsState(deviceID: String, completion: @escaping (QuickActionsState) -> Void) {
+        adbService.fetchQuickActionsState(deviceID: deviceID, completion: completion)
+    }
+
 }
