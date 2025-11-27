@@ -61,6 +61,7 @@ final class MenuViewModel: ObservableObject {
     func launchCamera(deviceID: String, facing: CameraFacing) { repository.launchCamera(deviceID: deviceID, facing: facing) }
     func disconnectDevice(deviceID: String) { repository.disconnectDevice(deviceID: deviceID) }
     func installAPK(deviceID: String, apkPath: String) { repository.installAPK(deviceID: deviceID, apkPath: apkPath) }
+    func uninstallApp(deviceID: String, packageID: String) { repository.uninstallApp(deviceID: deviceID, packageID: packageID) }
     
     func toggleAudio(for deviceID: String) {
         repository.toggleAudio(for: deviceID)

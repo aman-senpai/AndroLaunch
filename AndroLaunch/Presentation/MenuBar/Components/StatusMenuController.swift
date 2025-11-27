@@ -310,7 +310,7 @@ final class StatusMenuController: NSObject {
         
         let tableView = NSTableView()
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("AppColumn"))
-        column.width = 200
+        column.width = 280
         tableView.addTableColumn(column)
         tableView.headerView = nil
         tableView.rowHeight = 28
@@ -479,6 +479,23 @@ final class StatusMenuController: NSObject {
         pairingWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
+    
+    func uninstallApp(deviceID: String, app: AndroidApp) {
+        let alert = NSAlert()
+        alert.messageText = "Uninstall \(app.name)?"
+        alert.informativeText = "Are you sure you want to uninstall this app? This action cannot be undone."
+        alert.addButton(withTitle: "Uninstall")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .warning
+        
+        // Bring alert to front
+        NSApp.activate(ignoringOtherApps: true)
+        
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            viewModel.uninstallApp(deviceID: deviceID, packageID: app.id)
+        }
+    }
 }
 
 extension StatusMenuController: NSMenuDelegate {
@@ -559,7 +576,40 @@ private final class AppsTableViewHandler: NSObject, NSTableViewDataSource, NSTab
         textField.frame = NSRect(x: 36, y: 4, width: 200, height: 20)
         containerView.addSubview(textField)
         
+        // Trash/Uninstall Button
+        let trashButton = NSButton()
+        trashButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Uninstall")
+        trashButton.image?.size = NSSize(width: 12, height: 12)
+        trashButton.bezelStyle = .inline
+        trashButton.isBordered = false
+        trashButton.toolTip = "Uninstall App"
+        trashButton.frame = NSRect(x: 250, y: 4, width: 20, height: 20)
+        trashButton.target = self // The handler handles the action dispatch
+        trashButton.action = #selector(uninstallClicked(_:))
+        
+        // Store app and controller info in the button (using a subclass would be cleaner, but tag/associated object works too)
+        // Let's use a subclass wrapper or just find the row index.
+        // Since we are in viewFor, we know the app.
+        // We can use a custom button class.
+        let customBtn = AppActionButton()
+        customBtn.app = app
+        customBtn.deviceID = deviceID
+        customBtn.image = trashButton.image
+        customBtn.bezelStyle = trashButton.bezelStyle
+        customBtn.isBordered = trashButton.isBordered
+        customBtn.toolTip = trashButton.toolTip
+        customBtn.frame = trashButton.frame
+        customBtn.target = self
+        customBtn.action = #selector(uninstallClicked(_:))
+        
+        containerView.addSubview(customBtn)
+        
         return containerView
+    }
+    
+    @objc private func uninstallClicked(_ sender: AppActionButton) {
+        guard let app = sender.app, let deviceID = sender.deviceID else { return }
+        controller?.uninstallApp(deviceID: deviceID, app: app)
     }
     
     private func getAppIconName(for app: AndroidApp) -> String {
@@ -764,6 +814,11 @@ private class DeviceActionButton: NSButton {
 private class DeviceResolutionRadioButton: NSButton {
     var deviceID: String?
     var resolutionValue: Int = 900
+}
+
+private class AppActionButton: NSButton {
+    var app: AndroidApp?
+    var deviceID: String?
 }
 
 private final class ControlsMenuItemView: NSView {

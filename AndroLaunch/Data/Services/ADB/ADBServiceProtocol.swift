@@ -32,5 +32,6 @@ protocol ADBServiceProtocol {
     func mirrorDevice(deviceID: String, audioEnabled: Bool)
     func disconnectDevice(deviceID: String)
     func installAPK(deviceID: String, apkPath: String)
+    func uninstallApp(deviceID: String, packageID: String)
 
 }

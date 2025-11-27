@@ -232,4 +232,8 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         adbService.installAPK(deviceID: deviceID, apkPath: apkPath)
     }
 
+    func uninstallApp(deviceID: String, packageID: String) {
+        adbService.uninstallApp(deviceID: deviceID, packageID: packageID)
+    }
+
 }

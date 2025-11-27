@@ -28,6 +28,7 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     func launchCamera(deviceID: String, facing: CameraFacing)
     func disconnectDevice(deviceID: String)
     func installAPK(deviceID: String, apkPath: String)
+    func uninstallApp(deviceID: String, packageID: String)
     
     func toggleAudio(for deviceID: String)
     func isAudioEnabled(for deviceID: String) -> Bool

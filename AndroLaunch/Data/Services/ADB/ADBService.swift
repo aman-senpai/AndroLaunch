@@ -733,8 +733,20 @@ final class ADBService: ADBServiceProtocol {
                   alert.runModal()
              }
              #endif
-         }
-     }
+        }
+    }
+
+    func uninstallApp(deviceID: String, packageID: String) {
+        executeADBCommand(arguments: ["-s", deviceID, "uninstall", packageID]) { [weak self] success, output, errorOutput in
+            guard let self else { return }
+            if success {
+                // Refresh apps list after successful uninstall
+                self.fetchApps(for: deviceID)
+            } else {
+                self.error.send("Failed to uninstall \(packageID): \(errorOutput ?? "Unknown error")")
+            }
+        }
+    }
 
     private func showScrcpyErrorAlert(errorMessage: String) {
         #if canImport(AppKit)
