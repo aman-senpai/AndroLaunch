@@ -131,18 +131,7 @@ final class StatusMenuController: NSObject {
         
         menu.addItem(NSMenuItem.separator())
         
-        // About Item
-        let aboutItem = NSMenuItem(
-            title: "About",
-            action: #selector(openGitHub),
-            keyEquivalent: ""
-        )
-        aboutItem.target = self
-        aboutItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "About")
-        aboutItem.image?.size = NSSize(width: 16, height: 16)
-        menu.addItem(aboutItem)
-        
-        menu.addItem(NSMenuItem.separator())
+
 
         // Pair Device Item
         let pairItem = NSMenuItem(
@@ -154,6 +143,19 @@ final class StatusMenuController: NSObject {
         pairItem.image = NSImage(systemSymbolName: "qrcode", accessibilityDescription: "Pair")
         pairItem.image?.size = NSSize(width: 16, height: 16)
         menu.addItem(pairItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // About Item
+        let aboutItem = NSMenuItem(
+            title: "About",
+            action: #selector(openGitHub),
+            keyEquivalent: ""
+        )
+        aboutItem.target = self
+        aboutItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "About")
+        aboutItem.image?.size = NSSize(width: 16, height: 16)
+        menu.addItem(aboutItem)
         
         menu.addItem(NSMenuItem.separator())
         
@@ -831,7 +833,8 @@ private final class DeviceMenuItemView: NSView {
         addSubview(hoverEffectView)
         
         // Device icon (left)
-        deviceIconView.frame = NSRect(x: 8, y: 2, width: 16, height: 16)
+        // Standard menu item icon alignment is usually around 14-16pt from the edge
+        deviceIconView.frame = NSRect(x: 14, y: 2, width: 16, height: 16)
         deviceIconView.image = NSImage(systemSymbolName: "iphone", accessibilityDescription: "Device")
         deviceIconView.contentTintColor = .controlTextColor
         addSubview(deviceIconView)
@@ -840,7 +843,7 @@ private final class DeviceMenuItemView: NSView {
         nameLabel.stringValue = deviceName
         nameLabel.font = NSFont.menuFont(ofSize: 14)
         nameLabel.textColor = .controlTextColor
-        nameLabel.frame = NSRect(x: 30, y: 2, width: 180, height: 16)
+        nameLabel.frame = NSRect(x: 38, y: 2, width: 172, height: 16)
         nameLabel.drawsBackground = false
         nameLabel.isBordered = false
         nameLabel.isEditable = false
