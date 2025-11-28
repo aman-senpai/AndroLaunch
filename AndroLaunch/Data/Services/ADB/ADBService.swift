@@ -1103,13 +1103,6 @@ final class ADBService: ADBServiceProtocol {
         echo "BRI:$(settings get system screen_brightness_mode)";
         echo "RINGER:$(cmd media_session volume_mode_for_stream 2)"
         """
-        // Note: Ringer mode check might vary. `cmd media_session volume_mode_for_stream 2` (STREAM_RING) is a guess for some versions.
-        // A better way for ringer mode is `settings get global mode_ringer` but that's deprecated/hidden.
-        // `audio` service might be better: `dumpsys audio | grep "mRingerMode"` but parsing dumpsys is heavy.
-        // Let's try `settings get global mode_ringer` first, or just assume normal if we can't get it easily without complex parsing.
-        // Actually, `cmd media_session monitor` shows updates.
-        // Let's stick to simple settings where possible.
-        // For Dark Mode: `cmd uimode night` returns "Night mode: yes" or "no".
         
         executeADBCommand(arguments: ["-s", deviceID, "shell", cmd]) { success, output, _ in
             var state = QuickActionsState()
