@@ -251,6 +251,10 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         adbService.uninstallApp(deviceID: deviceID, packageID: packageID)
     }
 
+    func clearAppData(deviceID: String, packageID: String) {
+        adbService.clearAppData(deviceID: deviceID, packageID: packageID)
+    }
+
     // MARK: - Quick Actions
     func reboot(deviceID: String, mode: RebootMode) {
         adbService.reboot(deviceID: deviceID, mode: mode)

@@ -806,6 +806,17 @@ final class ADBService: ADBServiceProtocol {
         }
     }
     
+    func clearAppData(deviceID: String, packageID: String) {
+        executeADBCommand(arguments: ["-s", deviceID, "shell", "pm", "clear", packageID]) { [weak self] success, output, errorOutput in
+            guard let self else { return }
+            if success {
+                // Success usually returns "Success"
+            } else {
+                self.error.send("Failed to clear app data for \(packageID): \(errorOutput ?? "Unknown error")")
+            }
+        }
+    }
+    
     private func showScrcpyErrorAlert(errorMessage: String) {
 #if canImport(AppKit)
         DispatchQueue.main.async {

@@ -39,6 +39,7 @@ protocol ADBServiceProtocol {
     func disconnectDevice(deviceID: String)
     func installAPK(deviceID: String, apkPath: String)
     func uninstallApp(deviceID: String, packageID: String)
+    func clearAppData(deviceID: String, packageID: String)
     
     // Quick Actions
     func reboot(deviceID: String, mode: RebootMode)

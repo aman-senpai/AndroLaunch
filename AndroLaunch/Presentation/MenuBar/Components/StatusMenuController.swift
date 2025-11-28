@@ -416,9 +416,20 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
             loadingItem.isEnabled = false
             submenu.addItem(loadingItem)
         } else if !deviceApps.isEmpty {
-            let appsMenuItem = NSMenuItem()
-            appsMenuItem.view = createAppListView(for: deviceApps, deviceID: device.id)
-            submenu.addItem(appsMenuItem)
+            // Search Field
+            let searchItem = NSMenuItem()
+            let searchView = SearchMenuItemView(deviceID: device.id, delegate: self)
+            searchItem.view = searchView
+            submenu.addItem(searchItem)
+            
+            submenu.addItem(NSMenuItem.separator())
+            
+            // App Items
+            for app in deviceApps {
+                let appItem = createAppMenuItem(app: app, deviceID: device.id)
+                submenu.addItem(appItem)
+            }
+            
             submenu.addItem(NSMenuItem.separator())
         } else if device.id == currentDeviceID {
             let statusItem = NSMenuItem(
@@ -441,57 +452,42 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         submenu.addItem(refreshAppsItem)
     }
     
-    // MARK: - Scrollable App List with Search
-    private var handlerKey: UInt8 = 0
+    // MARK: - App List Menu Items
     
     private func createAppListView(for apps: [AndroidApp], deviceID: String) -> NSView {
-        let containerView = NSView(frame: CGRect(x: 0, y: 0, width: 300, height: 250))
+        // This method is no longer used for the main list, but we might need a container for the search field
+        // if we want it to look a specific way.
+        // However, we are moving to direct menu items.
+        return NSView()
+    }
+    
+    // Custom View for Search Field in Menu
+    private class SearchMenuItemView: NSView {
+        let searchField: DeviceSearchField
         
-        // Add custom search field with improved styling
-        let searchField = DeviceSearchField(frame: NSRect(x: 8, y: 222, width: 284, height: 22))
-        searchField.placeholderString = "Search apps..."
-        searchField.delegate = self
-        searchField.deviceID = deviceID
-        searchField.focusRingType = .none
-        searchField.bezelStyle = .roundedBezel
-        searchField.font = NSFont.systemFont(ofSize: 13)
-        containerView.addSubview(searchField)
-        
-        // Make search field first responder when menu opens
-        DispatchQueue.main.async {
-            searchField.becomeFirstResponder()
+        init(deviceID: String, delegate: NSSearchFieldDelegate) {
+            searchField = DeviceSearchField(frame: .zero)
+            super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 30))
+            
+            searchField.deviceID = deviceID
+            searchField.delegate = delegate
+            searchField.placeholderString = "Search apps..."
+            searchField.focusRingType = .none
+            searchField.bezelStyle = .roundedBezel
+            searchField.font = NSFont.systemFont(ofSize: 13)
+            searchField.translatesAutoresizingMaskIntoConstraints = false
+            
+            addSubview(searchField)
+            
+            NSLayoutConstraint.activate([
+                searchField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+                searchField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+                searchField.centerYAnchor.constraint(equalTo: centerYAnchor),
+                searchField.heightAnchor.constraint(equalToConstant: 22)
+            ])
         }
         
-        // Configure scroll view and table view with improved styling
-        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 300, height: 220))
-        scrollView.hasVerticalScroller = true
-        scrollView.borderType = .noBorder
-        scrollView.drawsBackground = false
-        
-        let tableView = NSTableView()
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("AppColumn"))
-        column.width = 280
-        tableView.addTableColumn(column)
-        tableView.headerView = nil
-        tableView.rowHeight = 28
-        tableView.backgroundColor = .clear
-        tableView.selectionHighlightStyle = .none
-        
-        let handler = AppsTableViewHandler(originalApps: apps, deviceID: deviceID, controller: self)
-        tableView.dataSource = handler
-        tableView.delegate = handler
-        
-        objc_setAssociatedObject(
-            tableView,
-            &handlerKey,
-            handler,
-            .OBJC_ASSOCIATION_RETAIN
-        )
-        
-        scrollView.documentView = tableView
-        containerView.addSubview(scrollView)
-        
-        return containerView
+        required init?(coder: NSCoder) { fatalError() }
     }
     
     // MARK: - NSSearchFieldDelegate
@@ -500,20 +496,126 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
               let deviceID = searchField.deviceID else { return }
         
         let searchText = searchField.stringValue.lowercased()
-        
-        // Find the associated table view and handler
-        guard let containerView = searchField.superview,
-              let scrollView = containerView.subviews.first(where: { $0 is NSScrollView }) as? NSScrollView,
-              let tableView = scrollView.documentView as? NSTableView,
-              let handler = objc_getAssociatedObject(tableView, &handlerKey) as? AppsTableViewHandler else { return }
-        
-        handler.searchText = searchText
-        tableView.reloadData()
-        // Scroll to top when search changes
-        tableView.scrollRowToVisible(0)
+        updateAppMenuItems(for: deviceID, filter: searchText)
     }
     
-    fileprivate func launchApp(deviceID: String, appID: String, appName: String) {
+    private func updateAppMenuItems(for deviceID: String, filter: String) {
+        guard let menu = statusItem.menu,
+              let deviceItem = menu.items.first(where: { ($0.representedObject as? String) == deviceID }),
+              let submenu = deviceItem.submenu else { return }
+        
+        // 1. Find the start of the app list
+        // We can identify it by looking for the separator after the resolution item, or the search item.
+        // Let's rely on tags or known structure.
+        // Structure: ... -> Resolution -> Separator -> Search -> Apps -> Separator -> Refresh
+        
+        // Let's tag the Search Item to find it easily.
+        // Or just iterate.
+        
+        var startIndex = -1
+        for (index, item) in submenu.items.enumerated() {
+            if item.view is SearchMenuItemView {
+                startIndex = index + 1
+                break
+            }
+        }
+        
+        guard startIndex != -1 else { return }
+        
+        // 2. Remove existing app items until we hit the separator before "Refresh Apps"
+        // "Refresh Apps" is the last item.
+        // So we remove from startIndex until (count - 1)
+        
+        let endIndex = submenu.items.count - 1 // The last item is Refresh Apps
+        
+        if startIndex < endIndex {
+            // Remove items in range
+            // Note: removing items shifts indices, so we remove from startIndex repeatedly
+            let countToRemove = endIndex - startIndex
+            for _ in 0..<countToRemove {
+                submenu.removeItem(at: startIndex)
+            }
+        }
+        
+        // 3. Add filtered apps
+        let apps = viewModel.deviceApps[deviceID] ?? []
+        let filteredApps: [AndroidApp]
+        if filter.isEmpty {
+            filteredApps = apps
+        } else {
+            let searchTerms = filter.lowercased().split(separator: " ")
+            filteredApps = apps.filter { app in
+                let appName = app.name.lowercased()
+                let appId = app.id.lowercased()
+                return searchTerms.allSatisfy { term in
+                    appName.contains(term) || appId.contains(term)
+                }
+            }
+        }
+        
+        // Insert items at startIndex
+        for (offset, app) in filteredApps.enumerated() {
+            let appItem = createAppMenuItem(app: app, deviceID: deviceID)
+            submenu.insertItem(appItem, at: startIndex + offset)
+        }
+    }
+    
+    private func createAppMenuItem(app: AndroidApp, deviceID: String) -> NSMenuItem {
+        let item = NSMenuItem(title: app.name, action: nil, keyEquivalent: "")
+        item.image = NSImage(systemSymbolName: AppIconMapper.getIconName(for: app), accessibilityDescription: nil)
+        item.image?.size = NSSize(width: 16, height: 16)
+        
+        let submenu = NSMenu()
+        
+        // Launch
+        let launchItem = NSMenuItem(title: "Launch", action: #selector(launchAppAction(_:)), keyEquivalent: "")
+        launchItem.target = self
+        launchItem.representedObject = AppActionData(app: app, deviceID: deviceID)
+        launchItem.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: "Launch")
+        submenu.addItem(launchItem)
+        
+        submenu.addItem(NSMenuItem.separator())
+        
+        // Clear Data
+        let clearDataItem = NSMenuItem(title: "Clear Data", action: #selector(clearDataAction(_:)), keyEquivalent: "")
+        clearDataItem.target = self
+        clearDataItem.representedObject = AppActionData(app: app, deviceID: deviceID)
+        clearDataItem.image = NSImage(systemSymbolName: "trash.slash", accessibilityDescription: "Clear Data")
+        submenu.addItem(clearDataItem)
+        
+        // Uninstall
+        let uninstallItem = NSMenuItem(title: "Uninstall", action: #selector(uninstallAction(_:)), keyEquivalent: "")
+        uninstallItem.target = self
+        uninstallItem.representedObject = AppActionData(app: app, deviceID: deviceID)
+        uninstallItem.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Uninstall")
+        submenu.addItem(uninstallItem)
+        
+        item.submenu = submenu
+        return item
+    }
+    
+    // Helper struct for actions
+    private struct AppActionData {
+        let app: AndroidApp
+        let deviceID: String
+    }
+    
+    @objc private func launchAppAction(_ sender: NSMenuItem) {
+        guard let data = sender.representedObject as? AppActionData else { return }
+        launchApp(deviceID: data.deviceID, appID: data.app.id, appName: data.app.name)
+    }
+    
+    @objc private func clearDataAction(_ sender: NSMenuItem) {
+        guard let data = sender.representedObject as? AppActionData else { return }
+        clearAppData(deviceID: data.deviceID, app: data.app)
+    }
+    
+    @objc private func uninstallAction(_ sender: NSMenuItem) {
+        guard let data = sender.representedObject as? AppActionData else { return }
+        uninstallApp(deviceID: data.deviceID, app: data.app)
+    }
+    
+    private func launchApp(deviceID: String, appID: String, appName: String) {
         viewModel.launchApp(packageID: appID, deviceID: deviceID, appName: appName)
         NSApp.stopModal()
     }
@@ -780,6 +882,23 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
             viewModel.uninstallApp(deviceID: deviceID, packageID: app.id)
         }
     }
+
+    func clearAppData(deviceID: String, app: AndroidApp) {
+        let alert = NSAlert()
+        alert.messageText = "Clear Data for \(app.name)?"
+        alert.informativeText = "Are you sure you want to clear all data for this app? This includes accounts, settings, and files. This action cannot be undone."
+        alert.addButton(withTitle: "Clear Data")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .warning
+        
+        // Bring alert to front
+        NSApp.activate(ignoringOtherApps: true)
+        
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            viewModel.repository.clearAppData(deviceID: deviceID, packageID: app.id)
+        }
+    }
 }
 
 extension StatusMenuController: NSMenuDelegate {
@@ -798,250 +917,7 @@ extension StatusMenuController: NSMenuDelegate {
 }
 
 // MARK: - Table View Components with Search Support
-private final class AppsTableViewHandler: NSObject, NSTableViewDataSource, NSTableViewDelegate {
-    let originalApps: [AndroidApp]
-    var filteredApps: [AndroidApp] = []
-    let deviceID: String
-    weak var controller: StatusMenuController?
-    var searchText: String = "" {
-        didSet {
-            filterApps()
-        }
-    }
-    
-    init(originalApps: [AndroidApp], deviceID: String, controller: StatusMenuController) {
-        self.originalApps = originalApps
-        self.deviceID = deviceID
-        self.controller = controller
-        super.init()
-        filterApps()
-    }
-    
-    private func filterApps() {
-        if searchText.isEmpty {
-            filteredApps = originalApps
-        } else {
-            filteredApps = originalApps.filter { app in
-                // Fuzzy search implementation
-                let searchTerms = searchText.lowercased().split(separator: " ")
-                let appName = app.name.lowercased()
-                let appId = app.id.lowercased()
-                
-                return searchTerms.allSatisfy { term in
-                    appName.contains(term) || appId.contains(term)
-                }
-            }
-        }
-    }
-    
-    func numberOfRows(in tableView: NSTableView) -> Int {
-        return filteredApps.count
-    }
-    
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let app = filteredApps[row]
-        
-        let containerView = NSView()
-        
-        // App icon with dynamic selection based on app type
-        let iconView = NSImageView(frame: NSRect(x: 8, y: 4, width: 20, height: 20))
-        let iconName = getAppIconName(for: app)
-        iconView.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "App Icon")
-        iconView.image?.size = NSSize(width: 20, height: 20)
-        containerView.addSubview(iconView)
-        
-        // App name
-        let textField = NSTextField(labelWithString: app.name)
-        textField.font = NSFont.menuFont(ofSize: 14)
-        textField.textColor = NSColor.controlTextColor
-        textField.drawsBackground = false
-        textField.frame = NSRect(x: 36, y: 4, width: 200, height: 20)
-        containerView.addSubview(textField)
-        
-        // Trash/Uninstall Button
-        let trashButton = NSButton()
-        trashButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Uninstall")
-        trashButton.image?.size = NSSize(width: 12, height: 12)
-        trashButton.bezelStyle = .inline
-        trashButton.isBordered = false
-        trashButton.toolTip = "Uninstall App"
-        trashButton.frame = NSRect(x: 250, y: 4, width: 20, height: 20)
-        trashButton.target = self // The handler handles the action dispatch
-        trashButton.action = #selector(uninstallClicked(_:))
-        
-        // Store app and controller info in the button (using a subclass would be cleaner, but tag/associated object works too)
-        // Let's use a subclass wrapper or just find the row index.
-        // Since we are in viewFor, we know the app.
-        // We can use a custom button class.
-        let customBtn = AppActionButton()
-        customBtn.app = app
-        customBtn.deviceID = deviceID
-        customBtn.image = trashButton.image
-        customBtn.bezelStyle = trashButton.bezelStyle
-        customBtn.isBordered = trashButton.isBordered
-        customBtn.toolTip = trashButton.toolTip
-        customBtn.frame = trashButton.frame
-        customBtn.target = self
-        customBtn.action = #selector(uninstallClicked(_:))
-        
-        containerView.addSubview(customBtn)
-        
-        return containerView
-    }
-    
-    @objc private func uninstallClicked(_ sender: AppActionButton) {
-        guard let app = sender.app, let deviceID = sender.deviceID else { return }
-        controller?.uninstallApp(deviceID: deviceID, app: app)
-    }
-    
-    private func getAppIconName(for app: AndroidApp) -> String {
-        return AppIconMapper.getIconName(for: app)
-    }
-    
-    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        let identifier = NSUserInterfaceItemIdentifier("RowView")
-        var rowView = tableView.makeView(withIdentifier: identifier, owner: self) as? MenuTableRowView
-        if rowView == nil {
-            rowView = MenuTableRowView()
-            rowView?.identifier = identifier
-        }
-        return rowView
-    }
-    
-    func tableView(_ tableView: NSTableView, keyDown event: NSEvent) {
-        switch event.keyCode {
-        case 125: // Down arrow
-            if tableView.selectedRow < tableView.numberOfRows - 1 {
-                let newRow = tableView.selectedRow + 1
-                tableView.selectRowIndexes(IndexSet(integer: newRow), byExtendingSelection: false)
-                tableView.scrollRowToVisible(newRow)
-            }
-        case 126: // Up arrow
-            if tableView.selectedRow > 0 {
-                let newRow = tableView.selectedRow - 1
-                tableView.selectRowIndexes(IndexSet(integer: newRow), byExtendingSelection: false)
-                tableView.scrollRowToVisible(newRow)
-            }
-        case 36: // Return
-            if tableView.selectedRow >= 0 {
-                let app = filteredApps[tableView.selectedRow]
-                controller?.launchApp(deviceID: deviceID, appID: app.id, appName: app.name)
-            }
-        default:
-            break
-        }
-    }
-    
-    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-        return true
-    }
-    
-    func tableViewSelectionDidChange(_ notification: Notification) {
-        guard let tableView = notification.object as? NSTableView else { return }
-        let row = tableView.selectedRow
-        guard row >= 0 else { return }
-        let app = filteredApps[row]
-        controller?.launchApp(deviceID: deviceID, appID: app.id, appName: app.name)
-    }
-}
 
-private final class MenuTableRowView: NSTableRowView {
-    private let hoverEffectView: NSVisualEffectView = {
-        let view = NSVisualEffectView()
-        view.material = .selection
-        view.state = .active
-        view.blendingMode = .withinWindow
-        view.isEmphasized = true
-        view.wantsLayer = true
-        view.layer?.cornerRadius = 4.0
-        view.layer?.masksToBounds = true
-        view.alphaValue = 0
-        return view
-    }()
-    
-    private var trackingArea: NSTrackingArea?
-    
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        addSubview(hoverEffectView)
-    }
-    
-    required init?(coder: NSCoder) { fatalError() }
-    
-    override func layout() {
-        super.layout()
-        hoverEffectView.frame = bounds.insetBy(dx: 4, dy: 0)
-    }
-    
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingArea = trackingArea {
-            removeTrackingArea(trackingArea)
-        }
-        
-        // Use activeInActiveApp to ensure we track even if the menu window isn't key (though it usually is)
-        // .inVisibleRect is crucial for scrolling
-        trackingArea = NSTrackingArea(
-            rect: bounds,
-            options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(trackingArea!)
-        
-        // Check if mouse is already inside when tracking areas are updated (e.g. after scroll)
-        if let window = self.window {
-            let mouseLocation = window.mouseLocationOutsideOfEventStream
-            let localPoint = self.convert(mouseLocation, from: nil)
-            if self.visibleRect.contains(localPoint) {
-                animateHover(visible: true)
-            } else {
-                animateHover(visible: false)
-            }
-        }
-    }
-    
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        hoverEffectView.layer?.removeAllAnimations()
-        hoverEffectView.alphaValue = 0
-    }
-    
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if window == nil {
-            hoverEffectView.layer?.removeAllAnimations()
-            hoverEffectView.alphaValue = 0
-        }
-    }
-    
-    override func mouseEntered(with event: NSEvent) {
-        animateHover(visible: true)
-    }
-    
-    override func mouseExited(with event: NSEvent) {
-        animateHover(visible: false)
-    }
-    
-    private func animateHover(visible: Bool) {
-        if visible {
-            // Only animate if not already visible to prevent flickering
-            if hoverEffectView.alphaValue < 1 {
-                NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.05
-                    hoverEffectView.animator().alphaValue = 1
-                }
-            }
-        } else {
-            // Instant removal
-            hoverEffectView.layer?.removeAllAnimations()
-            hoverEffectView.alphaValue = 0
-        }
-    }
-    
-    override func drawSelection(in dirtyRect: NSRect) {
-    }
-}
 
 // MARK: - Device Menu Item View with Hover Effect
 private final class DeviceMenuItemView: NSView {
