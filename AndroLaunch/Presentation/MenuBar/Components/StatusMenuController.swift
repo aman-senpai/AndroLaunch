@@ -7,7 +7,7 @@ import AppKit
 import Combine
 import SwiftUI
 
-final class StatusMenuController: NSObject {
+final class StatusMenuController: NSObject, NSSearchFieldDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let viewModel: MenuViewModel
     private var cancellables = Set<AnyCancellable>()
@@ -450,13 +450,11 @@ final class StatusMenuController: NSObject {
         // Add custom search field with improved styling
         let searchField = DeviceSearchField(frame: NSRect(x: 8, y: 222, width: 284, height: 22))
         searchField.placeholderString = "Search apps..."
-        searchField.target = self
-        searchField.action = #selector(searchFieldChanged(_:))
+        searchField.delegate = self
         searchField.deviceID = deviceID
         searchField.focusRingType = .none
         searchField.bezelStyle = .roundedBezel
         searchField.font = NSFont.systemFont(ofSize: 13)
-        searchField.isContinuous = false // Disable real-time search
         containerView.addSubview(searchField)
         
         // Make search field first responder when menu opens
@@ -496,12 +494,15 @@ final class StatusMenuController: NSObject {
         return containerView
     }
     
-    @objc private func searchFieldChanged(_ sender: DeviceSearchField) {
-        guard sender.deviceID != nil else { return }
-        let searchText = sender.stringValue.lowercased()
+    // MARK: - NSSearchFieldDelegate
+    func controlTextDidChange(_ obj: Notification) {
+        guard let searchField = obj.object as? DeviceSearchField,
+              let deviceID = searchField.deviceID else { return }
+        
+        let searchText = searchField.stringValue.lowercased()
         
         // Find the associated table view and handler
-        guard let containerView = sender.superview,
+        guard let containerView = searchField.superview,
               let scrollView = containerView.subviews.first(where: { $0 is NSScrollView }) as? NSScrollView,
               let tableView = scrollView.documentView as? NSTableView,
               let handler = objc_getAssociatedObject(tableView, &handlerKey) as? AppsTableViewHandler else { return }
