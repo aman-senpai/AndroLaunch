@@ -824,6 +824,99 @@ final class ADBService: ADBServiceProtocol {
         }
     }
     
+    // MARK: - Camera Mirroring
+    func mirrorCamera(deviceID: String, deviceName: String?, audioEnabled: Bool, facing: String?, fps: Int?, size: Int?, bitRate: Int?, orientation: String?, aspectRatio: String?) {
+        guard let adbPath = currentADBPath else {
+            let errorMessage = "ADB executable path not set. Cannot mirror camera."
+            self.error.send(errorMessage)
+            self.findADB()
+            return
+        }
+        
+        guard let scrcpyPath = findScrcpyPath() else {
+            let errorMessage = "SCRCPY executable not found."
+            self.error.send(errorMessage)
+            return
+        }
+        
+        // Sanitize deviceID
+        var cleanDeviceID = deviceID
+        if cleanDeviceID.contains(".:") {
+            cleanDeviceID = cleanDeviceID.replacingOccurrences(of: ".:", with: ":")
+        }
+        
+        var args = ["--serial", cleanDeviceID, "--window-title", "\(deviceName ?? deviceID) (Camera)"]
+        args.append("--video-source=camera")
+        
+        if let facing = facing, !facing.isEmpty, facing != "Auto" {
+            args.append("--camera-facing")
+            args.append(facing.lowercased())
+        }
+        
+        if let fps = fps, fps > 0 {
+            args.append("--camera-fps")
+            args.append("\(fps)")
+        }
+        
+        // Note: If size is specified, --camera-ar is forbidden according to docs?
+        // User request: "If --camera-size is specified, then -m/--max-size and --camera-ar are forbidden"
+        // But our "size" parameter maps to "-m" (max size) in the previous implementation?
+        // Let's check previous implementation:
+        // if let size = size, size > 0 { args.append("-m"); args.append("\(size)") }
+        // Wait, for camera, -m is supported.
+        // But --camera-size is explicit size.
+        // The user request says: "Two constraints are supported: -m/--max-size ... ; --camera-ar ..."
+        // "If --camera-size is specified, then -m/--max-size and --camera-ar are forbidden"
+        // In our UI, "Camera Size" currently maps to `-m` (max size) based on my previous edit?
+        // Let's re-read my previous edit to ADBService.swift.
+        // Previous edit:
+        // if let size = size, size > 0 { args.append("-m"); args.append("\(size)") }
+        // So we are using max-size, not explicit camera-size.
+        // So we CAN use --camera-ar with -m.
+        
+        if let size = size, size > 0 {
+            args.append("-m")
+            args.append("\(size)")
+        }
+        
+        if let aspectRatio = aspectRatio, !aspectRatio.isEmpty, aspectRatio != "Auto" {
+            args.append("--camera-ar")
+            args.append(aspectRatio)
+        }
+        
+        if let bitRate = bitRate, bitRate > 0 {
+            args.append("--video-bit-rate")
+            args.append("\(bitRate)M")
+        }
+        
+        if let orientation = orientation, !orientation.isEmpty, orientation != "Auto" {
+            args.append("--orientation")
+            args.append(orientation)
+        }
+        
+        if !audioEnabled {
+            args.append("--no-audio")
+        }
+        
+        // Run scrcpy
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: scrcpyPath)
+        task.arguments = args
+        
+        var env = ProcessInfo.processInfo.environment
+        env["ADB"] = adbPath
+        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+        task.environment = env
+        
+        do {
+            try task.run()
+            runningScrcpyProcesses[deviceID] = task
+        } catch {
+            let errorMessage = "Failed to launch SCRCPY camera mirroring for \(deviceID): \(error.localizedDescription)"
+            self.error.send(errorMessage)
+        }
+    }
+    
     // MARK: - Clipboard Sync Service
     func startClipboardSync(deviceID: String) {
         // Check if already running

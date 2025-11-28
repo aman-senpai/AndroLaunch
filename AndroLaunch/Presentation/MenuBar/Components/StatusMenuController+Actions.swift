@@ -127,16 +127,9 @@ extension StatusMenuController {
         }
     }
     
-    @objc func launchFrontCamera(_ sender: NSButton) {
+    @objc func mirrorCamera(_ sender: NSButton) {
         if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
-            viewModel.launchCamera(deviceID: deviceID, facing: .front)
-            if let menu = statusItem.menu { menu.cancelTracking() }
-        }
-    }
-    
-    @objc func launchBackCamera(_ sender: NSButton) {
-        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
-            viewModel.launchCamera(deviceID: deviceID, facing: .back)
+            viewModel.mirrorCamera(deviceID: deviceID)
             if let menu = statusItem.menu { menu.cancelTracking() }
         }
     }

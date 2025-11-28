@@ -143,6 +143,47 @@ final class MenuViewModel: ObservableObject {
         objectWillChange.send()
     }
     
+    // MARK: - Camera
+    func setCameraFacing(for deviceID: String, facing: String) {
+        repository.setCameraFacing(for: deviceID, facing: facing)
+        objectWillChange.send()
+    }
+    
+    func getCameraFacing(for deviceID: String) -> String {
+        return repository.getCameraFacing(for: deviceID)
+    }
+    
+    func setCameraFPS(for deviceID: String, fps: Int) {
+        repository.setCameraFPS(for: deviceID, fps: fps)
+        objectWillChange.send()
+    }
+    
+    func getCameraFPS(for deviceID: String) -> Int {
+        return repository.getCameraFPS(for: deviceID)
+    }
+    
+    func setCameraSize(for deviceID: String, size: Int) {
+        repository.setCameraSize(for: deviceID, size: size)
+        objectWillChange.send()
+    }
+    
+    func getCameraSize(for deviceID: String) -> Int {
+        return repository.getCameraSize(for: deviceID)
+    }
+    
+    func setCameraAR(for deviceID: String, ar: String) {
+        repository.setCameraAR(for: deviceID, ar: ar)
+        objectWillChange.send()
+    }
+    
+    func getCameraAR(for deviceID: String) -> String {
+        return repository.getCameraAR(for: deviceID)
+    }
+    
+    func mirrorCamera(deviceID: String) {
+        repository.mirrorCamera(deviceID: deviceID)
+    }
+    
     var adbPath: String? { repository.adbPath }
 
     // MARK: - Quick Actions

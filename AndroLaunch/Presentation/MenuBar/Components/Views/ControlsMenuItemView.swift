@@ -13,7 +13,7 @@ class DeviceActionButton: NSButton {
 
 final class ControlsMenuItemView: NSView {
     
-    init(deviceID: String, isWireless: Bool, target: AnyObject, frontCamAction: Selector, backCamAction: Selector, mirrorAction: Selector, installAction: Selector, shellAction: Selector, disconnectAction: Selector) {
+    init(deviceID: String, isWireless: Bool, target: AnyObject, mirrorAction: Selector, mirrorCameraAction: Selector, installAction: Selector, shellAction: Selector, disconnectAction: Selector) {
         super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 44)) // Reduced height
         
         // Helper to configure button size
@@ -28,11 +28,9 @@ final class ControlsMenuItemView: NSView {
         
         // Buttons
         let mirrorBtn = config(createButton(imageName: "display", tooltip: "Mirror Device", target: target, action: mirrorAction, deviceID: deviceID))
+        let mirrorCamBtn = config(createButton(imageName: "camera", tooltip: "Mirror Camera", target: target, action: mirrorCameraAction, deviceID: deviceID))
         let installBtn = config(createButton(imageName: "shippingbox", tooltip: "Install APK", target: target, action: installAction, deviceID: deviceID))
         let shellBtn = config(createButton(imageName: "terminal", tooltip: "Open ADB Shell", target: target, action: shellAction, deviceID: deviceID))
-        
-        let frontCamBtn = config(createButton(imageName: "person.fill.viewfinder", tooltip: "Front Camera", target: target, action: frontCamAction, deviceID: deviceID))
-        let backCamBtn = config(createButton(imageName: "camera", tooltip: "Back Camera", target: target, action: backCamAction, deviceID: deviceID))
         
         var disconnectBtn: NSButton?
         if isWireless {
@@ -41,7 +39,7 @@ final class ControlsMenuItemView: NSView {
         
         // Grid Layout
         let gridView = NSGridView(views: [
-            [mirrorBtn, installBtn, shellBtn, frontCamBtn, backCamBtn, disconnectBtn ?? NSGridCell.emptyContentView]
+            [mirrorBtn, mirrorCamBtn, installBtn, shellBtn, disconnectBtn ?? NSGridCell.emptyContentView]
         ])
         
         gridView.translatesAutoresizingMaskIntoConstraints = false

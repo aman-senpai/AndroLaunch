@@ -119,9 +119,8 @@ extension StatusMenuController {
             deviceID: device.id,
             isWireless: isWireless,
             target: self,
-            frontCamAction: #selector(launchFrontCamera(_:)),
-            backCamAction: #selector(launchBackCamera(_:)),
             mirrorAction: #selector(mirrorDevice(_:)),
+            mirrorCameraAction: #selector(mirrorCamera(_:)),
             installAction: #selector(installAPK(_:)),
             shellAction: #selector(launchShell(_:)),
             disconnectAction: #selector(disconnectDevice(_:))

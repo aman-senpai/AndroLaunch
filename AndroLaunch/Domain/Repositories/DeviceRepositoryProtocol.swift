@@ -58,6 +58,21 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     func toggleCaptureOrientation(for deviceID: String)
     func isCaptureOrientationEnabled(for deviceID: String) -> Bool
     
+    // Camera Preferences
+    func setCameraFacing(for deviceID: String, facing: String)
+    func getCameraFacing(for deviceID: String) -> String
+    
+    func setCameraFPS(for deviceID: String, fps: Int)
+    func getCameraFPS(for deviceID: String) -> Int
+    
+    func setCameraSize(for deviceID: String, size: Int)
+    func getCameraSize(for deviceID: String) -> Int
+    
+    func setCameraAR(for deviceID: String, ar: String)
+    func getCameraAR(for deviceID: String) -> String
+    
+    func mirrorCamera(deviceID: String)
+    
     // Quick Actions
     func reboot(deviceID: String, mode: RebootMode)
     func toggleWiFi(deviceID: String, enable: Bool)

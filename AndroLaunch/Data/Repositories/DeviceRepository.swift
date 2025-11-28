@@ -296,6 +296,68 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         return captureOrientationEnabledPreferences[deviceID] ?? false
     }
     
+    // Camera Preferences
+    private var cameraFacingPreferences: [String: String] = [:]
+    private var cameraFPSPreferences: [String: Int] = [:]
+    private var cameraSizePreferences: [String: Int] = [:]
+    private var cameraARPreferences: [String: String] = [:]
+    
+    func setCameraFacing(for deviceID: String, facing: String) {
+        cameraFacingPreferences[deviceID] = facing
+    }
+    
+    func getCameraFacing(for deviceID: String) -> String {
+        return cameraFacingPreferences[deviceID] ?? "Auto"
+    }
+    
+    func setCameraFPS(for deviceID: String, fps: Int) {
+        cameraFPSPreferences[deviceID] = fps
+    }
+    
+    func getCameraFPS(for deviceID: String) -> Int {
+        return cameraFPSPreferences[deviceID] ?? 0 // Default 0 (Default/30)
+    }
+    
+    func setCameraSize(for deviceID: String, size: Int) {
+        cameraSizePreferences[deviceID] = size
+    }
+    
+    func getCameraSize(for deviceID: String) -> Int {
+        return cameraSizePreferences[deviceID] ?? 0 // Default 0 (Original)
+    }
+    
+    func setCameraAR(for deviceID: String, ar: String) {
+        cameraARPreferences[deviceID] = ar
+    }
+    
+    func getCameraAR(for deviceID: String) -> String {
+        return cameraARPreferences[deviceID] ?? "Auto"
+    }
+    
+    func mirrorCamera(deviceID: String) {
+        let audioEnabled = isAudioEnabled(for: deviceID)
+        let facing = getCameraFacing(for: deviceID)
+        let fps = getCameraFPS(for: deviceID)
+        let size = getCameraSize(for: deviceID)
+        let ar = getCameraAR(for: deviceID)
+        let bitRate = getBitRate(for: deviceID) // Reuse bit rate
+        let orientation = getOrientation(for: deviceID)
+        
+        let deviceName = devices.first(where: { $0.id == deviceID })?.name
+        
+        adbService.mirrorCamera(
+            deviceID: deviceID,
+            deviceName: deviceName,
+            audioEnabled: audioEnabled,
+            facing: facing,
+            fps: fps,
+            size: size,
+            bitRate: bitRate,
+            orientation: orientation,
+            aspectRatio: ar
+        )
+    }
+    
     func launchApp(packageID: String, deviceID: String, appName: String) {
         let audioEnabled = isAudioEnabled(for: deviceID)
         let clipboardEnabled = isClipboardEnabled(for: deviceID)
