@@ -43,3 +43,5 @@ fastlane/test_output
 .env
 .idea/
 *.swp
+misc/scrcpy_doc/
+misc/
