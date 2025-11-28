@@ -61,7 +61,7 @@ final class MenuViewModel: ObservableObject {
         currentDeviceID = deviceID
         repository.forceRefreshApps(for: deviceID)
     }
-    func launchApp(packageID: String, deviceID: String) { repository.launchApp(packageID: packageID, deviceID: deviceID) }
+    func launchApp(packageID: String, deviceID: String, appName: String) { repository.launchApp(packageID: packageID, deviceID: deviceID, appName: appName) }
     func mirrorDevice(deviceID: String) { repository.mirrorDevice(deviceID: deviceID) }
     func launchCamera(deviceID: String, facing: CameraFacing) { repository.launchCamera(deviceID: deviceID, facing: facing) }
     func disconnectDevice(deviceID: String) { repository.disconnectDevice(deviceID: deviceID) }

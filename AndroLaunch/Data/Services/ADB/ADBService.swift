@@ -451,7 +451,7 @@ final class ADBService: ADBServiceProtocol {
     }
     
     // MARK: - App Launching & Mirroring (using SCRCPY)
-    func launchApp(packageID: String, deviceID: String, audioEnabled: Bool, resolution: Int) {
+    func launchApp(packageID: String, deviceID: String, appName: String?, deviceName: String?, audioEnabled: Bool, resolution: Int) {
         guard let adbPath = currentADBPath else {
             let errorMessage = "ADB executable path not set. Cannot launch app with scrcpy."
             error.send(errorMessage)
@@ -493,7 +493,7 @@ final class ADBService: ADBServiceProtocol {
         var args = [
             "--serial", cleanDeviceID,
             "--stay-awake",
-            "--window-title", "\(packageID)",
+            "--window-title", "\(deviceName ?? deviceID) - \(appName ?? packageID)",
             "--new-display",
             "-m \(resolution)",
             "--start-app", packageID,
@@ -666,7 +666,7 @@ final class ADBService: ADBServiceProtocol {
     
     // MARK: - Optional Mirroring Function
     // Mirrors the entire device screen using scrcpy (without launching a specific app)
-    func mirrorDevice(deviceID: String, audioEnabled: Bool) {
+    func mirrorDevice(deviceID: String, deviceName: String?, audioEnabled: Bool) {
         guard let adbPath = currentADBPath else {
             let errorMessage = "ADB executable path not set. Cannot mirror device with scrcpy."
             self.error.send(errorMessage)
@@ -702,7 +702,7 @@ final class ADBService: ADBServiceProtocol {
         task.executableURL = URL(fileURLWithPath: scrcpyPath)
         
         // scrcpy arguments for mirroring
-        var args = ["--serial", deviceID, "--window-title", "\(deviceID)"]
+        var args = ["--serial", deviceID, "--window-title", "\(deviceName ?? deviceID)"]
         if !audioEnabled {
             args.append("--no-audio")
         }

@@ -512,8 +512,8 @@ final class StatusMenuController: NSObject {
         tableView.scrollRowToVisible(0)
     }
     
-    fileprivate func launchApp(deviceID: String, appID: String) {
-        viewModel.launchApp(packageID: appID, deviceID: deviceID)
+    fileprivate func launchApp(deviceID: String, appID: String, appName: String) {
+        viewModel.launchApp(packageID: appID, deviceID: deviceID, appName: appName)
         NSApp.stopModal()
     }
     
@@ -924,7 +924,7 @@ private final class AppsTableViewHandler: NSObject, NSTableViewDataSource, NSTab
         case 36: // Return
             if tableView.selectedRow >= 0 {
                 let app = filteredApps[tableView.selectedRow]
-                controller?.launchApp(deviceID: deviceID, appID: app.id)
+                controller?.launchApp(deviceID: deviceID, appID: app.id, appName: app.name)
             }
         default:
             break
@@ -939,7 +939,8 @@ private final class AppsTableViewHandler: NSObject, NSTableViewDataSource, NSTab
         guard let tableView = notification.object as? NSTableView else { return }
         let row = tableView.selectedRow
         guard row >= 0 else { return }
-        controller?.launchApp(deviceID: deviceID, appID: filteredApps[row].id)
+        let app = filteredApps[row]
+        controller?.launchApp(deviceID: deviceID, appID: app.id, appName: app.name)
     }
 }
 

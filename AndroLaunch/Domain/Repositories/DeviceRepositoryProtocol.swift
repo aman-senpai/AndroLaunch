@@ -26,7 +26,7 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     func refreshDevices()
     func fetchApps(for deviceID: String)
     func forceRefreshApps(for deviceID: String)
-    func launchApp(packageID: String, deviceID: String)
+    func launchApp(packageID: String, deviceID: String, appName: String)
     func mirrorDevice(deviceID: String)
     func launchCamera(deviceID: String, facing: CameraFacing)
     func disconnectDevice(deviceID: String)

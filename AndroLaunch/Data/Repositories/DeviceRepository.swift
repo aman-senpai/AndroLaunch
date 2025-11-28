@@ -215,15 +215,17 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         return resolutionPreferences[deviceID] ?? 900 // Default to 900p
     }
     
-    func launchApp(packageID: String, deviceID: String) {
+    func launchApp(packageID: String, deviceID: String, appName: String) {
         let audioEnabled = isAudioEnabled(for: deviceID)
         let resolution = getResolution(for: deviceID)
-        adbService.launchApp(packageID: packageID, deviceID: deviceID, audioEnabled: audioEnabled, resolution: resolution)
+        let deviceName = devices.first(where: { $0.id == deviceID })?.name
+        adbService.launchApp(packageID: packageID, deviceID: deviceID, appName: appName, deviceName: deviceName, audioEnabled: audioEnabled, resolution: resolution)
     }
 
     func mirrorDevice(deviceID: String) {
         let audioEnabled = isAudioEnabled(for: deviceID)
-        adbService.mirrorDevice(deviceID: deviceID, audioEnabled: audioEnabled)
+        let deviceName = devices.first(where: { $0.id == deviceID })?.name
+        adbService.mirrorDevice(deviceID: deviceID, deviceName: deviceName, audioEnabled: audioEnabled)
     }
     
     func launchCamera(deviceID: String, facing: CameraFacing) {
