@@ -24,7 +24,7 @@ struct AndroLaunch: App {
         // Settings scene
         Settings {
             PreferencesView()
-                .environmentObject(DependencyContainer.shared.menuViewModel)
+                .environmentObject(DependencyContainer.shared.preferencesViewModel)
                 .frame(minWidth: 400, minHeight: 300)
                 .navigationTitle("AndroLaunch Settings")
         }

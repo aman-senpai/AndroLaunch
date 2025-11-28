@@ -13,7 +13,9 @@ protocol DependencyContainerProtocol {
     var adbPairingService: any ADBPairingServiceProtocol { get }
     var scrcpyService: any ScrcpyServiceProtocol { get }
     var deviceRepository: any DeviceRepositoryProtocol { get }
+
     var menuViewModel: MenuViewModel { get }
+    var preferencesViewModel: PreferencesViewModel { get }
 }
 
 final class DependencyContainer: DependencyContainerProtocol {
@@ -25,7 +27,9 @@ final class DependencyContainer: DependencyContainerProtocol {
     private let adbPairingServiceInstance: any ADBPairingServiceProtocol
     private let scrcpyServiceInstance: any ScrcpyServiceProtocol
     private let deviceRepositoryInstance: any DeviceRepositoryProtocol
+
     private let menuViewModelInstance: MenuViewModel
+    private let preferencesViewModelInstance: PreferencesViewModel
 
     // MARK: - Initialization
     private init() {
@@ -43,6 +47,9 @@ final class DependencyContainer: DependencyContainerProtocol {
         self.menuViewModelInstance = MenuViewModel(
             deviceRepository: deviceRepositoryInstance
         )
+        self.preferencesViewModelInstance = PreferencesViewModel(
+            deviceRepository: deviceRepositoryInstance
+        )
     }
 
     // MARK: - Public Properties
@@ -50,5 +57,7 @@ final class DependencyContainer: DependencyContainerProtocol {
     var adbPairingService: any ADBPairingServiceProtocol { adbPairingServiceInstance }
     var scrcpyService: any ScrcpyServiceProtocol { scrcpyServiceInstance }
     var deviceRepository: any DeviceRepositoryProtocol { deviceRepositoryInstance }
+
     var menuViewModel: MenuViewModel { menuViewModelInstance }
+    var preferencesViewModel: PreferencesViewModel { preferencesViewModelInstance }
 }
