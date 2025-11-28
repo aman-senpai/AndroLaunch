@@ -71,6 +71,16 @@ final class StatusMenuController: NSObject {
                 }
             }
             .store(in: &cancellables)
+        
+        viewModel.$isLoadingApps
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isLoadingApps in
+                if let currentDeviceID = self?.currentDeviceID {
+                    // Update submenu to show/hide loader
+                    self?.updateDeviceSubmenu(for: currentDeviceID)
+                }
+            }
+            .store(in: &cancellables)
             
         // Listen for object changes (like audio toggle) to update specific rows without full rebuild
         viewModel.objectWillChange
@@ -140,12 +150,14 @@ final class StatusMenuController: NSObject {
             
             // Update Title / View if needed
             // The view is DeviceMenuItemView. We might need to update it.
-            if let itemView = item.view as? DeviceMenuItemView {
+            // Update Title / View if needed
+            // The view is DeviceMenuItemView. We might need to update it.
+            // if let itemView = item.view as? DeviceMenuItemView {
                 // Update connection status or name if changed
                 // For now, we assume name doesn't change often, but we can update it.
                 // itemView.update(...) // If we had an update method.
                 // Recreating the view is cheap enough if we don't lose state.
-            }
+            // }
             
             // Update Submenu (Battery, Version, etc.)
             if let submenu = item.submenu {
@@ -392,14 +404,12 @@ final class StatusMenuController: NSObject {
         
         submenu.addItem(NSMenuItem.separator())
         
-        submenu.addItem(NSMenuItem.separator())
-
-        
         // Apps Section - check if apps exist for this specific device
         let deviceApps = viewModel.deviceApps[device.id] ?? []
         
-        // Only show loading if we don't have apps yet
-        let shouldShowLoading = (viewModel.isLoading || isLoadingOverride) && device.id == currentDeviceID && deviceApps.isEmpty
+        // Only show loading if we don't have apps yet OR if we are explicitly loading apps
+        // We use isLoadingApps from ViewModel which tracks the specific app fetch operation
+        let shouldShowLoading = (viewModel.isLoadingApps || isLoadingOverride) && device.id == currentDeviceID
         
         if shouldShowLoading {
             let loadingItem = NSMenuItem(title: "Loading apps...", action: nil, keyEquivalent: "")
@@ -421,15 +431,13 @@ final class StatusMenuController: NSObject {
         }
         
         // Refresh Apps
-        let refreshAppsItem = NSMenuItem(
-            title: "Refresh Apps",
-            action: #selector(refreshApps),
-            keyEquivalent: ""
+        let refreshAppsItem = NSMenuItem()
+        let refreshView = RefreshAppsMenuItemView(
+            deviceID: device.id,
+            target: self,
+            action: #selector(refreshApps(_:))
         )
-        refreshAppsItem.representedObject = device.id
-        refreshAppsItem.target = self
-        refreshAppsItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")
-        refreshAppsItem.image?.size = NSSize(width: 16, height: 16)
+        refreshAppsItem.view = refreshView
         submenu.addItem(refreshAppsItem)
     }
     
@@ -515,10 +523,13 @@ final class StatusMenuController: NSObject {
         currentDeviceID = nil
     }
     
-    @objc private func refreshApps(_ sender: NSMenuItem) {
-        guard let deviceID = sender.representedObject as? String else { return }
-        currentDeviceID = deviceID
-        viewModel.forceRefreshApps(for: deviceID)
+    @objc private func refreshApps(_ sender: NSButton) {
+        // Use custom button class or check sender
+        if let refreshButton = sender as? DeviceActionButton, let deviceID = refreshButton.deviceID {
+             currentDeviceID = deviceID
+             viewModel.forceRefreshApps(for: deviceID)
+             // Do NOT cancel tracking to keep menu open
+        }
     }
     
     @objc private func mirrorDevice(_ sender: NSButton) {
@@ -539,7 +550,6 @@ final class StatusMenuController: NSObject {
         if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
             let openPanel = NSOpenPanel()
             openPanel.title = "Select APK to Install"
-            openPanel.showsResizeIndicator = true
             openPanel.showsHiddenFiles = false
             openPanel.canChooseDirectories = false
             openPanel.canCreateDirectories = false
@@ -1277,4 +1287,44 @@ private final class ResolutionMenuItemView: NSView {
     }
     
     required init?(coder: NSCoder) { fatalError() }
+}
+
+// MARK: - Refresh Apps Custom View
+private class RefreshAppsMenuItemView: NSView {
+    private let button: DeviceActionButton
+    
+    init(deviceID: String, target: AnyObject?, action: Selector) {
+        self.button = DeviceActionButton(
+            image: NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")!,
+            target: target,
+            action: action
+        )
+        self.button.deviceID = deviceID
+        super.init(frame: NSRect(x: 0, y: 0, width: 220, height: 26))
+        setupView()
+    }
+    
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    
+    private func setupView() {
+        // Configure Button to look like a menu item row
+        button.title = "Refresh Apps"
+        button.imagePosition = .imageLeading
+        button.alignment = .left
+        button.font = NSFont.systemFont(ofSize: 13)
+        button.bezelStyle = .inline
+        button.isBordered = false
+        button.contentTintColor = .labelColor
+        
+        button.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(button)
+        
+        NSLayoutConstraint.activate([
+            // Fill the view with padding similar to standard menu items
+            button.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14), // Standard menu padding
+            button.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            button.centerYAnchor.constraint(equalTo: centerYAnchor),
+            button.heightAnchor.constraint(equalToConstant: 24)
+        ])
+    }
 }

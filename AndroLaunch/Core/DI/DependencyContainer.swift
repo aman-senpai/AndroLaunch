@@ -9,10 +9,10 @@ import Combine
  // Replace 'AndroLaunch' with your project's main module name
 
 protocol DependencyContainerProtocol {
-    var adbService: ADBServiceProtocol { get }
-    var adbPairingService: ADBPairingServiceProtocol { get }
-    var scrcpyService: ScrcpyServiceProtocol { get }
-    var deviceRepository: DeviceRepositoryProtocol { get }
+    var adbService: any ADBServiceProtocol { get }
+    var adbPairingService: any ADBPairingServiceProtocol { get }
+    var scrcpyService: any ScrcpyServiceProtocol { get }
+    var deviceRepository: any DeviceRepositoryProtocol { get }
     var menuViewModel: MenuViewModel { get }
 }
 
@@ -20,11 +20,11 @@ final class DependencyContainer: DependencyContainerProtocol {
     static let shared = DependencyContainer()
 
     // MARK: - Private Properties
-    private let commandExecutor: CommandExecutorProtocol
-    private let adbServiceInstance: ADBServiceProtocol
-    private let adbPairingServiceInstance: ADBPairingServiceProtocol
-    private let scrcpyServiceInstance: ScrcpyServiceProtocol
-    private let deviceRepositoryInstance: DeviceRepositoryProtocol
+    private let commandExecutor: any CommandExecutorProtocol
+    private let adbServiceInstance: any ADBServiceProtocol
+    private let adbPairingServiceInstance: any ADBPairingServiceProtocol
+    private let scrcpyServiceInstance: any ScrcpyServiceProtocol
+    private let deviceRepositoryInstance: any DeviceRepositoryProtocol
     private let menuViewModelInstance: MenuViewModel
 
     // MARK: - Initialization
@@ -46,9 +46,9 @@ final class DependencyContainer: DependencyContainerProtocol {
     }
 
     // MARK: - Public Properties
-    var adbService: ADBServiceProtocol { adbServiceInstance }
-    var adbPairingService: ADBPairingServiceProtocol { adbPairingServiceInstance }
-    var scrcpyService: ScrcpyServiceProtocol { scrcpyServiceInstance }
-    var deviceRepository: DeviceRepositoryProtocol { deviceRepositoryInstance }
+    var adbService: any ADBServiceProtocol { adbServiceInstance }
+    var adbPairingService: any ADBPairingServiceProtocol { adbPairingServiceInstance }
+    var scrcpyService: any ScrcpyServiceProtocol { scrcpyServiceInstance }
+    var deviceRepository: any DeviceRepositoryProtocol { deviceRepositoryInstance }
     var menuViewModel: MenuViewModel { menuViewModelInstance }
 }

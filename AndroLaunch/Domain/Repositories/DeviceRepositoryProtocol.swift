@@ -14,11 +14,13 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     var devicesPublisher: AnyPublisher<[AndroidDevice], Never> { get }
     var appsPublisher: AnyPublisher<[AndroidApp], Never> { get }
     var isLoadingPublisher: AnyPublisher<Bool, Never> { get }
+    var isLoadingAppsPublisher: AnyPublisher<Bool, Never> { get }
     
     var devices: [AndroidDevice] { get }
     var apps: [AndroidApp] { get }
     var error: String? { get }
     var isLoading: Bool { get }
+    var isLoadingApps: Bool { get }
     var adbPath: String? { get }
     
     func refreshDevices()

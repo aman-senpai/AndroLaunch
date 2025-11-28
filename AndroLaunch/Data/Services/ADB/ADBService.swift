@@ -205,7 +205,7 @@ final class ADBService: ADBServiceProtocol {
             
             let deviceID = String(line[id])
             var cleanDeviceID = deviceID
-            if let range = cleanDeviceID.range(of: ".:") {
+            if cleanDeviceID.contains(".:") {
                 cleanDeviceID = cleanDeviceID.replacingOccurrences(of: ".:", with: ":")
             }
             
@@ -267,120 +267,111 @@ final class ADBService: ADBServiceProtocol {
     
     // MARK: - App Listing
     func fetchApps(for deviceID: String) {
-        guard let adbPath = currentADBPath else {
-            error.send("ADB path not set, cannot fetch apps.")
+        guard let scrcpyPath = findScrcpyPath() else {
+            error.send("SCRCPY executable not found. Please install scrcpy.")
             return
         }
         
-        // List all apps including system and user-installed
-        executeADBCommand(arguments: ["-s", deviceID, "shell", "pm", "list", "packages"]) { [weak self] success, output, errorOutput in
+        // Sanitize deviceID
+        var cleanDeviceID = deviceID
+        if cleanDeviceID.contains(".:") {
+            cleanDeviceID = cleanDeviceID.replacingOccurrences(of: ".:", with: ":")
+        }
+        
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: scrcpyPath)
+        task.arguments = ["--serial", cleanDeviceID, "--list-apps"]
+        
+        if let adbPath = currentADBPath {
+            var env = ProcessInfo.processInfo.environment
+            env["ADB"] = adbPath
+            env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+            task.environment = env
+        }
+        
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        task.standardOutput = outputPipe
+        task.standardError = errorPipe
+        
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            
-            if success {
-                let apps = self.parseApps(from: output ?? "", deviceID: deviceID)
-                // Emit deviceID along with the app list
-                self.apps.send((deviceID, apps))
-                self.error.send(nil)
-            } else {
-                self.error.send(errorOutput ?? "App listing failed")
-                self.apps.send((deviceID, [])) // Emit empty array with deviceID on failure
+            do {
+                try task.run()
+                task.waitUntilExit()
+                
+                let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                
+                let output = String(data: outputData, encoding: .utf8) ?? ""
+                let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
+                let combinedOutput = output + "\n" + errorOutput
+                
+                if task.terminationStatus == 0 {
+                    let apps = self.parseScrcpyApps(from: combinedOutput)
+                    
+                    if !apps.isEmpty {
+                        DispatchQueue.main.async {
+                            self.apps.send((deviceID, apps))
+                            self.error.send(nil)
+                        }
+                    } else {
+                        DispatchQueue.main.async {
+                            // Send raw output for debugging if 0 apps found
+                            self.error.send("No apps found via scrcpy. Output:\n\(combinedOutput)")
+                            self.apps.send((deviceID, []))
+                        }
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        self.error.send("Scrcpy failed (code \(task.terminationStatus)). Output:\n\(combinedOutput)")
+                        self.apps.send((deviceID, []))
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.error.send("Failed to execute scrcpy: \(error.localizedDescription)")
+                    self.apps.send((deviceID, []))
+                }
             }
         }
     }
     
-    private func parseApps(from output: String, deviceID: String) -> [AndroidApp] {
+    private func parseScrcpyApps(from output: String) -> [AndroidApp] {
         var apps: [AndroidApp] = []
         let lines = output.components(separatedBy: .newlines)
         
-        // Read package names mapping from Data/Resources directory
-        let packageMapping: [String: [String: Any]]
-        let fileManager = FileManager.default
-        
-        // Use bundle path for the JSON file
-        let bundle = Bundle.main
-        guard let jsonPath = bundle.path(forResource: "package_names_mapping", ofType: "json") else {
-            packageMapping = [:]
-            return []
-        }
-        
-        if fileManager.fileExists(atPath: jsonPath) {
-            do {
-                let data = try Data(contentsOf: URL(fileURLWithPath: jsonPath))
-                if let mapping = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] {
-                    packageMapping = mapping
-                } else {
-                    packageMapping = [:]
-                }
-            } catch {
-                packageMapping = [:]
-            }
-        } else {
-            packageMapping = [:]
-        }
-        
+        // Regex to match: * App Name package.name
+        // Capture Group 1: App Name (lazy match until last space)
+        // Capture Group 2: Package Name (non-whitespace)
+        let pattern = #"^\s*[\*\-]\s+(.+?)\s+(\S+)$"#
+        let regex = try? NSRegularExpression(pattern: pattern)
         
         for line in lines {
-            guard !line.isEmpty else { continue }
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
             
-            // Parse the output format: package:com.example.app
-            let components = line.components(separatedBy: ":")
-            guard components.count == 2 else { continue }
-            
-            // Extract package name from the right side of the colon
-            let packageName = components[1].trimmingCharacters(in: .whitespacesAndNewlines)
-            
-            // Debug logging for each package
-            if let appInfo = packageMapping[packageName] {
+            let range = NSRange(trimmed.startIndex..., in: trimmed)
+            if let match = regex?.firstMatch(in: trimmed, options: [], range: range), match.numberOfRanges == 3 {
                 
-                // Only include if in mapping and not background
-                guard let isBackground = appInfo["is_background"] as? Bool,
-                      isBackground == false,
-                      let appName = appInfo["name"] as? String else {
-                    continue
+                if let nameRange = Range(match.range(at: 1), in: trimmed),
+                   let pkgRange = Range(match.range(at: 2), in: trimmed) {
+                    
+                    let name = String(trimmed[nameRange]).trimmingCharacters(in: .whitespaces)
+                    let packageName = String(trimmed[pkgRange]).trimmingCharacters(in: .whitespaces)
+                    
+                    let app = AndroidApp(
+                        id: packageName,
+                        name: name,
+                        iconName: "android",
+                        packageName: packageName
+                    )
+                    apps.append(app)
                 }
-                
-                let app = AndroidApp(
-                    id: packageName,
-                    name: appName,
-                    iconName: "android",
-                    packageName: packageName
-                )
-                apps.append(app)
-                
-            } else {
-                self.error.send("⚠️ No mapping found for package: \(packageName), using formatted name")
-                
-                // Fallback for unmapped apps
-                let appName = formatPackageName(packageName)
-                let app = AndroidApp(
-                    id: packageName,
-                    name: appName,
-                    iconName: "android",
-                    packageName: packageName
-                )
-                apps.append(app)
             }
         }
         
         return apps.sorted { $0.name < $1.name }
-    }
-    
-    private func formatPackageName(_ packageName: String) -> String {
-        var name = packageName
-        
-        // Remove common prefixes
-        if name.hasPrefix("com.") {
-            name = String(name.dropFirst(4))
-        } else if name.hasPrefix("org.") {
-            name = String(name.dropFirst(4))
-        }
-        
-        // Replace dots and underscores with spaces
-        name = name.replacingOccurrences(of: ".", with: " ")
-            .replacingOccurrences(of: "_", with: " ")
-        
-        // Capitalize each word
-        return name.capitalized
     }
     
     private func executeADBCommandSync(arguments: [String]) throws -> String {
@@ -493,7 +484,7 @@ final class ADBService: ADBServiceProtocol {
         
         // Sanitize deviceID (remove trailing dot from hostname if present)
         var cleanDeviceID = deviceID
-        if let range = cleanDeviceID.range(of: ".:") {
+        if cleanDeviceID.contains(".:") {
             cleanDeviceID = cleanDeviceID.replacingOccurrences(of: ".:", with: ":")
         }
         
@@ -609,7 +600,7 @@ final class ADBService: ADBServiceProtocol {
         
         // Sanitize deviceID
         var cleanDeviceID = deviceID
-        if let range = cleanDeviceID.range(of: ".:") {
+        if cleanDeviceID.contains(".:") {
             cleanDeviceID = cleanDeviceID.replacingOccurrences(of: ".:", with: ":")
         }
         

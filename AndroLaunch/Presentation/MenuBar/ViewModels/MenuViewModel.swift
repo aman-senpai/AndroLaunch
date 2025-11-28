@@ -14,6 +14,7 @@ final class MenuViewModel: ObservableObject {
     @Published var deviceApps: [String: [AndroidApp]] = [:] // Apps per device ID
     @Published var error: String? = nil
     @Published var isLoading: Bool = false
+    @Published var isLoadingApps: Bool = false
     @Published var currentDeviceID: String? = nil
     
     internal let repository: any DeviceRepositoryProtocol
@@ -45,6 +46,10 @@ final class MenuViewModel: ObservableObject {
         repository.isLoadingPublisher
             .receive(on: DispatchQueue.main)
             .assign(to: &$isLoading)
+        
+        repository.isLoadingAppsPublisher
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$isLoadingApps)
     }
 
     func refresh() { repository.refreshDevices() }

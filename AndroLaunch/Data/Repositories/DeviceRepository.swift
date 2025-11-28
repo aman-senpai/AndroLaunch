@@ -15,11 +15,13 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
     @Published var apps: [AndroidApp] = [] // Assuming AndroidApp is also defined in Domain or a shared module
     @Published var error: String? = nil // Changed to String? as per your code
     @Published var isLoading: Bool = false
+    @Published var isLoadingApps: Bool = false
 
     public var errorPublisher: AnyPublisher<String?, Never> { $error.eraseToAnyPublisher() }
     public var devicesPublisher: AnyPublisher<[AndroidDevice], Never> { $devices.eraseToAnyPublisher() }
     public var appsPublisher: AnyPublisher<[AndroidApp], Never> { $apps.eraseToAnyPublisher() } // Assuming AndroidApp is defined
     public var isLoadingPublisher: AnyPublisher<Bool, Never> { $isLoading.eraseToAnyPublisher() }
+    public var isLoadingAppsPublisher: AnyPublisher<Bool, Never> { $isLoadingApps.eraseToAnyPublisher() }
     
     public var adbPath: String? { adbService.adbPath }
 
@@ -72,28 +74,32 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         // adbService.apps now publishes (deviceID, [AndroidApp])
         adbService.apps
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] (receivedDeviceID, apps: [AndroidApp]) in // Explicit type annotation
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] (receivedDeviceID, apps: [AndroidApp]) in
                 guard let self = self else { return }
+                
+                // Always reset loading state when we get a response
+                self.isLoadingApps = false
                 
                 // Try to use the serial number as the cache key
                 if let serialNumber = self.deviceIDToSerialNumberMap[receivedDeviceID] {
                     self.appCache[serialNumber] = apps
                     
                     // If the received apps are for the currently selected device, update the UI
-                    // We need to compare based on the serial number of the device currently active in the UI
                     if let currentDeviceID = self.currentFetchingDeviceID,
                        let currentDevice = self.devices.first(where: { $0.id == currentDeviceID }),
                        currentDevice.serialNumber == serialNumber {
                         self.apps = apps
                     }
                 } else {
-                    // Fallback if serial number not found for the received deviceID.
-                    // This could happen if a device disconnects/reconnects rapidly, or mDNS changes.
-                    // In this case, we might still update `self.apps` if it's the currently requested one
+                    // Fallback if serial number not found
                     if receivedDeviceID == self.currentFetchingDeviceID {
                         self.apps = apps
                     }
-                    self.error = "⚠️ Received apps for an untracked deviceID (\(receivedDeviceID)). Not cached by serial." // Corrected
+                    if self.deviceIDToSerialNumberMap[receivedDeviceID] == nil {
+                         // Only log if we really don't know this device
+                         // self.error = "⚠️ Received apps for an untracked deviceID..." // Optional logging
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -102,8 +108,13 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
             .receive(on: DispatchQueue.main)
             .sink { [weak self] (error: String?) in // Explicit type annotation
                 self?.error = error
-                if error != nil && self?.isLoading == true {
-                    self?.isLoading = false
+                if error != nil {
+                    if self?.isLoading == true {
+                        self?.isLoading = false
+                    }
+                    if self?.isLoadingApps == true {
+                        self?.isLoadingApps = false
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -117,7 +128,6 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         // Clear deviceID-to-serial map as IDs might change, but KEEP app cache (keyed by serial)
         // so we don't re-fetch apps unnecessarily when just refreshing device status.
         deviceIDToSerialNumberMap.removeAll()
-        currentFetchingDeviceID = nil // Reset this
         adbService.findADB()
     }
 
@@ -151,6 +161,7 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         
         // Not cached, fetch from ADB service
         currentFetchingDeviceID = deviceID // This is the ADB deviceID, used to trigger the ADBService call
+        isLoadingApps = true
         adbService.fetchApps(for: deviceID)
         // Clear previous apps when fetching new ones for UI
         DispatchQueue.main.async {
@@ -174,6 +185,7 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         }
 
         currentFetchingDeviceID = deviceID
+        isLoadingApps = true
         adbService.fetchApps(for: deviceID)
         DispatchQueue.main.async {
             self.apps = []
