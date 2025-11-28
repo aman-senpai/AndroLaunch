@@ -10,6 +10,14 @@ import SwiftUI
 struct QuickActionsView: View {
     @StateObject var viewModel: QuickActionsViewModel
     
+    @State private var showRebootConfirmation = false
+    @State private var selectedRebootMode: RebootMode = .normal
+    
+    private func confirmReboot(mode: RebootMode) {
+        selectedRebootMode = mode
+        showRebootConfirmation = true
+    }
+    
     var body: some View {
         VStack(spacing: 16) {
             // Header
@@ -37,15 +45,15 @@ struct QuickActionsView: View {
                 
                 HStack(spacing: 12) {
                     ActionButton(icon: "power", label: "Reboot", color: .red) {
-                        viewModel.reboot(mode: .normal)
+                        confirmReboot(mode: .normal)
                     }
                     
                     ActionButton(icon: "laptopcomputer", label: "Bootloader", color: .orange) {
-                        viewModel.reboot(mode: .bootloader)
+                        confirmReboot(mode: .bootloader)
                     }
                     
                     ActionButton(icon: "wrench.and.screwdriver", label: "Recovery", color: .blue) {
-                        viewModel.reboot(mode: .recovery)
+                        confirmReboot(mode: .recovery)
                     }
                 }
             }
@@ -135,6 +143,22 @@ struct QuickActionsView: View {
         }
         .padding()
         .frame(width: 340, height: 420)
+        .onAppear {
+            viewModel.startPolling()
+        }
+        .onDisappear {
+            viewModel.stopPolling()
+        }
+        .alert(isPresented: $showRebootConfirmation) {
+            Alert(
+                title: Text("Confirm Reboot"),
+                message: Text("Are you sure you want to reboot the device into \(selectedRebootMode.rawValue.isEmpty ? "System" : selectedRebootMode.rawValue.capitalized) mode?"),
+                primaryButton: .destructive(Text("Reboot")) {
+                    viewModel.reboot(mode: selectedRebootMode)
+                },
+                secondaryButton: .cancel()
+            )
+        }
     }
 }
 
