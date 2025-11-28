@@ -981,7 +981,7 @@ private final class MenuTableRowView: NSTableRowView {
         // .inVisibleRect is crucial for scrolling
         trackingArea = NSTrackingArea(
             rect: bounds,
-            options: [.activeInActiveApp, .mouseEnteredAndExited, .inVisibleRect],
+            options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
