@@ -35,7 +35,7 @@ protocol ADBServiceProtocol {
     func fetchApps(for deviceID: String)
     func launchApp(packageID: String, deviceID: String, appName: String?, deviceName: String?, audioEnabled: Bool, resolution: Int, clipboardEnabled: Bool)
     func launchCamera(deviceID: String, facing: CameraFacing)
-    func mirrorDevice(deviceID: String, deviceName: String?, audioEnabled: Bool, clipboardEnabled: Bool, maxSize: Int?, maxFPS: Int?, bitRate: Int?, orientation: String?)
+    func mirrorDevice(deviceID: String, deviceName: String?, audioEnabled: Bool, clipboardEnabled: Bool, maxSize: Int?, maxFPS: Int?, bitRate: Int?, orientation: String?, borderless: Bool)
     func mirrorCamera(deviceID: String, deviceName: String?, audioEnabled: Bool, facing: String?, fps: Int?, size: Int?, bitRate: Int?, orientation: String?, aspectRatio: String?)
     func startClipboardSync(deviceID: String)
     func stopClipboardSync(deviceID: String)

@@ -143,6 +143,16 @@ final class MenuViewModel: ObservableObject {
         objectWillChange.send()
     }
     
+    // Borderless
+    func toggleBorderless(for deviceID: String) {
+        repository.toggleBorderless(for: deviceID)
+        objectWillChange.send()
+    }
+    
+    func isBorderlessEnabled(for deviceID: String) -> Bool {
+        return repository.isBorderlessEnabled(for: deviceID)
+    }
+    
     // MARK: - Camera
     func setCameraFacing(for deviceID: String, facing: String) {
         repository.setCameraFacing(for: deviceID, facing: facing)

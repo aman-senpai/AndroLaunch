@@ -671,7 +671,8 @@ final class ADBService: ADBServiceProtocol {
     
     // MARK: - Optional Mirroring Function
     // Mirrors the entire device screen using scrcpy (without launching a specific app)
-    func mirrorDevice(deviceID: String, deviceName: String?, audioEnabled: Bool, clipboardEnabled: Bool, maxSize: Int?, maxFPS: Int?, bitRate: Int?, orientation: String?) {
+    // Mirrors the entire device screen using scrcpy (without launching a specific app)
+    func mirrorDevice(deviceID: String, deviceName: String?, audioEnabled: Bool, clipboardEnabled: Bool, maxSize: Int?, maxFPS: Int?, bitRate: Int?, orientation: String?, borderless: Bool) {
         guard let adbPath = currentADBPath else {
             let errorMessage = "ADB executable path not set. Cannot mirror device with scrcpy."
             self.error.send(errorMessage)
@@ -727,6 +728,10 @@ final class ADBService: ADBServiceProtocol {
         if let orientation = orientation, !orientation.isEmpty, orientation != "Auto" {
             args.append("--capture-orientation")
             args.append(orientation)
+        }
+        
+        if borderless {
+            args.append("--window-borderless")
         }
         
         if !audioEnabled {

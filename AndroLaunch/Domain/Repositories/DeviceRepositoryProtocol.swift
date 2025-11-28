@@ -58,6 +58,9 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     func toggleCaptureOrientation(for deviceID: String)
     func isCaptureOrientationEnabled(for deviceID: String) -> Bool
     
+    func toggleBorderless(for deviceID: String)
+    func isBorderlessEnabled(for deviceID: String) -> Bool
+    
     // Camera Preferences
     func setCameraFacing(for deviceID: String, facing: String)
     func getCameraFacing(for deviceID: String) -> String

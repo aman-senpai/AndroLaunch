@@ -65,6 +65,21 @@ extension StatusMenuController {
         captureOrientationItem.view = captureOrientationView
         menu.addItem(captureOrientationItem)
         
+
+        
+        // Borderless Toggle
+        let isBorderlessEnabled = viewModel.isBorderlessEnabled(for: deviceID)
+        let borderlessItem = NSMenuItem()
+        let borderlessView = ToggleMenuItemView(
+            title: "Borderless",
+            icon: isBorderlessEnabled ? "rectangle.dashed" : "rectangle",
+            isOn: isBorderlessEnabled
+        ) { [weak self] isOn in
+            self?.viewModel.toggleBorderless(for: deviceID)
+        }
+        borderlessItem.view = borderlessView
+        menu.addItem(borderlessItem)
+        
         menu.addItem(NSMenuItem.separator())
         
         // Camera Section

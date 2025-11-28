@@ -267,6 +267,18 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         return bitRatePreferences[deviceID] ?? 8 // Default 8 Mbps
     }
     
+    // Borderless Preferences
+    private var borderlessPreferences: [String: Bool] = [:]
+    
+    func toggleBorderless(for deviceID: String) {
+        let current = isBorderlessEnabled(for: deviceID)
+        borderlessPreferences[deviceID] = !current
+    }
+    
+    func isBorderlessEnabled(for deviceID: String) -> Bool {
+        return borderlessPreferences[deviceID] ?? false // Default false
+    }
+    
     // Orientation Preferences
     private var orientationPreferences: [String: String] = [:]
     private var captureOrientationEnabledPreferences: [String: Bool] = [:]
@@ -383,7 +395,8 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
             maxSize: maxSize,
             maxFPS: maxFPS,
             bitRate: bitRate,
-            orientation: orientation
+            orientation: orientation,
+            borderless: isBorderlessEnabled(for: deviceID)
         )
     }
     
