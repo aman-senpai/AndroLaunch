@@ -387,13 +387,9 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         let isClipboardEnabled = viewModel.isClipboardEnabled(for: device.id)
         
         let controlsView = ControlsMenuItemView(
-            isAudioEnabled: isAudioEnabled,
-            isClipboardEnabled: isClipboardEnabled,
             deviceID: device.id,
             isWireless: isWireless,
             target: self,
-            audioAction: #selector(toggleAudio(_:)),
-            clipboardAction: #selector(toggleClipboard(_:)),
             frontCamAction: #selector(launchFrontCamera(_:)),
             backCamAction: #selector(launchBackCamera(_:)),
             mirrorAction: #selector(mirrorDevice(_:)),
@@ -422,15 +418,15 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
 
         submenu.addItem(NSMenuItem.separator())
         
-        // Resolution Section
-        let resItem = NSMenuItem(title: "Resolution", action: nil, keyEquivalent: "")
-        resItem.image = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: "Resolution")
-        resItem.image?.size = NSSize(width: 16, height: 16)
+        // Configuration Section
+        let configItem = NSMenuItem(title: "Configuration", action: nil, keyEquivalent: "")
+        configItem.image = NSImage(systemSymbolName: "gearshape.fill", accessibilityDescription: "Configuration")
+        configItem.image?.size = NSSize(width: 16, height: 16)
         
-        let resMenu = NSMenu()
-        configureResolutionMenu(resMenu, deviceID: device.id)
-        resItem.submenu = resMenu
-        submenu.addItem(resItem)
+        let configMenu = NSMenu()
+        configureConfigMenu(configMenu, deviceID: device.id)
+        configItem.submenu = configMenu
+        submenu.addItem(configItem)
         
         submenu.addItem(NSMenuItem.separator())
         
@@ -790,49 +786,18 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         }
     }
     
-    @objc private func toggleAudio(_ sender: NSButton) {
-        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
-            // 1. Optimistic UI Update
-            let currentAudioState = viewModel.isAudioEnabled(for: deviceID)
-            let newAudioState = !currentAudioState
-            
-            // Find the ControlsMenuItemView
-            // Hierarchy with NSGridView: Button -> NSGridView -> ControlsMenuItemView
-            // Or Button -> NSGridCell -> NSGridView -> ... depending on implementation details.
-            // Safer to traverse up.
-            var view: NSView? = sender
-            while view != nil {
-                if let controlsView = view as? ControlsMenuItemView {
-                    controlsView.setAudioEnabled(newAudioState)
-                    break
-                }
-                view = view?.superview
-            }
-            
-            // 2. Perform Action
-            viewModel.toggleAudio(for: deviceID)
-        }
+    @objc private func toggleAudio(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        viewModel.toggleAudio(for: deviceID)
+        // Update menu item state
+        sender.state = viewModel.isAudioEnabled(for: deviceID) ? .on : .off
     }
     
-    @objc private func toggleClipboard(_ sender: NSButton) {
-        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
-            // 1. Optimistic UI Update
-            let currentClipboardState = viewModel.isClipboardEnabled(for: deviceID)
-            let newClipboardState = !currentClipboardState
-            
-            // Find the ControlsMenuItemView
-            var view: NSView? = sender
-            while view != nil {
-                if let controlsView = view as? ControlsMenuItemView {
-                    controlsView.setClipboardEnabled(newClipboardState)
-                    break
-                }
-                view = view?.superview
-            }
-            
-            // 2. Perform Action
-            viewModel.toggleClipboard(for: deviceID)
-        }
+    @objc private func toggleClipboard(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        viewModel.toggleClipboard(for: deviceID)
+        // Update menu item state
+        sender.state = viewModel.isClipboardEnabled(for: deviceID) ? .on : .off
     }
     
     @objc private func launchFrontCamera(_ sender: NSButton) {
@@ -952,24 +917,24 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         // Toggles
         let state = viewModel.quickActionsStates[deviceID]
         
-        func addToggle(title: String, icon: String, action: Selector, isEnabled: Bool) {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            item.target = self
-            item.representedObject = deviceID
-            item.image = NSImage(systemSymbolName: icon, accessibilityDescription: nil)
-            item.state = isEnabled ? .on : .off
+        func addToggle(title: String, icon: String, isEnabled: Bool, action: @escaping () -> Void) {
+            let item = NSMenuItem()
+            let view = ToggleMenuItemView(title: title, icon: icon, isOn: isEnabled) { _ in
+                action()
+            }
+            item.view = view
             menu.addItem(item)
         }
         
-        addToggle(title: "Wi-Fi", icon: "wifi", action: #selector(toggleWifi(_:)), isEnabled: state?.isWifiEnabled ?? false)
-        addToggle(title: "Bluetooth", icon: "wave.3.right", action: #selector(toggleBluetooth(_:)), isEnabled: state?.isBluetoothEnabled ?? false)
-        addToggle(title: "Mobile Data", icon: "antenna.radiowaves.left.and.right", action: #selector(toggleMobileData(_:)), isEnabled: state?.isMobileDataEnabled ?? false)
-        addToggle(title: "Airplane Mode", icon: "airplane", action: #selector(toggleAirplaneMode(_:)), isEnabled: state?.isAirplaneModeEnabled ?? false)
-        addToggle(title: "Location", icon: "location.fill", action: #selector(toggleLocation(_:)), isEnabled: state?.isLocationEnabled ?? false)
-        addToggle(title: "Do Not Disturb", icon: "bell.slash.fill", action: #selector(toggleDoNotDisturb(_:)), isEnabled: state?.isDoNotDisturbEnabled ?? false)
-        addToggle(title: "Auto Rotate", icon: "arrow.triangle.2.circlepath", action: #selector(toggleAutoRotate(_:)), isEnabled: state?.isAutoRotateEnabled ?? false)
-        addToggle(title: "Adaptive Brightness", icon: "sun.max.fill", action: #selector(toggleAdaptiveBrightness(_:)), isEnabled: state?.isAdaptiveBrightnessEnabled ?? false)
-        addToggle(title: "Dark Mode", icon: "moon.fill", action: #selector(toggleDarkMode(_:)), isEnabled: state?.isDarkModeEnabled ?? false)
+        addToggle(title: "Wi-Fi", icon: "wifi", isEnabled: state?.isWifiEnabled ?? false) { [weak self] in self?.viewModel.toggleWifi(for: deviceID) }
+        addToggle(title: "Bluetooth", icon: "wave.3.right", isEnabled: state?.isBluetoothEnabled ?? false) { [weak self] in self?.viewModel.toggleBluetooth(for: deviceID) }
+        addToggle(title: "Mobile Data", icon: "antenna.radiowaves.left.and.right", isEnabled: state?.isMobileDataEnabled ?? false) { [weak self] in self?.viewModel.toggleMobileData(for: deviceID) }
+        addToggle(title: "Airplane Mode", icon: "airplane", isEnabled: state?.isAirplaneModeEnabled ?? false) { [weak self] in self?.viewModel.toggleAirplaneMode(for: deviceID) }
+        addToggle(title: "Location", icon: "location.fill", isEnabled: state?.isLocationEnabled ?? false) { [weak self] in self?.viewModel.toggleLocation(for: deviceID) }
+        addToggle(title: "Do Not Disturb", icon: "bell.slash.fill", isEnabled: state?.isDoNotDisturbEnabled ?? false) { [weak self] in self?.viewModel.toggleDoNotDisturb(for: deviceID) }
+        addToggle(title: "Auto Rotate", icon: "arrow.triangle.2.circlepath", isEnabled: state?.isAutoRotateEnabled ?? false) { [weak self] in self?.viewModel.toggleAutoRotate(for: deviceID) }
+        addToggle(title: "Auto Brightness", icon: "sun.max.fill", isEnabled: state?.isAdaptiveBrightnessEnabled ?? false) { [weak self] in self?.viewModel.toggleAdaptiveBrightness(for: deviceID) }
+        addToggle(title: "Dark Mode", icon: "moon.fill", isEnabled: state?.isDarkModeEnabled ?? false) { [weak self] in self?.viewModel.toggleDarkMode(for: deviceID) }
     }
     
     private func configureResolutionMenu(_ menu: NSMenu, deviceID: String) {
@@ -982,17 +947,71 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
             item.representedObject = deviceID
             item.tag = res
             item.state = (res == currentResolution) ? .on : .off
+            item.onStateImage = NSImage(systemSymbolName: "smallcircle.fill.circle", accessibilityDescription: "Selected")
+            item.offStateImage = NSImage(systemSymbolName: "circle", accessibilityDescription: "Unselected")
             menu.addItem(item)
         }
     }
+    private func configureConfigMenu(_ menu: NSMenu, deviceID: String) {
+        menu.removeAllItems()
+        
+        // Resolution Submenu
+        let resItem = NSMenuItem(title: "App Resolution", action: nil, keyEquivalent: "")
+        resItem.image = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: "Resolution")
+        
+        let resMenu = NSMenu()
+        configureResolutionMenu(resMenu, deviceID: deviceID)
+        resItem.submenu = resMenu
+        menu.addItem(resItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // Audio Forwarding
+        let isAudioEnabled = viewModel.isAudioEnabled(for: deviceID)
+        let audioItem = NSMenuItem()
+        let audioView = ToggleMenuItemView(
+            title: "Audio Forwarding",
+            icon: isAudioEnabled ? "speaker.wave.2" : "speaker.slash",
+            isOn: isAudioEnabled
+        ) { [weak self] isOn in
+            self?.viewModel.toggleAudio(for: deviceID)
+        }
+        audioItem.view = audioView
+        menu.addItem(audioItem)
+        
+        // Clipboard Sync
+        let isClipboardEnabled = viewModel.isClipboardEnabled(for: deviceID)
+        let clipboardItem = NSMenuItem()
+        let clipboardView = ToggleMenuItemView(
+            title: "Clipboard Sync",
+            icon: "doc.on.clipboard",
+            isOn: isClipboardEnabled
+        ) { [weak self] isOn in
+            self?.viewModel.toggleClipboard(for: deviceID)
+        }
+        clipboardItem.view = clipboardView
+        menu.addItem(clipboardItem)
+    }
+
     private func updateAllQuickActionsSubmenus() {
         guard let menu = statusItem.menu else { return }
         for item in menu.items {
             if let deviceID = item.representedObject as? String,
-               let deviceSubmenu = item.submenu,
-               let quickActionsItem = deviceSubmenu.items.first(where: { $0.title == "Quick Actions" }),
-               let quickActionsMenu = quickActionsItem.submenu {
-                configureQuickActionsMenu(quickActionsMenu, deviceID: deviceID)
+               let deviceSubmenu = item.submenu {
+                
+                // Update Quick Actions
+                if let quickActionsItem = deviceSubmenu.items.first(where: { $0.title == "Quick Actions" }),
+                   let quickActionsMenu = quickActionsItem.submenu {
+                    configureQuickActionsMenu(quickActionsMenu, deviceID: deviceID)
+                }
+                
+                // Update Config Menu
+                if let configItem = deviceSubmenu.items.first(where: { $0.title == "Configuration" }),
+                   let configMenu = configItem.submenu {
+                    configureConfigMenu(configMenu, deviceID: deviceID)
+                }
             }
         }
     }
@@ -1205,11 +1224,10 @@ private class AppActionButton: NSButton {
 
 private final class ControlsMenuItemView: NSView {
     
-    private var audioButton: NSButton?
-    private var clipboardButton: NSButton?
+
     
-    init(isAudioEnabled: Bool, isClipboardEnabled: Bool, deviceID: String, isWireless: Bool, target: AnyObject, audioAction: Selector, clipboardAction: Selector, frontCamAction: Selector, backCamAction: Selector, mirrorAction: Selector, installAction: Selector, shellAction: Selector, disconnectAction: Selector) {
-        super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 72)) // Increased height for spacing
+    init(deviceID: String, isWireless: Bool, target: AnyObject, frontCamAction: Selector, backCamAction: Selector, mirrorAction: Selector, installAction: Selector, shellAction: Selector, disconnectAction: Selector) {
+        super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 44)) // Reduced height
         
         // Helper to configure button size
         func config(_ btn: NSButton) -> NSButton {
@@ -1226,24 +1244,6 @@ private final class ControlsMenuItemView: NSView {
         let installBtn = config(createButton(imageName: "shippingbox", tooltip: "Install APK", target: target, action: installAction, deviceID: deviceID))
         let shellBtn = config(createButton(imageName: "terminal", tooltip: "Open ADB Shell", target: target, action: shellAction, deviceID: deviceID))
         
-        let audioBtn = config(createButton(
-            imageName: isAudioEnabled ? "speaker.slash" : "speaker.wave.2",
-            tooltip: isAudioEnabled ? "Disable Audio" : "Enable Audio",
-            target: target,
-            action: audioAction,
-            deviceID: deviceID
-        ))
-        self.audioButton = audioBtn
-        
-        let clipboardBtn = config(createButton(
-            imageName: isClipboardEnabled ? "doc.on.clipboard" : "clipboard",
-            tooltip: isClipboardEnabled ? "Disable Clipboard Sync" : "Enable Clipboard Sync",
-            target: target,
-            action: clipboardAction,
-            deviceID: deviceID
-        ))
-        self.clipboardButton = clipboardBtn
-        
         let frontCamBtn = config(createButton(imageName: "person.fill.viewfinder", tooltip: "Front Camera", target: target, action: frontCamAction, deviceID: deviceID))
         let backCamBtn = config(createButton(imageName: "camera", tooltip: "Back Camera", target: target, action: backCamAction, deviceID: deviceID))
         
@@ -1254,13 +1254,12 @@ private final class ControlsMenuItemView: NSView {
         
         // Grid Layout
         let gridView = NSGridView(views: [
-            [mirrorBtn, installBtn, shellBtn, NSGridCell.emptyContentView, NSGridCell.emptyContentView],
-            [audioBtn, clipboardBtn, frontCamBtn, backCamBtn, disconnectBtn ?? NSGridCell.emptyContentView]
+            [mirrorBtn, installBtn, shellBtn, frontCamBtn, backCamBtn, disconnectBtn ?? NSGridCell.emptyContentView]
         ])
         
         gridView.translatesAutoresizingMaskIntoConstraints = false
         gridView.columnSpacing = 12
-        gridView.rowSpacing = 16 // Increased spacing
+        gridView.rowSpacing = 0
         gridView.xPlacement = .center
         gridView.yPlacement = .center
         
@@ -1274,25 +1273,7 @@ private final class ControlsMenuItemView: NSView {
     
     required init?(coder: NSCoder) { fatalError() }
     
-    func setAudioEnabled(_ isEnabled: Bool) {
-        guard let btn = audioButton else { return }
-        let imageName = isEnabled ? "speaker.slash" : "speaker.wave.2"
-        let tooltip = isEnabled ? "Disable Audio" : "Enable Audio"
-        
-        btn.image = NSImage(systemSymbolName: imageName, accessibilityDescription: tooltip)
-        btn.image?.size = NSSize(width: 14, height: 14)
-        btn.toolTip = tooltip
-    }
-    
-    func setClipboardEnabled(_ isEnabled: Bool) {
-        guard let btn = clipboardButton else { return }
-        let imageName = isEnabled ? "doc.on.clipboard" : "clipboard"
-        let tooltip = isEnabled ? "Disable Clipboard Sync" : "Enable Clipboard Sync"
-        
-        btn.image = NSImage(systemSymbolName: imageName, accessibilityDescription: tooltip)
-        btn.image?.size = NSSize(width: 14, height: 14)
-        btn.toolTip = tooltip
-    }
+
     
     private func createButton(imageName: String, tooltip: String, target: AnyObject, action: Selector, deviceID: String) -> NSButton {
         let btn = DeviceActionButton()
@@ -1305,6 +1286,64 @@ private final class ControlsMenuItemView: NSView {
         btn.action = action
         btn.isBordered = false
         return btn
+    }
+}
+
+// MARK: - Toggle Menu Item View
+private class ToggleMenuItemView: NSView {
+    private let titleLabel = NSTextField()
+    private let toggleSwitch = NSSwitch()
+    private let iconView = NSImageView()
+    
+    var onToggle: ((Bool) -> Void)?
+    
+    init(title: String, icon: String, isOn: Bool, onToggle: @escaping (Bool) -> Void) {
+        super.init(frame: NSRect(x: 0, y: 0, width: 200, height: 26))
+        self.onToggle = onToggle
+        
+        // Icon
+        iconView.image = NSImage(systemSymbolName: icon, accessibilityDescription: nil)
+        iconView.contentTintColor = .labelColor
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(iconView)
+        
+        // Title
+        titleLabel.stringValue = title
+        titleLabel.font = NSFont.menuFont(ofSize: 14)
+        titleLabel.textColor = .labelColor
+        titleLabel.drawsBackground = false
+        titleLabel.isBordered = false
+        titleLabel.isEditable = false
+        titleLabel.isSelectable = false
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(titleLabel)
+        
+        // Switch
+        toggleSwitch.state = isOn ? .on : .off
+        toggleSwitch.controlSize = .mini
+        toggleSwitch.target = self
+        toggleSwitch.action = #selector(switchToggled(_:))
+        toggleSwitch.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(toggleSwitch)
+        
+        NSLayoutConstraint.activate([
+            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 16),
+            iconView.heightAnchor.constraint(equalToConstant: 16),
+            
+            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
+            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            
+            toggleSwitch.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            toggleSwitch.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+    
+    required init?(coder: NSCoder) { fatalError() }
+    
+    @objc private func switchToggled(_ sender: NSSwitch) {
+        onToggle?(sender.state == .on)
     }
 }
 
