@@ -37,6 +37,9 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     func toggleAudio(for deviceID: String)
     func isAudioEnabled(for deviceID: String) -> Bool
     
+    func toggleClipboard(for deviceID: String)
+    func isClipboardEnabled(for deviceID: String) -> Bool
+    
     func setResolution(for deviceID: String, resolution: Int)
     func getResolution(for deviceID: String) -> Int
 

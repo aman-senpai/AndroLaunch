@@ -77,6 +77,15 @@ final class MenuViewModel: ObservableObject {
         return repository.isAudioEnabled(for: deviceID)
     }
     
+    func toggleClipboard(for deviceID: String) {
+        repository.toggleClipboard(for: deviceID)
+        objectWillChange.send()
+    }
+    
+    func isClipboardEnabled(for deviceID: String) -> Bool {
+        return repository.isClipboardEnabled(for: deviceID)
+    }
+    
     func setResolution(for deviceID: String, resolution: Int) {
         repository.setResolution(for: deviceID, resolution: resolution)
         objectWillChange.send()

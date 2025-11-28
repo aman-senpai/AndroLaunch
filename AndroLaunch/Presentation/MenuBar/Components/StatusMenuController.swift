@@ -373,12 +373,16 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
                         device.id.contains("_tcp") || 
                         device.id.contains("_udp")
         
+        let isClipboardEnabled = viewModel.isClipboardEnabled(for: device.id)
+        
         let controlsView = ControlsMenuItemView(
             isAudioEnabled: isAudioEnabled,
+            isClipboardEnabled: isClipboardEnabled,
             deviceID: device.id,
             isWireless: isWireless,
             target: self,
             audioAction: #selector(toggleAudio(_:)),
+            clipboardAction: #selector(toggleClipboard(_:)),
             frontCamAction: #selector(launchFrontCamera(_:)),
             backCamAction: #selector(launchBackCamera(_:)),
             mirrorAction: #selector(mirrorDevice(_:)),
@@ -389,6 +393,8 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         )
         controlsItem.view = controlsView
         submenu.addItem(controlsItem)
+
+        submenu.addItem(NSMenuItem.separator())
         
         // Resolution Section (Radio Buttons)
         let resItem = NSMenuItem()
@@ -766,19 +772,42 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
             let currentAudioState = viewModel.isAudioEnabled(for: deviceID)
             let newAudioState = !currentAudioState
             
-            // Find the ControlsMenuItemView and update it directly
-            if let controlsView = sender.superview?.superview as? ControlsMenuItemView {
-                 controlsView.setAudioEnabled(newAudioState)
+            // Find the ControlsMenuItemView
+            // Hierarchy with NSGridView: Button -> NSGridView -> ControlsMenuItemView
+            // Or Button -> NSGridCell -> NSGridView -> ... depending on implementation details.
+            // Safer to traverse up.
+            var view: NSView? = sender
+            while view != nil {
+                if let controlsView = view as? ControlsMenuItemView {
+                    controlsView.setAudioEnabled(newAudioState)
+                    break
+                }
+                view = view?.superview
             }
             
             // 2. Perform Action
             viewModel.toggleAudio(for: deviceID)
+        }
+    }
+    
+    @objc private func toggleClipboard(_ sender: NSButton) {
+        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+            // 1. Optimistic UI Update
+            let currentClipboardState = viewModel.isClipboardEnabled(for: deviceID)
+            let newClipboardState = !currentClipboardState
             
-            // 3. Prevent Menu Closure (optional, but good for toggles)
-            // If we want the menu to stay open, we do nothing.
-            // If we want it to close, we call cancelTracking().
-            // Standard behavior for toggles in menus is often to stay open or close depending on UX.
-            // Given the user complaint about "sluggish", keeping it open and showing instant change is better.
+            // Find the ControlsMenuItemView
+            var view: NSView? = sender
+            while view != nil {
+                if let controlsView = view as? ControlsMenuItemView {
+                    controlsView.setClipboardEnabled(newClipboardState)
+                    break
+                }
+                view = view?.superview
+            }
+            
+            // 2. Perform Action
+            viewModel.toggleClipboard(for: deviceID)
         }
     }
     
@@ -1034,111 +1063,71 @@ private class AppActionButton: NSButton {
 private final class ControlsMenuItemView: NSView {
     
     private var audioButton: NSButton?
+    private var clipboardButton: NSButton?
     
-    init(isAudioEnabled: Bool, deviceID: String, isWireless: Bool, target: AnyObject, audioAction: Selector, frontCamAction: Selector, backCamAction: Selector, mirrorAction: Selector, installAction: Selector, shellAction: Selector, quickActionsAction: Selector, disconnectAction: Selector) {
-        super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 30))
+    init(isAudioEnabled: Bool, isClipboardEnabled: Bool, deviceID: String, isWireless: Bool, target: AnyObject, audioAction: Selector, clipboardAction: Selector, frontCamAction: Selector, backCamAction: Selector, mirrorAction: Selector, installAction: Selector, shellAction: Selector, quickActionsAction: Selector, disconnectAction: Selector) {
+        super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 72)) // Increased height for spacing
         
-        let stackView = NSStackView()
-        stackView.orientation = .horizontal
-        stackView.spacing = 16
-        stackView.distribution = .fill
-        stackView.alignment = .centerY
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stackView)
+        // Helper to configure button size
+        func config(_ btn: NSButton) -> NSButton {
+            btn.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                btn.widthAnchor.constraint(equalToConstant: 28),
+                btn.heightAnchor.constraint(equalToConstant: 28)
+            ])
+            return btn
+        }
         
-        // Center the stack view
-        NSLayoutConstraint.activate([
-            stackView.centerXAnchor.constraint(equalTo: centerXAnchor),
-            stackView.centerYAnchor.constraint(equalTo: centerYAnchor)
-        ])
+        // Buttons
+        let mirrorBtn = config(createButton(imageName: "display", tooltip: "Mirror Device", target: target, action: mirrorAction, deviceID: deviceID))
+        let installBtn = config(createButton(imageName: "shippingbox", tooltip: "Install APK", target: target, action: installAction, deviceID: deviceID))
+        let shellBtn = config(createButton(imageName: "terminal", tooltip: "Open ADB Shell", target: target, action: shellAction, deviceID: deviceID))
+        let quickActionsBtn = config(createButton(imageName: "bolt.fill", tooltip: "Quick Actions", target: target, action: quickActionsAction, deviceID: deviceID))
         
-        // Mirror Button
-        let mirrorBtn = createButton(
-            imageName: "display",
-            tooltip: "Mirror Device",
-            target: target,
-            action: mirrorAction,
-            deviceID: deviceID
-        )
-        stackView.addArrangedSubview(mirrorBtn)
-        
-        // Install APK Button
-        let installBtn = createButton(
-            imageName: "shippingbox",
-            tooltip: "Install APK",
-            target: target,
-            action: installAction,
-            deviceID: deviceID
-        )
-        stackView.addArrangedSubview(installBtn)
-        
-        // Shell Button
-        let shellBtn = createButton(
-            imageName: "terminal",
-            tooltip: "Open ADB Shell",
-            target: target,
-            action: shellAction,
-            deviceID: deviceID
-        )
-        stackView.addArrangedSubview(shellBtn)
-        
-        // Quick Actions Button (Bolt)
-        let quickActionsBtn = createButton(
-            imageName: "bolt.fill",
-            tooltip: "Quick Actions",
-            target: target,
-            action: quickActionsAction,
-            deviceID: deviceID
-        )
-        stackView.addArrangedSubview(quickActionsBtn)
-        
-        // Audio Button
-        let audioBtn = createButton(
+        let audioBtn = config(createButton(
             imageName: isAudioEnabled ? "speaker.slash" : "speaker.wave.2",
             tooltip: isAudioEnabled ? "Disable Audio" : "Enable Audio",
             target: target,
             action: audioAction,
             deviceID: deviceID
-        )
+        ))
         self.audioButton = audioBtn
-        stackView.addArrangedSubview(audioBtn)
         
-        // Camera Group (Front + Back)
-        let camStack = NSStackView()
-        camStack.orientation = .horizontal
-        camStack.spacing = 8
-        
-        let frontCamBtn = createButton(
-            imageName: "person.fill.viewfinder",
-            tooltip: "Front Camera",
+        let clipboardBtn = config(createButton(
+            imageName: isClipboardEnabled ? "doc.on.clipboard" : "clipboard",
+            tooltip: isClipboardEnabled ? "Disable Clipboard Sync" : "Enable Clipboard Sync",
             target: target,
-            action: frontCamAction,
+            action: clipboardAction,
             deviceID: deviceID
-        )
-        camStack.addArrangedSubview(frontCamBtn)
+        ))
+        self.clipboardButton = clipboardBtn
         
-        let backCamBtn = createButton(
-            imageName: "camera",
-            tooltip: "Back Camera",
-            target: target,
-            action: backCamAction,
-            deviceID: deviceID
-        )
-        camStack.addArrangedSubview(backCamBtn)
+        let frontCamBtn = config(createButton(imageName: "person.fill.viewfinder", tooltip: "Front Camera", target: target, action: frontCamAction, deviceID: deviceID))
+        let backCamBtn = config(createButton(imageName: "camera", tooltip: "Back Camera", target: target, action: backCamAction, deviceID: deviceID))
         
-        stackView.addArrangedSubview(camStack)
-        
-        // Disconnect Button (if wireless)
+        var disconnectBtn: NSButton?
         if isWireless {
-            let disconnectBtn = createButton(
-                imageName: "wifi.slash",
-                tooltip: "Disconnect Device",
-                target: target,
-                action: disconnectAction,
-                deviceID: deviceID
-            )
-            stackView.addArrangedSubview(disconnectBtn)
+            disconnectBtn = config(createButton(imageName: "wifi.slash", tooltip: "Disconnect Device", target: target, action: disconnectAction, deviceID: deviceID))
         }
+        
+        // Grid Layout
+        let gridView = NSGridView(views: [
+            [mirrorBtn, installBtn, shellBtn, quickActionsBtn, NSGridCell.emptyContentView],
+            [audioBtn, clipboardBtn, frontCamBtn, backCamBtn, disconnectBtn ?? NSGridCell.emptyContentView]
+        ])
+        
+        gridView.translatesAutoresizingMaskIntoConstraints = false
+        gridView.columnSpacing = 12
+        gridView.rowSpacing = 16 // Increased spacing
+        gridView.xPlacement = .center
+        gridView.yPlacement = .center
+        
+        addSubview(gridView)
+        
+        NSLayoutConstraint.activate([
+            gridView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            gridView.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
     }
     
     required init?(coder: NSCoder) { fatalError() }
@@ -1147,6 +1136,16 @@ private final class ControlsMenuItemView: NSView {
         guard let btn = audioButton else { return }
         let imageName = isEnabled ? "speaker.slash" : "speaker.wave.2"
         let tooltip = isEnabled ? "Disable Audio" : "Enable Audio"
+        
+        btn.image = NSImage(systemSymbolName: imageName, accessibilityDescription: tooltip)
+        btn.image?.size = NSSize(width: 14, height: 14)
+        btn.toolTip = tooltip
+    }
+    
+    func setClipboardEnabled(_ isEnabled: Bool) {
+        guard let btn = clipboardButton else { return }
+        let imageName = isEnabled ? "doc.on.clipboard" : "clipboard"
+        let tooltip = isEnabled ? "Disable Clipboard Sync" : "Enable Clipboard Sync"
         
         btn.image = NSImage(systemSymbolName: imageName, accessibilityDescription: tooltip)
         btn.image?.size = NSSize(width: 14, height: 14)

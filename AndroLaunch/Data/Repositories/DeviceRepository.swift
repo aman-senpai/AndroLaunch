@@ -204,6 +204,25 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         return audioPreferences[deviceID] ?? true // Default to true
     }
     
+    // Clipboard Preferences
+    private var clipboardPreferences: [String: Bool] = [:] // Keyed by device ID
+    
+    func toggleClipboard(for deviceID: String) {
+        let current = isClipboardEnabled(for: deviceID)
+        let newState = !current
+        clipboardPreferences[deviceID] = newState
+        
+        if newState {
+            adbService.startClipboardSync(deviceID: deviceID)
+        } else {
+            adbService.stopClipboardSync(deviceID: deviceID)
+        }
+    }
+    
+    func isClipboardEnabled(for deviceID: String) -> Bool {
+        return clipboardPreferences[deviceID] ?? false // Default to false if we want explicit enable, or true? User said "toggle is on... automatically copied". Let's default to false so they have to turn it on to start the process.
+    }
+    
     // Resolution Preferences
     private var resolutionPreferences: [String: Int] = [:] // Keyed by device ID
 
@@ -217,15 +236,17 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
     
     func launchApp(packageID: String, deviceID: String, appName: String) {
         let audioEnabled = isAudioEnabled(for: deviceID)
+        let clipboardEnabled = isClipboardEnabled(for: deviceID)
         let resolution = getResolution(for: deviceID)
         let deviceName = devices.first(where: { $0.id == deviceID })?.name
-        adbService.launchApp(packageID: packageID, deviceID: deviceID, appName: appName, deviceName: deviceName, audioEnabled: audioEnabled, resolution: resolution)
+        adbService.launchApp(packageID: packageID, deviceID: deviceID, appName: appName, deviceName: deviceName, audioEnabled: audioEnabled, resolution: resolution, clipboardEnabled: clipboardEnabled)
     }
 
     func mirrorDevice(deviceID: String) {
         let audioEnabled = isAudioEnabled(for: deviceID)
+        let clipboardEnabled = isClipboardEnabled(for: deviceID)
         let deviceName = devices.first(where: { $0.id == deviceID })?.name
-        adbService.mirrorDevice(deviceID: deviceID, deviceName: deviceName, audioEnabled: audioEnabled)
+        adbService.mirrorDevice(deviceID: deviceID, deviceName: deviceName, audioEnabled: audioEnabled, clipboardEnabled: clipboardEnabled)
     }
     
     func launchCamera(deviceID: String, facing: CameraFacing) {

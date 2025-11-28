@@ -30,6 +30,7 @@ final class ADBService: ADBServiceProtocol {
     private var scrcpyErrorPipeHandlers: [String: Any] = [:]
     private var scrcpyErrorOutputs: [String: String] = [:]
     private var runningScrcpyProcesses: [String: Process] = [:]
+    private var clipboardSyncProcesses: [String: Process] = [:] // Dedicated clipboard sync processes
     
     // MARK: - Executable Path Discovery
     
@@ -451,7 +452,7 @@ final class ADBService: ADBServiceProtocol {
     }
     
     // MARK: - App Launching & Mirroring (using SCRCPY)
-    func launchApp(packageID: String, deviceID: String, appName: String?, deviceName: String?, audioEnabled: Bool, resolution: Int) {
+    func launchApp(packageID: String, deviceID: String, appName: String?, deviceName: String?, audioEnabled: Bool, resolution: Int, clipboardEnabled: Bool) {
         guard let adbPath = currentADBPath else {
             let errorMessage = "ADB executable path not set. Cannot launch app with scrcpy."
             error.send(errorMessage)
@@ -503,6 +504,10 @@ final class ADBService: ADBServiceProtocol {
         
         if !audioEnabled {
             args.append("--no-audio")
+        }
+        
+        if !clipboardEnabled {
+            args.append("--no-clipboard-autosync")
         }
         
         // --keyboard=aoa only works over USB
@@ -666,7 +671,7 @@ final class ADBService: ADBServiceProtocol {
     
     // MARK: - Optional Mirroring Function
     // Mirrors the entire device screen using scrcpy (without launching a specific app)
-    func mirrorDevice(deviceID: String, deviceName: String?, audioEnabled: Bool) {
+    func mirrorDevice(deviceID: String, deviceName: String?, audioEnabled: Bool, clipboardEnabled: Bool) {
         guard let adbPath = currentADBPath else {
             let errorMessage = "ADB executable path not set. Cannot mirror device with scrcpy."
             self.error.send(errorMessage)
@@ -705,6 +710,10 @@ final class ADBService: ADBServiceProtocol {
         var args = ["--serial", deviceID, "--window-title", "\(deviceName ?? deviceID)"]
         if !audioEnabled {
             args.append("--no-audio")
+        }
+        
+        if !clipboardEnabled {
+            args.append("--no-clipboard-autosync")
         }
         task.arguments = args
         
@@ -791,6 +800,88 @@ final class ADBService: ADBServiceProtocol {
                 alert.runModal()
             }
 #endif
+        }
+    }
+    
+    // MARK: - Clipboard Sync Service
+    func startClipboardSync(deviceID: String) {
+        // Check if already running
+        if clipboardSyncProcesses[deviceID] != nil {
+            return
+        }
+        
+        guard let adbPath = currentADBPath else {
+            error.send("ADB executable path not set. Cannot start clipboard sync.")
+            findADB()
+            return
+        }
+        
+        guard let scrcpyPath = findScrcpyPath() else {
+            error.send("SCRCPY executable not found. Please install scrcpy.")
+            return
+        }
+        
+        // Sanitize deviceID
+        var cleanDeviceID = deviceID
+        if cleanDeviceID.contains(".:") {
+            cleanDeviceID = cleanDeviceID.replacingOccurrences(of: ".:", with: ":")
+        }
+        
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: scrcpyPath)
+        
+        // Arguments: --serial deviceID --no-video --no-audio --no-window
+        // This starts scrcpy in background just for clipboard
+        let args = [
+            "--serial", cleanDeviceID,
+            "--no-video",
+            "--no-audio",
+            "--no-window"
+        ]
+        
+        task.arguments = args
+        
+        var env = ProcessInfo.processInfo.environment
+        env["ADB"] = adbPath
+        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+        task.environment = env
+        
+        // We don't necessarily need to capture output unless for debugging errors
+        // But let's capture error output just in case
+        let errorPipe = Pipe()
+        task.standardError = errorPipe
+        
+        task.terminationHandler = { [weak self] terminatedTask in
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                // Remove from processes list if it terminated
+                if self.clipboardSyncProcesses[deviceID] == terminatedTask {
+                    self.clipboardSyncProcesses[deviceID] = nil
+                }
+                
+                if terminatedTask.terminationStatus != 0 {
+                    // It might have failed or been killed.
+                    // If killed by us (SIGTERM), status might be SIGTERM (15) or similar.
+                    // Only report if it's an unexpected error?
+                    // For now, let's just log it if needed, or ignore if we killed it.
+                }
+            }
+        }
+        
+        do {
+            try task.run()
+            clipboardSyncProcesses[deviceID] = task
+            print("Started clipboard sync for \(deviceID)")
+        } catch {
+            self.error.send("Failed to start clipboard sync for \(deviceID): \(error.localizedDescription)")
+        }
+    }
+    
+    func stopClipboardSync(deviceID: String) {
+        if let task = clipboardSyncProcesses[deviceID] {
+            task.terminate()
+            clipboardSyncProcesses[deviceID] = nil
+            print("Stopped clipboard sync for \(deviceID)")
         }
     }
     
