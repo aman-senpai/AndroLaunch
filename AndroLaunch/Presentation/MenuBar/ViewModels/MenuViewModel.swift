@@ -97,5 +97,126 @@ final class MenuViewModel: ObservableObject {
     
     var adbPath: String? { repository.adbPath }
 
+    // MARK: - Quick Actions
+    @Published var quickActionsStates: [String: QuickActionsState] = [:]
     
+    func fetchQuickActionsState(for deviceID: String) {
+        repository.fetchQuickActionsState(deviceID: deviceID) { [weak self] state in
+            DispatchQueue.main.async {
+                self?.quickActionsStates[deviceID] = state
+            }
+        }
+    }
+    
+    func reboot(deviceID: String, mode: RebootMode) {
+        repository.reboot(deviceID: deviceID, mode: mode)
+    }
+    
+    func toggleWifi(for deviceID: String) {
+        let currentState = quickActionsStates[deviceID]?.isWifiEnabled ?? false
+        repository.toggleWiFi(deviceID: deviceID, enable: !currentState)
+        if var state = quickActionsStates[deviceID] {
+            state.isWifiEnabled.toggle()
+            quickActionsStates[deviceID] = state
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.fetchQuickActionsState(for: deviceID)
+        }
+    }
+    
+    func toggleBluetooth(for deviceID: String) {
+        let currentState = quickActionsStates[deviceID]?.isBluetoothEnabled ?? false
+        repository.toggleBluetooth(deviceID: deviceID, enable: !currentState)
+        if var state = quickActionsStates[deviceID] {
+            state.isBluetoothEnabled.toggle()
+            quickActionsStates[deviceID] = state
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.fetchQuickActionsState(for: deviceID)
+        }
+    }
+    
+    func toggleDarkMode(for deviceID: String) {
+        let currentState = quickActionsStates[deviceID]?.isDarkModeEnabled ?? false
+        repository.toggleDarkMode(deviceID: deviceID, enable: !currentState)
+        if var state = quickActionsStates[deviceID] {
+            state.isDarkModeEnabled.toggle()
+            quickActionsStates[deviceID] = state
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.fetchQuickActionsState(for: deviceID)
+        }
+    }
+    
+    func toggleAirplaneMode(for deviceID: String) {
+        let currentState = quickActionsStates[deviceID]?.isAirplaneModeEnabled ?? false
+        repository.toggleAirplaneMode(deviceID: deviceID, enable: !currentState)
+        if var state = quickActionsStates[deviceID] {
+            state.isAirplaneModeEnabled.toggle()
+            quickActionsStates[deviceID] = state
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.fetchQuickActionsState(for: deviceID)
+        }
+    }
+    
+    func toggleMobileData(for deviceID: String) {
+        let currentState = quickActionsStates[deviceID]?.isMobileDataEnabled ?? false
+        repository.toggleMobileData(deviceID: deviceID, enable: !currentState)
+        if var state = quickActionsStates[deviceID] {
+            state.isMobileDataEnabled.toggle()
+            quickActionsStates[deviceID] = state
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.fetchQuickActionsState(for: deviceID)
+        }
+    }
+    
+    func toggleLocation(for deviceID: String) {
+        let currentState = quickActionsStates[deviceID]?.isLocationEnabled ?? false
+        repository.toggleLocation(deviceID: deviceID, enable: !currentState)
+        if var state = quickActionsStates[deviceID] {
+            state.isLocationEnabled.toggle()
+            quickActionsStates[deviceID] = state
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.fetchQuickActionsState(for: deviceID)
+        }
+    }
+    
+    func toggleDoNotDisturb(for deviceID: String) {
+        let currentState = quickActionsStates[deviceID]?.isDoNotDisturbEnabled ?? false
+        repository.toggleDoNotDisturb(deviceID: deviceID, enable: !currentState)
+        if var state = quickActionsStates[deviceID] {
+            state.isDoNotDisturbEnabled.toggle()
+            quickActionsStates[deviceID] = state
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.fetchQuickActionsState(for: deviceID)
+        }
+    }
+    
+    func toggleAutoRotate(for deviceID: String) {
+        let currentState = quickActionsStates[deviceID]?.isAutoRotateEnabled ?? false
+        repository.toggleAutoRotate(deviceID: deviceID, enable: !currentState)
+        if var state = quickActionsStates[deviceID] {
+            state.isAutoRotateEnabled.toggle()
+            quickActionsStates[deviceID] = state
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.fetchQuickActionsState(for: deviceID)
+        }
+    }
+    
+    func toggleAdaptiveBrightness(for deviceID: String) {
+        let currentState = quickActionsStates[deviceID]?.isAdaptiveBrightnessEnabled ?? false
+        repository.toggleAdaptiveBrightness(deviceID: deviceID, enable: !currentState)
+        if var state = quickActionsStates[deviceID] {
+            state.isAdaptiveBrightnessEnabled.toggle()
+            quickActionsStates[deviceID] = state
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.fetchQuickActionsState(for: deviceID)
+        }
+    }
 }

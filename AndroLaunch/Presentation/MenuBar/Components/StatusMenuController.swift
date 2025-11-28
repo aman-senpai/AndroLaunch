@@ -13,7 +13,6 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var currentDeviceID: String?
     private var pairingWindow: NSWindow?
-    private var quickActionsWindow: NSWindow?
     
     // MARK: - Search Field Subclass
     private class DeviceSearchField: NSSearchField {
@@ -91,6 +90,13 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
                 // we are manually updating the UI in the action methods.
                 // However, if the change comes from elsewhere, we might want to refresh.
                 // For now, let's rely on manual UI updates for responsiveness and full refresh for data changes.
+            }
+            .store(in: &cancellables)
+            
+        viewModel.$quickActionsStates
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateAllQuickActionsSubmenus()
             }
             .store(in: &cancellables)
     }
@@ -275,8 +281,13 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
     }
     
     func menuWillOpen(_ menu: NSMenu) {
-        // Trigger refresh when menu opens
-        viewModel.refresh()
+        if let id = menu.identifier?.rawValue, id.starts(with: "QuickActions-") {
+            let deviceID = String(id.dropFirst("QuickActions-".count))
+            viewModel.fetchQuickActionsState(for: deviceID)
+        } else if menu == statusItem.menu {
+            // Trigger refresh when main menu opens
+            viewModel.refresh()
+        }
     }
     
     private func truncateDeviceID(_ deviceID: String, maxLength: Int = 30) -> String {
@@ -388,11 +399,26 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
             mirrorAction: #selector(mirrorDevice(_:)),
             installAction: #selector(installAPK(_:)),
             shellAction: #selector(launchShell(_:)),
-            quickActionsAction: #selector(launchQuickActions(_:)),
             disconnectAction: #selector(disconnectDevice(_:))
         )
         controlsItem.view = controlsView
         submenu.addItem(controlsItem)
+        
+        submenu.addItem(NSMenuItem.separator())
+        
+        // Quick Actions
+        let quickActionsItem = NSMenuItem(title: "Quick Actions", action: nil, keyEquivalent: "")
+        quickActionsItem.image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Quick Actions")
+        quickActionsItem.image?.size = NSSize(width: 16, height: 16)
+        
+        let quickActionsMenu = NSMenu()
+        quickActionsMenu.delegate = self
+        quickActionsMenu.identifier = NSUserInterfaceItemIdentifier("QuickActions-\(device.id)")
+        
+        configureQuickActionsMenu(quickActionsMenu, deviceID: device.id)
+        
+        quickActionsItem.submenu = quickActionsMenu
+        submenu.addItem(quickActionsItem)
 
         submenu.addItem(NSMenuItem.separator())
         
@@ -862,38 +888,7 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
     
-    @objc private func launchQuickActions(_ sender: NSButton) {
-        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
-            if quickActionsWindow == nil {
-                let viewModel = QuickActionsViewModel(deviceID: deviceID, repository: self.viewModel.repository)
-                let view = QuickActionsView(viewModel: viewModel)
-                let hostingController = NSHostingController(rootView: view)
-                
-                let window = NSWindow(contentViewController: hostingController)
-                window.title = "Quick Actions - \(deviceID)"
-                window.styleMask = [.titled, .closable, .miniaturizable]
-                window.center()
-                window.isReleasedWhenClosed = false
-                
-                self.quickActionsWindow = window
-            } else {
-                // Update existing window if needed, or just show it
-                // Ideally we should update the ViewModel if the deviceID changed, but for now let's just show it.
-                // To be correct, we should probably recreate it or update the VM.
-                // Let's recreate it if the device ID is different, or just close and reopen.
-                // Simpler: Just close old and open new.
-                quickActionsWindow?.close()
-                quickActionsWindow = nil
-                launchQuickActions(sender)
-                return
-            }
-            
-            quickActionsWindow?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            
-            if let menu = statusItem.menu { menu.cancelTracking() }
-        }
-    }
+
     
     func uninstallApp(deviceID: String, app: AndroidApp) {
         let alert = NSAlert()
@@ -927,6 +922,145 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         if response == .alertFirstButtonReturn {
             viewModel.repository.clearAppData(deviceID: deviceID, packageID: app.id)
         }
+    }
+    
+    // MARK: - Quick Actions Helper
+    
+    private func configureQuickActionsMenu(_ menu: NSMenu, deviceID: String) {
+        menu.removeAllItems()
+        
+        // Reboot Options
+        let rebootItem = NSMenuItem(title: "Reboot", action: #selector(rebootDevice(_:)), keyEquivalent: "")
+        rebootItem.target = self
+        rebootItem.representedObject = deviceID
+        rebootItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
+        menu.addItem(rebootItem)
+        
+        let bootloaderItem = NSMenuItem(title: "Reboot to Bootloader", action: #selector(rebootBootloader(_:)), keyEquivalent: "")
+        bootloaderItem.target = self
+        bootloaderItem.representedObject = deviceID
+        bootloaderItem.image = NSImage(systemSymbolName: "laptopcomputer", accessibilityDescription: nil)
+        menu.addItem(bootloaderItem)
+        
+        let recoveryItem = NSMenuItem(title: "Reboot to Recovery", action: #selector(rebootRecovery(_:)), keyEquivalent: "")
+        recoveryItem.target = self
+        recoveryItem.representedObject = deviceID
+        recoveryItem.image = NSImage(systemSymbolName: "wrench.and.screwdriver", accessibilityDescription: nil)
+        menu.addItem(recoveryItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // Toggles
+        let state = viewModel.quickActionsStates[deviceID]
+        
+        func addToggle(title: String, icon: String, action: Selector, isEnabled: Bool) {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            item.representedObject = deviceID
+            item.image = NSImage(systemSymbolName: icon, accessibilityDescription: nil)
+            item.state = isEnabled ? .on : .off
+            menu.addItem(item)
+        }
+        
+        addToggle(title: "Wi-Fi", icon: "wifi", action: #selector(toggleWifi(_:)), isEnabled: state?.isWifiEnabled ?? false)
+        addToggle(title: "Bluetooth", icon: "wave.3.right", action: #selector(toggleBluetooth(_:)), isEnabled: state?.isBluetoothEnabled ?? false)
+        addToggle(title: "Mobile Data", icon: "antenna.radiowaves.left.and.right", action: #selector(toggleMobileData(_:)), isEnabled: state?.isMobileDataEnabled ?? false)
+        addToggle(title: "Airplane Mode", icon: "airplane", action: #selector(toggleAirplaneMode(_:)), isEnabled: state?.isAirplaneModeEnabled ?? false)
+        addToggle(title: "Location", icon: "location.fill", action: #selector(toggleLocation(_:)), isEnabled: state?.isLocationEnabled ?? false)
+        addToggle(title: "Do Not Disturb", icon: "bell.slash.fill", action: #selector(toggleDoNotDisturb(_:)), isEnabled: state?.isDoNotDisturbEnabled ?? false)
+        addToggle(title: "Auto Rotate", icon: "arrow.triangle.2.circlepath", action: #selector(toggleAutoRotate(_:)), isEnabled: state?.isAutoRotateEnabled ?? false)
+        addToggle(title: "Adaptive Brightness", icon: "sun.max.fill", action: #selector(toggleAdaptiveBrightness(_:)), isEnabled: state?.isAdaptiveBrightnessEnabled ?? false)
+        addToggle(title: "Dark Mode", icon: "moon.fill", action: #selector(toggleDarkMode(_:)), isEnabled: state?.isDarkModeEnabled ?? false)
+    }
+    
+    private func updateAllQuickActionsSubmenus() {
+        guard let menu = statusItem.menu else { return }
+        for item in menu.items {
+            if let deviceID = item.representedObject as? String,
+               let deviceSubmenu = item.submenu,
+               let quickActionsItem = deviceSubmenu.items.first(where: { $0.title == "Quick Actions" }),
+               let quickActionsMenu = quickActionsItem.submenu {
+                configureQuickActionsMenu(quickActionsMenu, deviceID: deviceID)
+            }
+        }
+    }
+    
+    // MARK: - Quick Actions Handlers
+    
+    @objc private func rebootDevice(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        confirmReboot(deviceID: deviceID, mode: .normal)
+    }
+    
+    @objc private func rebootBootloader(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        confirmReboot(deviceID: deviceID, mode: .bootloader)
+    }
+    
+    @objc private func rebootRecovery(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        confirmReboot(deviceID: deviceID, mode: .recovery)
+    }
+    
+    private func confirmReboot(deviceID: String, mode: RebootMode) {
+        let alert = NSAlert()
+        alert.messageText = "Reboot Device?"
+        let modeString = mode == .normal ? "System" : mode.rawValue.capitalized
+        alert.informativeText = "Are you sure you want to reboot the device into \(modeString) mode?"
+        alert.addButton(withTitle: "Reboot")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .warning
+        
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            viewModel.reboot(deviceID: deviceID, mode: mode)
+        }
+    }
+    
+    @objc private func toggleWifi(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        viewModel.toggleWifi(for: deviceID)
+    }
+    
+    @objc private func toggleBluetooth(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        viewModel.toggleBluetooth(for: deviceID)
+    }
+    
+    @objc private func toggleMobileData(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        viewModel.toggleMobileData(for: deviceID)
+    }
+    
+    @objc private func toggleAirplaneMode(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        viewModel.toggleAirplaneMode(for: deviceID)
+    }
+    
+    @objc private func toggleLocation(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        viewModel.toggleLocation(for: deviceID)
+    }
+    
+    @objc private func toggleDoNotDisturb(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        viewModel.toggleDoNotDisturb(for: deviceID)
+    }
+    
+    @objc private func toggleAutoRotate(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        viewModel.toggleAutoRotate(for: deviceID)
+    }
+    
+    @objc private func toggleAdaptiveBrightness(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        viewModel.toggleAdaptiveBrightness(for: deviceID)
+    }
+    
+    @objc private func toggleDarkMode(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        viewModel.toggleDarkMode(for: deviceID)
     }
 }
 
@@ -1065,7 +1199,7 @@ private final class ControlsMenuItemView: NSView {
     private var audioButton: NSButton?
     private var clipboardButton: NSButton?
     
-    init(isAudioEnabled: Bool, isClipboardEnabled: Bool, deviceID: String, isWireless: Bool, target: AnyObject, audioAction: Selector, clipboardAction: Selector, frontCamAction: Selector, backCamAction: Selector, mirrorAction: Selector, installAction: Selector, shellAction: Selector, quickActionsAction: Selector, disconnectAction: Selector) {
+    init(isAudioEnabled: Bool, isClipboardEnabled: Bool, deviceID: String, isWireless: Bool, target: AnyObject, audioAction: Selector, clipboardAction: Selector, frontCamAction: Selector, backCamAction: Selector, mirrorAction: Selector, installAction: Selector, shellAction: Selector, disconnectAction: Selector) {
         super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 72)) // Increased height for spacing
         
         // Helper to configure button size
@@ -1082,7 +1216,6 @@ private final class ControlsMenuItemView: NSView {
         let mirrorBtn = config(createButton(imageName: "display", tooltip: "Mirror Device", target: target, action: mirrorAction, deviceID: deviceID))
         let installBtn = config(createButton(imageName: "shippingbox", tooltip: "Install APK", target: target, action: installAction, deviceID: deviceID))
         let shellBtn = config(createButton(imageName: "terminal", tooltip: "Open ADB Shell", target: target, action: shellAction, deviceID: deviceID))
-        let quickActionsBtn = config(createButton(imageName: "bolt.fill", tooltip: "Quick Actions", target: target, action: quickActionsAction, deviceID: deviceID))
         
         let audioBtn = config(createButton(
             imageName: isAudioEnabled ? "speaker.slash" : "speaker.wave.2",
@@ -1112,7 +1245,7 @@ private final class ControlsMenuItemView: NSView {
         
         // Grid Layout
         let gridView = NSGridView(views: [
-            [mirrorBtn, installBtn, shellBtn, quickActionsBtn, NSGridCell.emptyContentView],
+            [mirrorBtn, installBtn, shellBtn, NSGridCell.emptyContentView, NSGridCell.emptyContentView],
             [audioBtn, clipboardBtn, frontCamBtn, backCamBtn, disconnectBtn ?? NSGridCell.emptyContentView]
         ])
         
