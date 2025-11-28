@@ -422,16 +422,14 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
 
         submenu.addItem(NSMenuItem.separator())
         
-        // Resolution Section (Radio Buttons)
-        let resItem = NSMenuItem()
-        let currentResolution = viewModel.getResolution(for: device.id)
-        let resView = ResolutionMenuItemView(
-            currentResolution: currentResolution,
-            deviceID: device.id,
-            target: self,
-            action: #selector(changeResolution(_:))
-        )
-        resItem.view = resView
+        // Resolution Section
+        let resItem = NSMenuItem(title: "Resolution", action: nil, keyEquivalent: "")
+        resItem.image = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: "Resolution")
+        resItem.image?.size = NSSize(width: 16, height: 16)
+        
+        let resMenu = NSMenu()
+        configureResolutionMenu(resMenu, deviceID: device.id)
+        resItem.submenu = resMenu
         submenu.addItem(resItem)
         
         submenu.addItem(NSMenuItem.separator())
@@ -851,15 +849,16 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         }
     }
     
-    @objc private func changeResolution(_ sender: NSButton) {
-        // Use custom button class to get resolution and deviceID
-        if let resButton = sender as? DeviceResolutionRadioButton, let deviceID = resButton.deviceID {
-            let resolution = resButton.resolutionValue
-            viewModel.setResolution(for: deviceID, resolution: resolution)
-            // We might want to update the UI state (radio selection) if the menu stays open,
-            // but usually it closes. If it stays open, the ViewModel update should trigger a refresh
-            // if we are observing it correctly, but NSMenu items don't auto-update views easily without reload.
-            // Since clicking usually closes the menu, this is fine.
+    @objc private func changeResolution(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        let resolution = sender.tag
+        viewModel.setResolution(for: deviceID, resolution: resolution)
+        
+        // Update checkmarks
+        if let menu = sender.menu {
+            for item in menu.items {
+                item.state = (item.tag == resolution) ? .on : .off
+            }
         }
     }
 
@@ -973,6 +972,19 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         addToggle(title: "Dark Mode", icon: "moon.fill", action: #selector(toggleDarkMode(_:)), isEnabled: state?.isDarkModeEnabled ?? false)
     }
     
+    private func configureResolutionMenu(_ menu: NSMenu, deviceID: String) {
+        let currentResolution = viewModel.getResolution(for: deviceID)
+        let resolutions = [360, 540, 720, 900, 1080, 1440, 1600]
+        
+        for res in resolutions {
+            let item = NSMenuItem(title: "\(res)p", action: #selector(changeResolution(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = deviceID
+            item.tag = res
+            item.state = (res == currentResolution) ? .on : .off
+            menu.addItem(item)
+        }
+    }
     private func updateAllQuickActionsSubmenus() {
         guard let menu = statusItem.menu else { return }
         for item in menu.items {
@@ -1184,10 +1196,7 @@ private class DeviceActionButton: NSButton {
     var deviceID: String?
 }
 
-private class DeviceResolutionRadioButton: NSButton {
-    var deviceID: String?
-    var resolutionValue: Int = 900
-}
+
 
 private class AppActionButton: NSButton {
     var app: AndroidApp?
@@ -1299,40 +1308,7 @@ private final class ControlsMenuItemView: NSView {
     }
 }
 
-private final class ResolutionMenuItemView: NSView {
-    
-    init(currentResolution: Int, deviceID: String, target: AnyObject, action: Selector) {
-        super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        
-        let stackView = NSStackView()
-        stackView.orientation = .horizontal
-        stackView.spacing = 8
-        stackView.distribution = .fillEqually
-        stackView.alignment = .centerY
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stackView)
-        
-        NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            stackView.centerYAnchor.constraint(equalTo: centerYAnchor)
-        ])
-        
-        let resolutions = [540, 720, 900, 1080]
-        
-        for res in resolutions {
-            let btn = DeviceResolutionRadioButton(radioButtonWithTitle: "\(res)p", target: target, action: action)
-            btn.deviceID = deviceID
-            btn.resolutionValue = res
-            btn.state = (res == currentResolution) ? .on : .off
-            btn.controlSize = .small
-            btn.font = NSFont.systemFont(ofSize: 10)
-            stackView.addArrangedSubview(btn)
-        }
-    }
-    
-    required init?(coder: NSCoder) { fatalError() }
-}
+
 
 // MARK: - Refresh Apps Custom View
 private class RefreshAppsMenuItemView: NSView {
