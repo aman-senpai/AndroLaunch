@@ -898,7 +898,13 @@ private final class AppsTableViewHandler: NSObject, NSTableViewDataSource, NSTab
     }
     
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        return MenuTableRowView()
+        let identifier = NSUserInterfaceItemIdentifier("RowView")
+        var rowView = tableView.makeView(withIdentifier: identifier, owner: self) as? MenuTableRowView
+        if rowView == nil {
+            rowView = MenuTableRowView()
+            rowView?.identifier = identifier
+        }
+        return rowView
     }
     
     func tableView(_ tableView: NSTableView, keyDown event: NSEvent) {
@@ -970,13 +976,41 @@ private final class MenuTableRowView: NSTableRowView {
         if let trackingArea = trackingArea {
             removeTrackingArea(trackingArea)
         }
+        
+        // Use activeInActiveApp to ensure we track even if the menu window isn't key (though it usually is)
+        // .inVisibleRect is crucial for scrolling
         trackingArea = NSTrackingArea(
             rect: bounds,
-            options: [.activeAlways, .mouseEnteredAndExited],
+            options: [.activeInActiveApp, .mouseEnteredAndExited, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
         addTrackingArea(trackingArea!)
+        
+        // Check if mouse is already inside when tracking areas are updated (e.g. after scroll)
+        if let window = self.window {
+            let mouseLocation = window.mouseLocationOutsideOfEventStream
+            let localPoint = self.convert(mouseLocation, from: nil)
+            if self.visibleRect.contains(localPoint) {
+                animateHover(visible: true)
+            } else {
+                animateHover(visible: false)
+            }
+        }
+    }
+    
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        hoverEffectView.layer?.removeAllAnimations()
+        hoverEffectView.alphaValue = 0
+    }
+    
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            hoverEffectView.layer?.removeAllAnimations()
+            hoverEffectView.alphaValue = 0
+        }
     }
     
     override func mouseEntered(with event: NSEvent) {
@@ -989,16 +1023,17 @@ private final class MenuTableRowView: NSTableRowView {
     
     private func animateHover(visible: Bool) {
         if visible {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.05
-                hoverEffectView.animator().alphaValue = 1
+            // Only animate if not already visible to prevent flickering
+            if hoverEffectView.alphaValue < 1 {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.05
+                    hoverEffectView.animator().alphaValue = 1
+                }
             }
         } else {
-            // Instant removal to prevent ghosting/multiple highlights when moving fast
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0
-                hoverEffectView.animator().alphaValue = 0
-            }
+            // Instant removal
+            hoverEffectView.layer?.removeAllAnimations()
+            hoverEffectView.alphaValue = 0
         }
     }
     
