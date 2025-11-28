@@ -234,6 +234,68 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         return resolutionPreferences[deviceID] ?? 900 // Default to 900p
     }
     
+    // Mirroring Size Preferences (for Mirroring)
+    private var maxSizePreferences: [String: Int] = [:] // Keyed by device ID
+
+    func setMaxSize(for deviceID: String, size: Int) {
+        maxSizePreferences[deviceID] = size
+    }
+
+    func getMaxSize(for deviceID: String) -> Int {
+        return maxSizePreferences[deviceID] ?? 0 // Default to 0 (Original/No Limit)
+    }
+    
+    // FPS Preferences
+    private var fpsPreferences: [String: Int] = [:]
+    
+    func setMaxFPS(for deviceID: String, fps: Int) {
+        fpsPreferences[deviceID] = fps
+    }
+    
+    func getMaxFPS(for deviceID: String) -> Int {
+        return fpsPreferences[deviceID] ?? 0 // Default 0 (Unlimited)
+    }
+    
+    // Bit Rate Preferences
+    private var bitRatePreferences: [String: Int] = [:]
+    
+    func setBitRate(for deviceID: String, bitRate: Int) {
+        bitRatePreferences[deviceID] = bitRate
+    }
+    
+    func getBitRate(for deviceID: String) -> Int {
+        return bitRatePreferences[deviceID] ?? 8 // Default 8 Mbps
+    }
+    
+    // Orientation Preferences
+    private var orientationPreferences: [String: String] = [:]
+    private var captureOrientationEnabledPreferences: [String: Bool] = [:]
+    
+    func setOrientation(for deviceID: String, orientation: String) {
+        orientationPreferences[deviceID] = orientation
+        // Auto-enable when a specific orientation is selected
+        if orientation != "Auto" {
+            captureOrientationEnabledPreferences[deviceID] = true
+        } else {
+             captureOrientationEnabledPreferences[deviceID] = false
+        }
+    }
+    
+    func getOrientation(for deviceID: String) -> String {
+        let isEnabled = isCaptureOrientationEnabled(for: deviceID)
+        if !isEnabled { return "Auto" }
+        return orientationPreferences[deviceID] ?? "0" // Default to 0 if enabled but not set
+    }
+    
+    func toggleCaptureOrientation(for deviceID: String) {
+        let current = isCaptureOrientationEnabled(for: deviceID)
+        captureOrientationEnabledPreferences[deviceID] = !current
+    }
+    
+    func isCaptureOrientationEnabled(for deviceID: String) -> Bool {
+        return captureOrientationEnabledPreferences[deviceID] ?? false
+    }
+    
     func launchApp(packageID: String, deviceID: String, appName: String) {
         let audioEnabled = isAudioEnabled(for: deviceID)
         let clipboardEnabled = isClipboardEnabled(for: deviceID)
@@ -245,8 +307,22 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
     func mirrorDevice(deviceID: String) {
         let audioEnabled = isAudioEnabled(for: deviceID)
         let clipboardEnabled = isClipboardEnabled(for: deviceID)
+        let maxSize = getMaxSize(for: deviceID)
+        let maxFPS = getMaxFPS(for: deviceID)
+        let bitRate = getBitRate(for: deviceID)
+        let orientation = getOrientation(for: deviceID)
+        
         let deviceName = devices.first(where: { $0.id == deviceID })?.name
-        adbService.mirrorDevice(deviceID: deviceID, deviceName: deviceName, audioEnabled: audioEnabled, clipboardEnabled: clipboardEnabled)
+        adbService.mirrorDevice(
+            deviceID: deviceID,
+            deviceName: deviceName,
+            audioEnabled: audioEnabled,
+            clipboardEnabled: clipboardEnabled,
+            maxSize: maxSize,
+            maxFPS: maxFPS,
+            bitRate: bitRate,
+            orientation: orientation
+        )
     }
     
     func launchCamera(deviceID: String, facing: CameraFacing) {

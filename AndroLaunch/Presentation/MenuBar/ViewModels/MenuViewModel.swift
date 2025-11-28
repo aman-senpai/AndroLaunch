@@ -95,6 +95,54 @@ final class MenuViewModel: ObservableObject {
         return repository.getResolution(for: deviceID)
     }
     
+    func setMaxSize(for deviceID: String, size: Int) {
+        repository.setMaxSize(for: deviceID, size: size)
+        objectWillChange.send()
+    }
+    
+    func getMaxSize(for deviceID: String) -> Int {
+        return repository.getMaxSize(for: deviceID)
+    }
+    
+    // FPS
+    func setMaxFPS(for deviceID: String, fps: Int) {
+        repository.setMaxFPS(for: deviceID, fps: fps)
+        objectWillChange.send()
+    }
+    
+    func getMaxFPS(for deviceID: String) -> Int {
+        return repository.getMaxFPS(for: deviceID)
+    }
+    
+    // Bit Rate
+    func setBitRate(for deviceID: String, bitRate: Int) {
+        repository.setBitRate(for: deviceID, bitRate: bitRate)
+        objectWillChange.send()
+    }
+    
+    func getBitRate(for deviceID: String) -> Int {
+        return repository.getBitRate(for: deviceID)
+    }
+    
+    // Orientation
+    func setOrientation(for deviceID: String, orientation: String) {
+        repository.setOrientation(for: deviceID, orientation: orientation)
+        objectWillChange.send()
+    }
+    
+    func getOrientation(for deviceID: String) -> String {
+        return repository.getOrientation(for: deviceID)
+    }
+    
+    func isCaptureOrientationEnabled(for deviceID: String) -> Bool {
+        return repository.isCaptureOrientationEnabled(for: deviceID)
+    }
+    
+    func toggleCaptureOrientation(for deviceID: String) {
+        repository.toggleCaptureOrientation(for: deviceID)
+        objectWillChange.send()
+    }
+    
     var adbPath: String? { repository.adbPath }
 
     // MARK: - Quick Actions

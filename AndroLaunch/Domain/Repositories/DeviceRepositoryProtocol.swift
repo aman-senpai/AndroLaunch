@@ -42,7 +42,22 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     
     func setResolution(for deviceID: String, resolution: Int)
     func getResolution(for deviceID: String) -> Int
-
+    
+    func setMaxSize(for deviceID: String, size: Int)
+    func getMaxSize(for deviceID: String) -> Int
+    
+    func setMaxFPS(for deviceID: String, fps: Int)
+    func getMaxFPS(for deviceID: String) -> Int
+    
+    func setBitRate(for deviceID: String, bitRate: Int)
+    func getBitRate(for deviceID: String) -> Int
+    
+    func setOrientation(for deviceID: String, orientation: String)
+    func getOrientation(for deviceID: String) -> String
+    
+    func toggleCaptureOrientation(for deviceID: String)
+    func isCaptureOrientationEnabled(for deviceID: String) -> Bool
+    
     // Quick Actions
     func reboot(deviceID: String, mode: RebootMode)
     func toggleWiFi(deviceID: String, enable: Bool)
