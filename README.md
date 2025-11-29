@@ -1,22 +1,25 @@
 # AndroLaunch - Android Device Management Suite
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/542a6e2b-d7f3-450b-89a3-cd5e110a765e" width="90%" />
+  <img src="https://github.com/user-attachments/assets/1da15d00-ab8a-4afb-8d26-fd23ae3a3cda" alt="AndroLaunch" width="150"/>
 </p>
 
-<p align="center">
-  <img alt="menu" src="https://github.com/user-attachments/assets/49159179-50b4-462d-a16f-97d0db7d102e" width="28%"/>
-  <img src="https://github.com/user-attachments/assets/ad074ca0-6065-4a66-b891-077c71bdc27d" width="28%" />
-  <img src="https://github.com/user-attachments/assets/679d98b6-05d9-4802-a987-4afe14720e22" width="28%" />
-  <img alt="" src="https://github.com/user-attachments/assets/33a38462-e46e-4afc-886d-32cdefe4f2b3" width="28%"/>
-  <img alt="" src="https://github.com/user-attachments/assets/6aed1028-4f55-4a5c-bea0-19e30b1b0419" width="28%"/>
-
-</p>
 
 ![Swift Version](https://img.shields.io/badge/Swift-5.7+-orange.svg)
 ![Platform](https://img.shields.io/badge/macOS-12+-blue.svg)
 
 A professional macOS menu bar application for managing Android devices through ADB and Scrcpy, built with modern Swift architecture patterns.
+
+## Screenshots 📸
+
+<p>
+  <img src="https://github.com/user-attachments/assets/542a6e2b-d7f3-450b-89a3-cd5e110a765e" width="50%" />
+  <img alt="menu" src="https://github.com/user-attachments/assets/49159179-50b4-462d-a16f-97d0db7d102e" width="20%"/>
+  <img src="https://github.com/user-attachments/assets/ad074ca0-6065-4a66-b891-077c71bdc27d" width="18%" />
+  <img src="https://github.com/user-attachments/assets/679d98b6-05d9-4802-a987-4afe14720e22" width="18%" />
+  <img alt="" src="https://github.com/user-attachments/assets/33a38462-e46e-4afc-886d-32cdefe4f2b3" width="18%"/>
+  <img alt="" src="https://github.com/user-attachments/assets/6aed1028-4f55-4a5c-bea0-19e30b1b0419" width="18%"/>
+</p>
 
 ## Features ✨
 
