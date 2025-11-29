@@ -10,7 +10,6 @@
   <img src="https://github.com/user-attachments/assets/679d98b6-05d9-4802-a987-4afe14720e22" width="28%" />
   <img alt="" src="https://github.com/user-attachments/assets/b1a7954e-3c37-4f6f-99a6-37a37359a390" width="28%"/>
 
-
 </p>
 
 ![Swift Version](https://img.shields.io/badge/Swift-5.7+-orange.svg)
@@ -25,21 +24,28 @@ A professional macOS menu bar application for managing Android devices through A
   - Refresh device list in real-time
   - Display device status (connected/unauthorized)
 - **Quick Actions**:
-  - Toggle WiFi, Bluetooth, Mobile Data, etc.
+  - Toggle WiFi, Bluetooth, Mobile Data, Airplane Mode
+  - Toggle Location, Do Not Disturb, Auto-Rotate
+  - Control Sound Mode and Adaptive Brightness
   - Reboot device (System/Bootloader/Recovery)
   - Adjust brightness and volume
 - **App Management**:
-  - List installed apps per device
+  - Native menu integration for installed apps
+  - Search functionality for quick access
   - Launch apps directly from menu
   - **New**: Uninstall apps with confirmation
+  - **New**: Clear app data
   - **New**: Install APKs directly from file
-  - Refresh app list dynamically
 - **Device Mirroring**:
   - Full device screen mirroring via Scrcpy
+  - **New**: Borderless window mode
+  - **New**: Camera mirroring with custom settings (Facing, FPS, Resolution)
   - Launch apps in dedicated windows
   - Custom display resolutions
-  - **New**: Audio toggle and camera controls
-  - **New**: Low latency audio buffering
+  - **New**: Audio toggle and low latency buffering
+- **Clipboard Sync**:
+  - **New**: Bi-directional clipboard synchronization (Mac ↔ Android)
+  - Requires [AdbClipboard](https://play.google.com/store/apps/details?id=ch.pete.adbclipboard) installed on the Android device for Android → Mac sync.
 - **ADB Management**:
   - Automatic ADB path discovery
   - **New**: Open ADB Shell terminal
@@ -119,6 +125,21 @@ graph TD
 6. **UI** updates automatically
 
 ## Setup
+
+### Running the Release Build
+
+To run the release build of AndroLaunch, you must have `adb` and `scrcpy` installed on your system, as the app relies on them for device communication and mirroring.
+
+1. **Install Dependencies**:
+
+   ```bash
+   brew install android-platform-tools scrcpy
+   ```
+
+2. **Launch the App**:
+   - Ensure the app has permissions to access the local network (for wireless debugging) and screen recording (if required by macOS for certain features, though usually not needed for ADB).
+
+### Development Setup
 
 1. Clone the repository
 2. Install dependencies:
