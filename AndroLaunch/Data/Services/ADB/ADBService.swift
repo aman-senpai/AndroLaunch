@@ -32,6 +32,11 @@ final class ADBService: ADBServiceProtocol {
     private var runningScrcpyProcesses: [String: Process] = [:]
     private var clipboardSyncProcesses: [String: Process] = [:] // Dedicated clipboard sync processes
     
+    // MARK: - Clipboard Sync State
+    private var clipboardSyncDevices: Set<String> = []
+    private var clipboardTimer: Timer?
+    private var lastClipboardContent: String?
+    
     // MARK: - Executable Path Discovery
     
     // Common system paths for ADB
@@ -923,12 +928,35 @@ final class ADBService: ADBServiceProtocol {
     }
     
     // MARK: - Clipboard Sync Service
+    // MARK: - Clipboard Sync Service
+    
     func startClipboardSync(deviceID: String) {
-        // Check if already running
-        if clipboardSyncProcesses[deviceID] != nil {
-            return
+        // 1. Start Android -> Mac sync (using scrcpy)
+        if clipboardSyncProcesses[deviceID] == nil {
+            startScrcpyClipboardSync(deviceID: deviceID)
         }
         
+        // 2. Start Mac -> Android sync (using adb broadcast)
+        clipboardSyncDevices.insert(deviceID)
+        startMacClipboardObserver()
+    }
+    
+    func stopClipboardSync(deviceID: String) {
+        // 1. Stop Android -> Mac sync
+        if let task = clipboardSyncProcesses[deviceID] {
+            task.terminate()
+            clipboardSyncProcesses[deviceID] = nil
+            print("Stopped scrcpy clipboard sync for \(deviceID)")
+        }
+        
+        // 2. Stop Mac -> Android sync
+        clipboardSyncDevices.remove(deviceID)
+        if clipboardSyncDevices.isEmpty {
+            stopMacClipboardObserver()
+        }
+    }
+    
+    private func startScrcpyClipboardSync(deviceID: String) {
         guard let adbPath = currentADBPath else {
             error.send("ADB executable path not set. Cannot start clipboard sync.")
             findADB()
@@ -977,30 +1005,66 @@ final class ADBService: ADBServiceProtocol {
                 if self.clipboardSyncProcesses[deviceID] == terminatedTask {
                     self.clipboardSyncProcesses[deviceID] = nil
                 }
-                
-                if terminatedTask.terminationStatus != 0 {
-                    // It might have failed or been killed.
-                    // If killed by us (SIGTERM), status might be SIGTERM (15) or similar.
-                    // Only report if it's an unexpected error?
-                    // For now, let's just log it if needed, or ignore if we killed it.
-                }
             }
         }
         
         do {
             try task.run()
             clipboardSyncProcesses[deviceID] = task
-            print("Started clipboard sync for \(deviceID)")
+            print("Started scrcpy clipboard sync for \(deviceID)")
         } catch {
             self.error.send("Failed to start clipboard sync for \(deviceID): \(error.localizedDescription)")
         }
     }
     
-    func stopClipboardSync(deviceID: String) {
-        if let task = clipboardSyncProcesses[deviceID] {
-            task.terminate()
-            clipboardSyncProcesses[deviceID] = nil
-            print("Stopped clipboard sync for \(deviceID)")
+    // MARK: - Mac -> Android Clipboard Sync
+    
+    private func startMacClipboardObserver() {
+        guard clipboardTimer == nil else { return }
+        
+        // Poll clipboard every 1 second
+        clipboardTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.checkMacClipboard()
+        }
+    }
+    
+    private func stopMacClipboardObserver() {
+        clipboardTimer?.invalidate()
+        clipboardTimer = nil
+        lastClipboardContent = nil
+    }
+    
+    private func checkMacClipboard() {
+        #if canImport(AppKit)
+        let pasteboard = NSPasteboard.general
+        if let content = pasteboard.string(forType: .string) {
+            // Only sync if content changed
+            if content != lastClipboardContent {
+                lastClipboardContent = content
+                
+                // Send to all syncing devices
+                for deviceID in clipboardSyncDevices {
+                    sendClipboardToDevice(deviceID: deviceID, text: content)
+                }
+            }
+        }
+        #endif
+    }
+    
+    private func sendClipboardToDevice(deviceID: String, text: String) {
+        // Robustly escape the text for adb shell using single quotes.
+        // We replace every single quote ' with '\'' to close the quote, insert a literal quote, and reopen the quote.
+        // This allows passing any character (including spaces, newlines, double quotes, shell metacharacters) safely.
+        let escapedText = text.replacingOccurrences(of: "'", with: "'\\''")
+        
+        // Using ch.pete.adbclipboard as requested
+        // Command: adb shell am broadcast -a ch.pete.adbclipboard.WRITE -n ch.pete.adbclipboard/.WriteReceiver -e text '...'
+        let command = "am broadcast -a ch.pete.adbclipboard.WRITE -n ch.pete.adbclipboard/.WriteReceiver -e text '\(escapedText)'"
+        
+        executeADBCommand(arguments: ["-s", deviceID, "shell", command]) { success, _, errorOutput in
+            if !success {
+                print("Failed to sync clipboard to \(deviceID): \(errorOutput ?? "Unknown error")")
+            }
         }
     }
     
