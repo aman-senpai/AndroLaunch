@@ -119,7 +119,6 @@ extension StatusMenuController {
             deviceID: device.id,
             isWireless: isWireless,
             target: self,
-            mirrorAction: #selector(mirrorDevice(_:)),
             mirrorCameraAction: #selector(mirrorCamera(_:)),
             installAction: #selector(installAPK(_:)),
             shellAction: #selector(launchShell(_:)),
@@ -129,6 +128,14 @@ extension StatusMenuController {
         submenu.addItem(controlsItem)
         
         submenu.addItem(NSMenuItem.separator())
+        
+        // Mirror Screen
+        let mirrorItem = NSMenuItem(title: "Mirror Screen", action: #selector(mirrorDevice(_:)), keyEquivalent: "m")
+        mirrorItem.target = self
+        mirrorItem.image = NSImage(systemSymbolName: "display", accessibilityDescription: "Mirror Screen")
+        mirrorItem.image?.size = NSSize(width: 16, height: 16)
+        mirrorItem.representedObject = device.id
+        submenu.addItem(mirrorItem)
         
         // Quick Actions
         let quickActionsItem = NSMenuItem(title: "Quick Actions", action: nil, keyEquivalent: "")

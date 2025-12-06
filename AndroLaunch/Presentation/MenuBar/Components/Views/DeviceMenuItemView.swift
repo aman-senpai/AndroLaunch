@@ -43,7 +43,7 @@ final class DeviceMenuItemView: NSView {
         nameLabel.stringValue = deviceName
         nameLabel.font = NSFont.menuFont(ofSize: 14)
         nameLabel.textColor = .controlTextColor
-        nameLabel.frame = NSRect(x: 38, y: 2, width: 172, height: 16)
+        nameLabel.frame = NSRect(x: 38, y: 2, width: 160, height: 16)
         nameLabel.drawsBackground = false
         nameLabel.isBordered = false
         nameLabel.isEditable = false
@@ -51,10 +51,17 @@ final class DeviceMenuItemView: NSView {
         addSubview(nameLabel)
         
         // Connection type indicator (right)
-        connectionIconView.frame = NSRect(x: 215, y: 2, width: 16, height: 16)
+        connectionIconView.frame = NSRect(x: 205, y: 2, width: 16, height: 16)
         let connectionIcon = isWireless ? "wifi" : "cable.connector"
         connectionIconView.image = NSImage(systemSymbolName: connectionIcon, accessibilityDescription: isWireless ? "Wireless" : "USB")
+        connectionIconView.contentTintColor = .tertiaryLabelColor
         addSubview(connectionIconView)
+        
+        // Arrow indicator (far right)
+        let arrowIconView = NSImageView(frame: NSRect(x: 226, y: 3, width: 12, height: 14))
+        arrowIconView.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Details")
+        arrowIconView.contentTintColor = .tertiaryLabelColor
+        addSubview(arrowIconView)
     }
     
     required init?(coder: NSCoder) {

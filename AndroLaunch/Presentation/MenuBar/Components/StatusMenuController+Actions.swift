@@ -24,8 +24,16 @@ extension StatusMenuController {
         }
     }
     
-    @objc func mirrorDevice(_ sender: NSButton) {
-        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+    @objc func mirrorDevice(_ sender: Any) {
+        var deviceID: String?
+        
+        if let deviceButton = sender as? DeviceActionButton {
+            deviceID = deviceButton.deviceID
+        } else if let menuItem = sender as? NSMenuItem, let id = menuItem.representedObject as? String {
+            deviceID = id
+        }
+        
+        if let deviceID = deviceID {
              viewModel.mirrorDevice(deviceID: deviceID)
              if let menu = statusItem.menu { menu.cancelTracking() }
         }
