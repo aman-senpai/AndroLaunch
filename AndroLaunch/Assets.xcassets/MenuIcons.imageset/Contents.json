@@ -1,17 +1,17 @@
 {
   "images" : [
     {
-      "filename" : "mirror.png",
+      "filename" : "MenuIcon.png",
       "idiom" : "universal",
       "scale" : "1x"
     },
     {
-      "filename" : "mirror@2x.png",
+      "filename" : "MenuIcon 1.png",
       "idiom" : "universal",
       "scale" : "2x"
     },
     {
-      "filename" : "mirror@3x.png",
+      "filename" : "MenuIcon 2.png",
       "idiom" : "universal",
       "scale" : "3x"
     }
@@ -20,4 +20,4 @@
     "author" : "xcode",
     "version" : 1
   }
-} 
+}

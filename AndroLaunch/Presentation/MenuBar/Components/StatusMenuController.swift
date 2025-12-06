@@ -25,8 +25,14 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
     
     private func setupMenu() {
         if let button = statusItem.button {
-            let config = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
-            button.image = NSImage(systemSymbolName: "square.grid.2x2.fill", accessibilityDescription: "AndroLaunch")?.withSymbolConfiguration(config)
+            if let menuIcon = NSImage(named: "MenuIcons") {
+                menuIcon.size = NSSize(width: 18, height: 18)
+                menuIcon.isTemplate = true
+                button.image = menuIcon
+            } else {
+                let config = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+                button.image = NSImage(systemSymbolName: "square.grid.3x3.fill", accessibilityDescription: "AndroLaunch")?.withSymbolConfiguration(config)
+            }
             button.imagePosition = .imageOnly
             button.title = ""
             button.font = NSFont.systemFont(ofSize: 13, weight: .medium)
