@@ -30,14 +30,14 @@ final class ScrcpyService: ScrcpyServiceProtocol {
     }
 
     func mirrorDevice(deviceID: String, adbPath: String?) {
-        guard let scrcpyPath = findScrcpyPath() else {
+        guard findScrcpyPath() != nil else {
             error.send("SCRCPY not installed. Use `brew install scrcpy`.")
             return
         }
     }
 
     func launchApp(packageID: String, deviceID: String, adbPath: String?) {
-        guard let scrcpyPath = findScrcpyPath() else {
+        guard findScrcpyPath() != nil else {
             error.send("SCRCPY not installed. Use `brew install scrcpy`.")
             return
         }

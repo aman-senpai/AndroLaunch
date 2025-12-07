@@ -87,7 +87,7 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         // Listen for object changes (like audio toggle) to update specific rows without full rebuild
         viewModel.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
+            .sink { _ in
             }
             .store(in: &cancellables)
             

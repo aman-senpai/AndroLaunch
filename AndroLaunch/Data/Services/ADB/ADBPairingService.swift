@@ -253,7 +253,7 @@ final class ADBPairingService: NSObject, ADBPairingServiceProtocol, NetServiceBr
         
         commandExecutor.execute(command)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
+            .sink { _ in
                 // On command failure, we just let the browser keep looking
             } receiveValue: { [weak self] output in
                 if output.contains("connected to") || output.contains("already connected") {
