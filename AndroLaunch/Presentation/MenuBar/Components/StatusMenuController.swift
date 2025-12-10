@@ -202,20 +202,6 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         
         menu.addItem(NSMenuItem.separator())
         
-        // About Item
-        let aboutItem = NSMenuItem(
-            title: "About",
-            action: #selector(openGitHub),
-            keyEquivalent: ""
-        )
-        aboutItem.target = self
-        aboutItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "About")
-        aboutItem.image?.size = NSSize(width: 16, height: 16)
-        menu.addItem(aboutItem)
-        
-        
-        menu.addItem(NSMenuItem.separator())
-        
         // Manage Shell Commands
         let manageShellItem = NSMenuItem(
             title: "Manage Commands",
@@ -226,6 +212,19 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         manageShellItem.image = NSImage(systemSymbolName: "terminal.fill", accessibilityDescription: "Manage Shell")
         manageShellItem.image?.size = NSSize(width: 16, height: 16)
         menu.addItem(manageShellItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // About Item
+        let aboutItem = NSMenuItem(
+            title: "About",
+            action: #selector(openGitHub),
+            keyEquivalent: ""
+        )
+        aboutItem.target = self
+        aboutItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "About")
+        aboutItem.image?.size = NSSize(width: 16, height: 16)
+        menu.addItem(aboutItem)
         
         menu.addItem(NSMenuItem.separator())
         
