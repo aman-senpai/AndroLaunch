@@ -135,6 +135,60 @@ extension StatusMenuController {
         }
     }
     
+    @objc func launchLogcat(_ sender: NSButton) {
+        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+            
+            print("DEBUG: Launching logcat for device: \(deviceID)")
+            
+            let fileManager = FileManager.default
+            let tempDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            
+            do {
+                try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true, attributes: nil)
+                let fileName = "Logcat.command"
+                let fileURL = tempDir.appendingPathComponent(fileName)
+                
+                var adbDir = "$HOME/Library/Android/sdk/platform-tools"
+                if let adbPath = self.viewModel.adbPath {
+                    let url = URL(fileURLWithPath: adbPath)
+                    adbDir = url.deletingLastPathComponent().path
+                }
+                
+                let scriptContent = """
+                #!/bin/bash
+                clear
+                echo -n -e "\\033]0;Logcat - \(deviceID)\\007"
+                
+                echo "Starting Logcat for device: \(deviceID)"
+                export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(adbDir)
+                
+                if ! command -v adb &> /dev/null; then
+                    echo "Error: adb not found."
+                    read -n 1 -s -r -p "Press any key to close..."
+                    exit 1
+                fi
+                
+                adb -s \(deviceID) logcat -v color
+                
+                if [ $? -ne 0 ]; then
+                    echo "Logcat exited with error."
+                    read -n 1 -s -r -p "Press any key to close..."
+                fi
+                """
+                
+                try scriptContent.write(to: fileURL, atomically: true, encoding: .utf8)
+                let attributes: [FileAttributeKey: Any] = [.posixPermissions: 0o755]
+                try fileManager.setAttributes(attributes, ofItemAtPath: fileURL.path)
+                
+                NSWorkspace.shared.open(fileURL)
+            } catch {
+                print("ERROR: Failed to launch logcat: \(error)")
+            }
+            
+            if let menu = statusItem.menu { menu.cancelTracking() }
+        }
+    }
+    
     @objc func mirrorCamera(_ sender: NSButton) {
         if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
             viewModel.mirrorCamera(deviceID: deviceID)
@@ -150,7 +204,7 @@ extension StatusMenuController {
             let hostingController = NSHostingController(rootView: manageView)
             
             let window = NSWindow(contentViewController: hostingController)
-            window.title = "Shell Commands"
+            window.title = "Commands"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.center()
             window.isReleasedWhenClosed = false

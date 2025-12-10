@@ -122,6 +122,7 @@ extension StatusMenuController {
             mirrorCameraAction: #selector(mirrorCamera(_:)),
             installAction: #selector(installAPK(_:)),
             shellAction: #selector(launchShell(_:)),
+            logcatAction: #selector(launchLogcat(_:)),
             disconnectAction: #selector(disconnectDevice(_:))
         )
         controlsItem.view = controlsView
@@ -154,8 +155,8 @@ extension StatusMenuController {
         submenu.addItem(NSMenuItem.separator())
         
         // Shell Commands
-        let shellItem = NSMenuItem(title: "Shell Commands", action: nil, keyEquivalent: "")
-        shellItem.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Shell Commands")
+        let shellItem = NSMenuItem(title: "Commands", action: nil, keyEquivalent: "")
+        shellItem.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Commands")
         shellItem.image?.size = NSSize(width: 16, height: 16)
         
         let shellMenu = NSMenu()

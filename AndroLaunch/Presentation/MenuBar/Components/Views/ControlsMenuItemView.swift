@@ -13,8 +13,8 @@ class DeviceActionButton: NSButton {
 
 final class ControlsMenuItemView: NSView {
     
-    init(deviceID: String, isWireless: Bool, target: AnyObject, mirrorCameraAction: Selector, installAction: Selector, shellAction: Selector, disconnectAction: Selector) {
-        super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 44)) // Reduced height
+    init(deviceID: String, isWireless: Bool, target: AnyObject, mirrorCameraAction: Selector, installAction: Selector, shellAction: Selector, logcatAction: Selector, disconnectAction: Selector) {
+        super.init(frame: NSRect(x: 0, y: 0, width: 260, height: 44))
         
         // Helper to configure button size
         func config(_ btn: NSButton) -> NSButton {
@@ -30,6 +30,7 @@ final class ControlsMenuItemView: NSView {
         let mirrorCamBtn = config(createButton(imageName: "camera", tooltip: "Mirror Camera", target: target, action: mirrorCameraAction, deviceID: deviceID))
         let installBtn = config(createButton(imageName: "shippingbox", tooltip: "Install APK", target: target, action: installAction, deviceID: deviceID))
         let shellBtn = config(createButton(imageName: "terminal", tooltip: "Open ADB Shell", target: target, action: shellAction, deviceID: deviceID))
+        let logcatBtn = config(createButton(imageName: "pawprint.fill", tooltip: "Open Logcat", target: target, action: logcatAction, deviceID: deviceID))
         
         var disconnectBtn: NSButton?
         if isWireless {
@@ -38,7 +39,7 @@ final class ControlsMenuItemView: NSView {
         
         // Grid Layout
         let gridView = NSGridView(views: [
-            [mirrorCamBtn, installBtn, shellBtn, disconnectBtn ?? NSGridCell.emptyContentView]
+            [mirrorCamBtn, installBtn, shellBtn, logcatBtn, disconnectBtn ?? NSGridCell.emptyContentView]
         ])
         
         gridView.translatesAutoresizingMaskIntoConstraints = false
