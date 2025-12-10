@@ -14,6 +14,7 @@ struct ManageCommandsView: View {
     @State private var newCommandScript: String = ""
     @State private var isHostCommand: Bool = false
     @State private var isBackground: Bool = false
+    @State private var hoveredCommandID: UUID?
     
     @State private var commandToDelete: ShellCommand?
     @State private var showDeleteConfirmation: Bool = false
@@ -49,10 +50,25 @@ struct ManageCommandsView: View {
             List {
                 ForEach(viewModel.getGlobalShellCommands()) { command in
                     HStack(spacing: 12) {
-                        Image(systemName: command.isBackground ? "gear.badge.checkmark" : "terminal.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(command.isBackground ? .orange : .blue)
-                            .frame(width: 20)
+                        // Icon Area (Hover Target)
+                        ZStack {
+                            if hoveredCommandID == command.id {
+                                Button(action: {
+                                    copyToClipboard(command.command)
+                                }) {
+                                    Image(systemName: "doc.on.doc.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.white)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .help("Copy command to clipboard")
+                            } else {
+                                Image(systemName: command.isBackground ? "gear.badge.checkmark" : "terminal.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(command.isBackground ? .orange : .blue)
+                            }
+                        }
+                        .frame(width: 20, height: 20)
                         
                         VStack(alignment: .leading, spacing: 2) {
                             Text(command.name)
@@ -81,6 +97,14 @@ struct ManageCommandsView: View {
                         }
                     }
                     .padding(.vertical, 4)
+                    .contentShape(Rectangle()) // Ensure empty space is hoverable
+                    .onHover { isHovering in
+                        if isHovering {
+                            hoveredCommandID = command.id
+                        } else if hoveredCommandID == command.id {
+                            hoveredCommandID = nil
+                        }
+                    }
                 }
             }
             .listStyle(InsetListStyle())
@@ -190,5 +214,11 @@ struct ManageCommandsView: View {
         newCommandScript = ""
         isBackground = false
         isHostCommand = false
+    }
+    
+    private func copyToClipboard(_ text: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
     }
 }

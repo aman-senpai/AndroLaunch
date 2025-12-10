@@ -161,8 +161,8 @@ extension StatusMenuController {
         manageCommandsWindow?.makeKeyAndOrderFront(nil)
         manageCommandsWindow?.orderFrontRegardless()
         
-        // Force app activation
-        NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
+        // Force app activation - using standard API
+        NSApp.activate(ignoringOtherApps: true)
     }
     
     @objc func executeSavedShellCommand(_ sender: NSMenuItem) {
