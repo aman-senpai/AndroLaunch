@@ -100,6 +100,13 @@ extension StatusMenuController {
         getVersionItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "Get Version")
         submenu.addItem(getVersionItem)
         
+        // Get Permissions
+        let getPermissionsItem = NSMenuItem(title: "Permissions", action: #selector(getAppPermissionsAction(_:)), keyEquivalent: "")
+        getPermissionsItem.target = self
+        getPermissionsItem.representedObject = AppActionData(app: app, deviceID: deviceID)
+        getPermissionsItem.image = NSImage(systemSymbolName: "lock.shield", accessibilityDescription: "Permissions")
+        submenu.addItem(getPermissionsItem)
+        
         submenu.addItem(NSMenuItem.separator())
         
         // Uninstall
@@ -131,6 +138,11 @@ extension StatusMenuController {
     @objc func getAppVersionAction(_ sender: NSMenuItem) {
         guard let data = sender.representedObject as? AppActionData else { return }
         getAppVersion(deviceID: data.deviceID, app: data.app)
+    }
+    
+    @objc func getAppPermissionsAction(_ sender: NSMenuItem) {
+        guard let data = sender.representedObject as? AppActionData else { return }
+        getAppPermissions(deviceID: data.deviceID, app: data.app)
     }
     
     private func launchApp(deviceID: String, appID: String, appName: String) {
@@ -173,59 +185,95 @@ extension StatusMenuController {
     }
     
     func getAppVersion(deviceID: String, app: AndroidApp) {
-        print("DEBUG: Getting version for \(app.name) on \(deviceID)")
+        let title = "\(app.name) - Version"
+        let scriptContent = buildBaseScriptContent(deviceID: deviceID, app: app, title: title, command: "dumpsys package \(app.id) | grep -i 'version'")
+        launchTerminalScript(content: scriptContent, fileNameLabel: "Version", title: title)
+    }
+    
+    func getAppPermissions(deviceID: String, app: AndroidApp) {
+        let title = "\(app.name) - Permissions"
+        let scriptContent = buildBaseScriptContent(deviceID: deviceID, app: app, title: title, command: "dumpsys package \(app.id) | grep 'permission'")
+        launchTerminalScript(content: scriptContent, fileNameLabel: "Permissions", title: title)
+    }
+    
+    private func buildBaseScriptContent(deviceID: String, app: AndroidApp, title: String, command: String) -> String {
+        var adbDir = "$HOME/Library/Android/sdk/platform-tools"
+        if let adbPath = self.viewModel.adbPath {
+            let url = URL(fileURLWithPath: adbPath)
+            adbDir = url.deletingLastPathComponent().path
+        }
         
-        // We will run a command that outputs the version info nicely
-        // Command: adb shell dumpsys package <package> | grep -i version
+        // Note: We also set the escape code title as a fallback
+        return """
+        #!/bin/bash
+        clear
+        echo -n -e "\\033]0;\(title)\\007"
+        echo "App: \(app.name)"
+        echo "Package: \(app.id)"
+        echo "Device: \(deviceID)"
+        echo "----------------------------------------"
+        export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(adbDir)
         
+        if ! command -v adb &> /dev/null; then
+            echo "Error: adb not found."
+            echo "PATH: $PATH"
+            read -n 1 -s -r -p "Press any key to close..."
+            exit 1
+        fi
+        
+        echo "Fetching info..."
+        adb -s \(deviceID) shell \(command)
+        
+        echo ""
+        echo "----------------------------------------"
+        read -n 1 -s -r -p "Press any key to close..."
+        exit 0
+        """
+    }
+    
+    private func launchTerminalScript(content: String, fileNameLabel: String, title: String) {
         let fileManager = FileManager.default
         let tempDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         
         do {
             try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true, attributes: nil)
-            let fileName = "GetVersion-\(app.name).command"
+            
+            // Use a clean filename
+            let safeTitle = title.components(separatedBy: .init(charactersIn: "/\\?%*|\"<>")).joined(separator: "_")
+            let fileName = "\(safeTitle).command"
             let fileURL = tempDir.appendingPathComponent(fileName)
             
-            var adbDir = "$HOME/Library/Android/sdk/platform-tools"
-            // Accessing adbPath from viewModel if feasible, or hardcode/fallback
-            if let adbPath = self.viewModel.adbPath {
-                let url = URL(fileURLWithPath: adbPath)
-                adbDir = url.deletingLastPathComponent().path
-            }
-            
-            let scriptContent = """
-            #!/bin/bash
-            clear
-            echo -n -e "\\033]0;Version Info - \(app.name)\\007"
-            
-            echo "App: \(app.name)"
-            echo "Package: \(app.id)"
-            echo "Device: \(deviceID)"
-            echo "----------------------------------------"
-            export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(adbDir)
-            
-            if ! command -v adb &> /dev/null; then
-                echo "Error: adb not found."
-                echo "PATH: $PATH"
-                read -n 1 -s -r -p "Press any key to close..."
-                exit 1
-            fi
-            
-            echo "fetching version info..."
-            adb -s \(deviceID) shell dumpsys package \(app.id) | grep -i "version"
-            
-            echo ""
-            echo "----------------------------------------"
-            read -n 1 -s -r -p "Press any key to close..."
-            """
-            
-            try scriptContent.write(to: fileURL, atomically: true, encoding: .utf8)
+            try content.write(to: fileURL, atomically: true, encoding: .utf8)
             let attributes: [FileAttributeKey: Any] = [.posixPermissions: 0o755]
             try fileManager.setAttributes(attributes, ofItemAtPath: fileURL.path)
             
-            NSWorkspace.shared.open(fileURL)
+            // Run via AppleScript to ensure new window/tab and set custom title
+            // We use the full path to the script
+            let scriptPath = fileURL.path
+            
+            let appleScriptSource = """
+            tell application "Terminal"
+                activate
+                set currentTab to do script "\(scriptPath)"
+                set custom title of currentTab to "\(title)"
+            end tell
+            """
+            
+            var error: NSDictionary?
+            if let scriptObject = NSAppleScript(source: appleScriptSource) {
+                scriptObject.executeAndReturnError(&error)
+                if let error = error {
+                    print("AppleScript Execution Error: \(error)")
+                    // Fallback: Open file directly if AppleScript fails
+                    NSWorkspace.shared.open(fileURL)
+                }
+            } else {
+                 print("Failed to init NSAppleScript")
+                 NSWorkspace.shared.open(fileURL)
+            }
+            
         } catch {
-            print("ERROR: Failed to launch get version: \(error)")
+            print("ERROR: Failed to launch terminal script: \(error)")
         }
     }
 }
