@@ -8,6 +8,7 @@
 
 import Combine
 import SwiftUI
+import UserNotifications
 
 final class MenuViewModel: ObservableObject {
     @Published var devices: [AndroidDevice] = []
@@ -371,11 +372,72 @@ final class MenuViewModel: ObservableObject {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 if let output = String(data: data, encoding: .utf8) {
                     print("ADB Shell Output (\(deviceID)): \(output)")
-                    // Optional: You might want to notify the UI or show a notification
+                    DispatchQueue.main.async {
+                        self.sendNotification(title: "Command Executed (\(deviceID))", body: output)
+                    }
                 }
             } catch {
                 print("Failed to run background shell command: \(error)")
+                DispatchQueue.main.async {
+                    self.sendNotification(title: "Command Failed (\(deviceID))", body: error.localizedDescription)
+                }
             }
+        }
+    }
+    func runHostShellCommand(_ command: String) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // Determine ADB path for PATH environment
+            var adbDir = "$HOME/Library/Android/sdk/platform-tools"
+            if let adbPath = self.adbPath {
+                let url = URL(fileURLWithPath: adbPath)
+                adbDir = url.deletingLastPathComponent().path
+            }
+            
+            // Construct command with PATH setup
+            // We export PATH first to ensure adb and other tools are available
+            let fullCommand = "export PATH=$PATH:\(adbDir) && \(command)"
+            
+            let process = Process()
+            process.launchPath = "/bin/bash"
+            process.arguments = ["-c", fullCommand]
+            
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+            
+            do {
+                try process.run()
+                process.waitUntilExit()
+                
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let output = String(data: data, encoding: .utf8) {
+                    print("Host Command Output: \(output)")
+                    DispatchQueue.main.async {
+                        self.sendNotification(title: "Host Command Executed", body: output)
+                    }
+                }
+            } catch {
+                print("Failed to run host command: \(error)")
+                DispatchQueue.main.async {
+                    self.sendNotification(title: "Host Command Failed", body: error.localizedDescription)
+                }
+            }
+        }
+    }
+    
+    private func sendNotification(title: String, body: String) {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.sound = .default
+            
+            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request)
         }
     }
 }

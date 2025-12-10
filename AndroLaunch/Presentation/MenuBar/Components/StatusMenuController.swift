@@ -218,7 +218,7 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         
         // Manage Shell Commands
         let manageShellItem = NSMenuItem(
-            title: "Manage Shell Commands...",
+            title: "Manage Commands",
             action: #selector(manageShellCommands(_:)),
             keyEquivalent: ""
         )

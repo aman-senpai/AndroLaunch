@@ -12,11 +12,13 @@ struct ShellCommand: Codable, Identifiable, Equatable {
     var name: String
     var command: String
     var isBackground: Bool
+    var isHostCommand: Bool = false
     
-    init(id: UUID = UUID(), name: String, command: String, isBackground: Bool) {
+    init(id: UUID = UUID(), name: String, command: String, isBackground: Bool, isHostCommand: Bool = false) {
         self.id = id
         self.name = name
         self.command = command
         self.isBackground = isBackground
+        self.isHostCommand = isHostCommand
     }
 }

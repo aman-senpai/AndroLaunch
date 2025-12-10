@@ -12,6 +12,7 @@ struct ManageCommandsView: View {
     
     @State private var newCommandName: String = ""
     @State private var newCommandScript: String = ""
+    @State private var isHostCommand: Bool = false
     @State private var isBackground: Bool = false
     
     @State private var commandToDelete: ShellCommand?
@@ -85,19 +86,45 @@ struct ManageCommandsView: View {
                     Spacer()
                 }
                 
-                Grid(alignment: .leadingFirstTextBaseline, verticalSpacing: 10) {
-                    GridRow {
+                VStack(spacing: 12) {
+                    HStack(alignment: .firstTextBaseline) {
                         Text("Name:")
-                            .gridColumnAlignment(.trailing)
-                        TextField("Restart Device", text: $newCommandName)
+                            .frame(width: 70, alignment: .trailing)
+                            .foregroundColor(.secondary)
+                        TextField("Install APK", text: $newCommandName)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                     }
                     
-                    GridRow {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Target:")
+                            .frame(width: 70, alignment: .trailing)
+                            .foregroundColor(.secondary)
+                        Picker("", selection: $isHostCommand) {
+                            Text("Device (adb shell)").tag(false)
+                            Text("Mac (Host)").tag(true)
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        .labelsHidden()
+                        Spacer()
+                    }
+                    
+                    HStack(alignment: .top) {
                         Text("Command:")
-                            .gridColumnAlignment(.trailing)
-                        TextField("reboot", text: $newCommandScript)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .frame(width: 70, alignment: .trailing)
+                            .foregroundColor(.secondary)
+                            .padding(.top, 4)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            TextField(isHostCommand ? "adb install /path/to/apk" : "pm list packages", text: $newCommandScript)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                            
+                            if isHostCommand {
+                                Text("Command runs on your Mac. 'adb' will automatically target the selected device.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
                 }
                 
@@ -143,7 +170,8 @@ struct ManageCommandsView: View {
         let command = ShellCommand(
             name: newCommandName,
             command: newCommandScript,
-            isBackground: isBackground
+            isBackground: isBackground,
+            isHostCommand: isHostCommand
         )
         viewModel.saveShellCommand(command)
         
@@ -151,5 +179,6 @@ struct ManageCommandsView: View {
         newCommandName = ""
         newCommandScript = ""
         isBackground = false
+        isHostCommand = false
     }
 }

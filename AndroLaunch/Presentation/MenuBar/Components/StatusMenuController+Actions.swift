@@ -157,8 +157,12 @@ extension StatusMenuController {
             self.manageCommandsWindow = window
         }
         
+        manageCommandsWindow?.center() // Center again to be sure
         manageCommandsWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        manageCommandsWindow?.orderFrontRegardless()
+        
+        // Force app activation
+        NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
     }
     
     @objc func executeSavedShellCommand(_ sender: NSMenuItem) {
@@ -167,17 +171,55 @@ extension StatusMenuController {
         let command = wrapper.command
         let deviceID = wrapper.deviceID
         
-        if command.isBackground {
-            viewModel.runBackgroundShellCommand(command.command, for: deviceID)
+        if command.isHostCommand {
+            // Host Command Logic (e.g. adb install ...)
+            // We need to inject the device ID into the command
+            
+            // Default ADB path
+            var adbPath = "adb"
+            if let path = viewModel.adbPath {
+                adbPath = path
+            }
+            
+            // Replace "adb " with "adb -s DEVICE_ID "
+            // We use simple string replacement, assuming user types "adb"
+            // Better would be regex, but for now simple replacement works for standard cases
+            
+            let targetedADB = "\(adbPath) -s \(deviceID)"
+            let processedCommand = command.command.replacingOccurrences(of: "adb ", with: "\(targetedADB) ")
+            
+            // If the command starts with "adb", replace that too if not caught by space
+            let finalCommand: String
+            if processedCommand.hasPrefix("adb") && !processedCommand.hasPrefix("adb ") {
+                 // "adb" without space? unlikely for valid command but safe to handle
+                 finalCommand = processedCommand.replacingOccurrences(of: "adb", with: targetedADB)
+            } else {
+                 finalCommand = processedCommand
+            }
+            
+            if command.isBackground {
+                 viewModel.runHostShellCommand(finalCommand)
+            } else {
+                 launchHostTerminalCommand(command: finalCommand, title: command.name)
+            }
+            
         } else {
-            // Re-use logic from launchShell, but with specific command
-            launchSpecificShellCommand(deviceID: deviceID, command: command.command, title: command.name)
+            // Standard Device Shell (adb shell ...)
+            if command.isBackground {
+                viewModel.runBackgroundShellCommand(command.command, for: deviceID)
+            } else {
+                launchSpecificShellCommand(deviceID: deviceID, command: command.command, title: command.name)
+            }
         }
     }
     
     private func launchSpecificShellCommand(deviceID: String, command: String, title: String) {
-        // Similar to launchShell but executes specific command
+        // ... existing implementation ...
         print("DEBUG: Launching specific shell command for device: \(deviceID)")
+        
+        // ... (rest of existing method)
+        // Ensure this content matches exactly what is in the file or just append the new function if possible with sufficient context
+        // Since I'm using replace_file_content, I'll target the end of the previous function to append.
         
         let fileManager = FileManager.default
         let tempDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -223,6 +265,50 @@ extension StatusMenuController {
             NSWorkspace.shared.open(fileURL)
         } catch {
             print("ERROR: Failed to launch command: \(error)")
+        }
+    }
+
+    private func launchHostTerminalCommand(command: String, title: String) {
+        print("DEBUG: Launching host terminal command: \(command)")
+        
+        let fileManager = FileManager.default
+        let tempDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        
+        do {
+            try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true, attributes: nil)
+            let fileName = "\(title).command"
+            let fileURL = tempDir.appendingPathComponent(fileName)
+            
+            var adbDir = "$HOME/Library/Android/sdk/platform-tools"
+            if let adbPath = self.viewModel.adbPath {
+                let url = URL(fileURLWithPath: adbPath)
+                adbDir = url.deletingLastPathComponent().path
+            }
+            
+            let scriptContent = """
+            #!/bin/bash
+            clear
+            echo -n -e "\\033]0;Host Command - \(title)\\007"
+            
+            echo "Executing: \(command)"
+            echo "----------------------------------------"
+            export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(adbDir)
+            
+            # Execute directly
+            \(command)
+            
+            echo "----------------------------------------"
+            echo "Command finished."
+            read -n 1 -s -r -p "Press any key to close..."
+            """
+            
+            try scriptContent.write(to: fileURL, atomically: true, encoding: .utf8)
+            let attributes: [FileAttributeKey: Any] = [.posixPermissions: 0o755]
+            try fileManager.setAttributes(attributes, ofItemAtPath: fileURL.path)
+            
+            NSWorkspace.shared.open(fileURL)
+        } catch {
+            print("ERROR: Failed to launch host command: \(error)")
         }
     }
 
