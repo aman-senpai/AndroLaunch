@@ -93,6 +93,15 @@ extension StatusMenuController {
         clearDataItem.image = NSImage(systemSymbolName: "trash.slash", accessibilityDescription: "Clear Data")
         submenu.addItem(clearDataItem)
         
+        // Get Version
+        let getVersionItem = NSMenuItem(title: "Get Version", action: #selector(getAppVersionAction(_:)), keyEquivalent: "")
+        getVersionItem.target = self
+        getVersionItem.representedObject = AppActionData(app: app, deviceID: deviceID)
+        getVersionItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "Get Version")
+        submenu.addItem(getVersionItem)
+        
+        submenu.addItem(NSMenuItem.separator())
+        
         // Uninstall
         let uninstallItem = NSMenuItem(title: "Uninstall", action: #selector(uninstallAction(_:)), keyEquivalent: "")
         uninstallItem.target = self
@@ -117,6 +126,11 @@ extension StatusMenuController {
     @objc func uninstallAction(_ sender: NSMenuItem) {
         guard let data = sender.representedObject as? AppActionData else { return }
         uninstallApp(deviceID: data.deviceID, app: data.app)
+    }
+    
+    @objc func getAppVersionAction(_ sender: NSMenuItem) {
+        guard let data = sender.representedObject as? AppActionData else { return }
+        getAppVersion(deviceID: data.deviceID, app: data.app)
     }
     
     private func launchApp(deviceID: String, appID: String, appName: String) {
@@ -155,6 +169,63 @@ extension StatusMenuController {
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
             viewModel.repository.clearAppData(deviceID: deviceID, packageID: app.id)
+        }
+    }
+    
+    func getAppVersion(deviceID: String, app: AndroidApp) {
+        print("DEBUG: Getting version for \(app.name) on \(deviceID)")
+        
+        // We will run a command that outputs the version info nicely
+        // Command: adb shell dumpsys package <package> | grep -i version
+        
+        let fileManager = FileManager.default
+        let tempDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        
+        do {
+            try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true, attributes: nil)
+            let fileName = "GetVersion-\(app.name).command"
+            let fileURL = tempDir.appendingPathComponent(fileName)
+            
+            var adbDir = "$HOME/Library/Android/sdk/platform-tools"
+            // Accessing adbPath from viewModel if feasible, or hardcode/fallback
+            if let adbPath = self.viewModel.adbPath {
+                let url = URL(fileURLWithPath: adbPath)
+                adbDir = url.deletingLastPathComponent().path
+            }
+            
+            let scriptContent = """
+            #!/bin/bash
+            clear
+            echo -n -e "\\033]0;Version Info - \(app.name)\\007"
+            
+            echo "App: \(app.name)"
+            echo "Package: \(app.id)"
+            echo "Device: \(deviceID)"
+            echo "----------------------------------------"
+            export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(adbDir)
+            
+            if ! command -v adb &> /dev/null; then
+                echo "Error: adb not found."
+                echo "PATH: $PATH"
+                read -n 1 -s -r -p "Press any key to close..."
+                exit 1
+            fi
+            
+            echo "fetching version info..."
+            adb -s \(deviceID) shell dumpsys package \(app.id) | grep -i "version"
+            
+            echo ""
+            echo "----------------------------------------"
+            read -n 1 -s -r -p "Press any key to close..."
+            """
+            
+            try scriptContent.write(to: fileURL, atomically: true, encoding: .utf8)
+            let attributes: [FileAttributeKey: Any] = [.posixPermissions: 0o755]
+            try fileManager.setAttributes(attributes, ofItemAtPath: fileURL.path)
+            
+            NSWorkspace.shared.open(fileURL)
+        } catch {
+            print("ERROR: Failed to launch get version: \(error)")
         }
     }
 }
