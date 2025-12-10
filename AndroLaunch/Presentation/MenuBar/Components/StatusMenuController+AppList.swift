@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import UserNotifications
 
 extension StatusMenuController {
     
@@ -107,6 +108,13 @@ extension StatusMenuController {
         getPermissionsItem.image = NSImage(systemSymbolName: "lock.shield", accessibilityDescription: "Permissions")
         submenu.addItem(getPermissionsItem)
         
+        // Get APK
+        let getAPKItem = NSMenuItem(title: "Get APK", action: #selector(getAPKAction(_:)), keyEquivalent: "")
+        getAPKItem.target = self
+        getAPKItem.representedObject = AppActionData(app: app, deviceID: deviceID)
+        getAPKItem.image = NSImage(systemSymbolName: "arrow.down.doc", accessibilityDescription: "Get APK")
+        submenu.addItem(getAPKItem)
+        
         submenu.addItem(NSMenuItem.separator())
         
         // Uninstall
@@ -143,6 +151,11 @@ extension StatusMenuController {
     @objc func getAppPermissionsAction(_ sender: NSMenuItem) {
         guard let data = sender.representedObject as? AppActionData else { return }
         getAppPermissions(deviceID: data.deviceID, app: data.app)
+    }
+    
+    @objc func getAPKAction(_ sender: NSMenuItem) {
+        guard let data = sender.representedObject as? AppActionData else { return }
+        getAPK(deviceID: data.deviceID, app: data.app)
     }
     
     private func launchApp(deviceID: String, appID: String, appName: String) {
@@ -194,6 +207,75 @@ extension StatusMenuController {
         let title = "\(app.name) - Permissions"
         let scriptContent = buildBaseScriptContent(deviceID: deviceID, app: app, title: title, command: "dumpsys package \(app.id) | grep 'permission'")
         launchTerminalScript(content: scriptContent, fileNameLabel: "Permissions", title: title)
+    }
+    
+    func getAPK(deviceID: String, app: AndroidApp) {
+        let savePanel = NSSavePanel()
+        savePanel.title = "Save APK"
+        savePanel.nameFieldStringValue = "\(app.name)"
+        savePanel.allowedContentTypes = [.init(filenameExtension: "apk")!]
+        savePanel.canCreateDirectories = true
+        
+        NSApp.activate(ignoringOtherApps: true)
+        
+        savePanel.begin { response in
+            guard response == .OK, let url = savePanel.url else { return }
+            
+            // Perform in background to avoid blocking UI
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                self?.performAPKExport(deviceID: deviceID, app: app, destination: url)
+            }
+        }
+    }
+    
+    private func performAPKExport(deviceID: String, app: AndroidApp, destination: URL) {
+        // 1. Get Path
+        guard let adbPath = self.viewModel.adbPath else { return }
+        
+        // Execute path command
+        let pathTask = Process()
+        pathTask.launchPath = "/bin/bash"
+        pathTask.arguments = ["-c", "\(adbPath) -s \(deviceID) shell pm path \(app.id)"]
+        
+        let pipe = Pipe()
+        pathTask.standardOutput = pipe
+        
+        pathTask.launch()
+        pathTask.waitUntilExit()
+        
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8), !output.isEmpty else {
+             DispatchQueue.main.async { self.viewModel.sendNotification(title: "Export Failed", body: "Could not find APK path for \(app.name)") }
+             return
+        }
+
+        // Result format: package:/data/app/~~.../base.apk
+        guard let apkPathLine = output.split(separator: "\n").first(where: { $0.contains("package:") }) else {
+            DispatchQueue.main.async { self.viewModel.sendNotification(title: "Export Failed", body: "Could not find APK path for \(app.name)") }
+            return
+        }
+        
+        let remotePath = String(apkPathLine).replacingOccurrences(of: "package:", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // 2. Pull
+        DispatchQueue.main.async { self.viewModel.sendNotification(title: "Exporting APK", body: "Downloading \(app.name)...") }
+        
+        // We use direct shell execution for pull as it might take time
+        let pullTask = Process()
+        pullTask.launchPath = "/bin/bash"
+        pullTask.arguments = ["-c", "\(adbPath) -s \(deviceID) pull \"\(remotePath)\" \"\(destination.path)\""]
+        
+        pullTask.launch()
+        pullTask.waitUntilExit()
+        
+        DispatchQueue.main.async {
+            if pullTask.terminationStatus == 0 {
+                self.viewModel.sendNotification(title: "Export Successful", body: "Saved \(app.name) to \(destination.lastPathComponent)")
+                NSWorkspace.shared.activateFileViewerSelecting([destination])
+            } else {
+                self.viewModel.sendNotification(title: "Export Failed", body: "Failed to pull APK from device.")
+            }
+        }
     }
     
     private func buildBaseScriptContent(deviceID: String, app: AndroidApp, title: String, command: String) -> String {
