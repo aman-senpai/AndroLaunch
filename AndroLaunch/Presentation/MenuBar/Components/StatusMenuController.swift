@@ -15,6 +15,7 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
     var cancellables = Set<AnyCancellable>()
     var currentDeviceID: String?
     var pairingWindow: NSWindow?
+    var manageCommandsWindow: NSWindow?
     
     init(viewModel: MenuViewModel) {
         self.viewModel = viewModel
@@ -211,6 +212,20 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         aboutItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "About")
         aboutItem.image?.size = NSSize(width: 16, height: 16)
         menu.addItem(aboutItem)
+        
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // Manage Shell Commands
+        let manageShellItem = NSMenuItem(
+            title: "Manage Shell Commands...",
+            action: #selector(manageShellCommands(_:)),
+            keyEquivalent: ""
+        )
+        manageShellItem.target = self
+        manageShellItem.image = NSImage(systemSymbolName: "terminal.fill", accessibilityDescription: "Manage Shell")
+        manageShellItem.image?.size = NSSize(width: 16, height: 16)
+        menu.addItem(manageShellItem)
         
         menu.addItem(NSMenuItem.separator())
         

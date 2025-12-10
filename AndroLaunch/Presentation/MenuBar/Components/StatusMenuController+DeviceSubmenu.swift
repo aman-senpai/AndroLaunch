@@ -153,6 +153,40 @@ extension StatusMenuController {
 
         submenu.addItem(NSMenuItem.separator())
         
+        // Shell Commands
+        let shellItem = NSMenuItem(title: "Shell Commands", action: nil, keyEquivalent: "")
+        shellItem.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Shell Commands")
+        shellItem.image?.size = NSSize(width: 16, height: 16)
+        
+        let shellMenu = NSMenu()
+        let savedCommands = viewModel.getGlobalShellCommands()
+        
+        if savedCommands.isEmpty {
+            let emptyItem = NSMenuItem(title: "No saved commands", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            shellMenu.addItem(emptyItem)
+        } else {
+            for command in savedCommands {
+                let cmdItem = NSMenuItem(title: command.name, action: #selector(executeSavedShellCommand(_:)), keyEquivalent: "")
+                cmdItem.target = self
+                cmdItem.representedObject = ShellCommandWrapper(command: command, deviceID: device.id)
+                
+                // Icon based on type
+                let iconName = command.isBackground ? "gear.badge.checkmark" : "terminal.fill"
+                cmdItem.image = NSImage(systemSymbolName: iconName, accessibilityDescription: nil)
+                cmdItem.image?.size = NSSize(width: 14, height: 14)
+                
+                shellMenu.addItem(cmdItem)
+            }
+        }
+        
+
+        
+        shellItem.submenu = shellMenu
+        submenu.addItem(shellItem)
+
+        submenu.addItem(NSMenuItem.separator())
+        
         // Configuration Section
         let configItem = NSMenuItem(title: "Configuration", action: nil, keyEquivalent: "")
         configItem.image = NSImage(systemSymbolName: "gearshape.fill", accessibilityDescription: "Configuration")

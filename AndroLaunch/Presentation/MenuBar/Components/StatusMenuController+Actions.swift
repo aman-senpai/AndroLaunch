@@ -142,6 +142,90 @@ extension StatusMenuController {
         }
     }
     
+    // MARK: - Shell Command Actions
+    
+    @objc func manageShellCommands(_ sender: NSMenuItem) {
+        if manageCommandsWindow == nil {
+            let manageView = ManageCommandsView(viewModel: viewModel)
+            let hostingController = NSHostingController(rootView: manageView)
+            
+            let window = NSWindow(contentViewController: hostingController)
+            window.title = "Shell Commands"
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.center()
+            window.isReleasedWhenClosed = false
+            self.manageCommandsWindow = window
+        }
+        
+        manageCommandsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    
+    @objc func executeSavedShellCommand(_ sender: NSMenuItem) {
+        // representedObject should be the wrapper
+        guard let wrapper = sender.representedObject as? ShellCommandWrapper else { return }
+        let command = wrapper.command
+        let deviceID = wrapper.deviceID
+        
+        if command.isBackground {
+            viewModel.runBackgroundShellCommand(command.command, for: deviceID)
+        } else {
+            // Re-use logic from launchShell, but with specific command
+            launchSpecificShellCommand(deviceID: deviceID, command: command.command, title: command.name)
+        }
+    }
+    
+    private func launchSpecificShellCommand(deviceID: String, command: String, title: String) {
+        // Similar to launchShell but executes specific command
+        print("DEBUG: Launching specific shell command for device: \(deviceID)")
+        
+        let fileManager = FileManager.default
+        let tempDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        
+        do {
+            try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true, attributes: nil)
+            let fileName = "\(title).command"
+            let fileURL = tempDir.appendingPathComponent(fileName)
+            
+            var adbDir = "$HOME/Library/Android/sdk/platform-tools"
+            if let adbPath = self.viewModel.adbPath {
+                let url = URL(fileURLWithPath: adbPath)
+                adbDir = url.deletingLastPathComponent().path
+            }
+            
+            let scriptContent = """
+            #!/bin/bash
+            clear
+            echo -n -e "\\033]0;ADB Shell - \(deviceID) - \(title)\\007"
+            
+            echo "Device: \(deviceID)"
+            echo "Command: \(command)"
+            echo "----------------------------------------"
+            export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(adbDir)
+            
+            if ! command -v adb &> /dev/null; then
+                echo "Error: adb not found."
+                read -n 1 -s -r -p "Press any key to close..."
+                exit 1
+            fi
+            
+            adb -s \(deviceID) shell "\(command)"
+            
+            echo "----------------------------------------"
+            echo "Command finished."
+            read -n 1 -s -r -p "Press any key to close..."
+            """
+            
+            try scriptContent.write(to: fileURL, atomically: true, encoding: .utf8)
+            let attributes: [FileAttributeKey: Any] = [.posixPermissions: 0o755]
+            try fileManager.setAttributes(attributes, ofItemAtPath: fileURL.path)
+            
+            NSWorkspace.shared.open(fileURL)
+        } catch {
+            print("ERROR: Failed to launch command: \(error)")
+        }
+    }
+
     @objc func openGitHub() {
         if let url = URL(string: "https://github.com/aman-senpai/AndroLaunch") {
             NSWorkspace.shared.open(url)

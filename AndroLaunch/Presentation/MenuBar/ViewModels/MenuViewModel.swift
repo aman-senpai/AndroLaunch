@@ -18,6 +18,7 @@ final class MenuViewModel: ObservableObject {
     @Published var currentDeviceID: String? = nil
     
     internal let repository: any DeviceRepositoryProtocol
+    internal let shellCommandManager = ShellCommandManager.shared
     private var cancellables = Set<AnyCancellable>()
 
     init(deviceRepository: any DeviceRepositoryProtocol) {
@@ -50,6 +51,14 @@ final class MenuViewModel: ObservableObject {
         repository.isLoadingAppsPublisher
             .receive(on: DispatchQueue.main)
             .assign(to: &$isLoadingApps)
+            
+        // Observe shell command changes
+        shellCommandManager.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 
     func refresh() { repository.refreshDevices() }
@@ -316,6 +325,57 @@ final class MenuViewModel: ObservableObject {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.fetchQuickActionsState(for: deviceID)
+        }
+    }
+    
+    // MARK: - Shell Commands
+    // MARK: - Shell Commands
+    func getGlobalShellCommands() -> [ShellCommand] {
+        return shellCommandManager.getAllCommands()
+    }
+    
+    func saveShellCommand(_ command: ShellCommand) {
+        shellCommandManager.saveCommand(command)
+    }
+    
+    func deleteShellCommand(id: UUID) {
+        shellCommandManager.deleteCommand(id: id)
+    }
+    
+    func runBackgroundShellCommand(_ command: String, for deviceID: String) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // Determine ADB path
+            var adbDir = "$HOME/Library/Android/sdk/platform-tools"
+            if let adbPath = self.adbPath {
+                let url = URL(fileURLWithPath: adbPath)
+                adbDir = url.deletingLastPathComponent().path
+            }
+            
+            // Construct command
+            let fullCommand = "\(adbDir)/adb -s \(deviceID) shell \"\(command)\""
+            
+            let process = Process()
+            process.launchPath = "/bin/bash"
+            process.arguments = ["-c", fullCommand]
+            
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+            
+            do {
+                try process.run()
+                process.waitUntilExit()
+                
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let output = String(data: data, encoding: .utf8) {
+                    print("ADB Shell Output (\(deviceID)): \(output)")
+                    // Optional: You might want to notify the UI or show a notification
+                }
+            } catch {
+                print("Failed to run background shell command: \(error)")
+            }
         }
     }
 }
