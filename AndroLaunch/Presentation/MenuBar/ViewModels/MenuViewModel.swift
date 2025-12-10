@@ -427,7 +427,7 @@ final class MenuViewModel: ObservableObject {
         }
     }
     
-    private func sendNotification(title: String, body: String) {
+    func sendNotification(title: String, body: String) {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
             guard granted else { return }
             
@@ -438,6 +438,62 @@ final class MenuViewModel: ObservableObject {
             
             let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
             UNUserNotificationCenter.current().add(request)
+        }
+    }
+    
+    // MARK: - Import / Export
+    
+    func exportCommands() {
+        let commands = getGlobalShellCommands()
+        guard !commands.isEmpty else { return }
+        
+        let savePanel = NSSavePanel()
+        savePanel.title = "Export Shell Commands"
+        savePanel.nameFieldStringValue = "androlaunch_commands.json"
+        savePanel.allowedContentTypes = [.json]
+        savePanel.canCreateDirectories = true
+        
+        savePanel.begin { response in
+            if response == .OK, let url = savePanel.url {
+                do {
+                    let encoder = JSONEncoder()
+                    encoder.outputFormatting = .prettyPrinted
+                    let data = try encoder.encode(commands)
+                    try data.write(to: url)
+                } catch {
+                    print("Failed to export commands: \(error)")
+                }
+            }
+        }
+    }
+    
+    func importCommands() {
+        let openPanel = NSOpenPanel()
+        openPanel.title = "Import Shell Commands"
+        openPanel.allowedContentTypes = [.json]
+        openPanel.allowsMultipleSelection = false
+        openPanel.canChooseDirectories = false
+        
+        openPanel.begin { [weak self] response in
+            if response == .OK, let url = openPanel.url {
+                do {
+                    let data = try Data(contentsOf: url)
+                    let commands = try JSONDecoder().decode([ShellCommand].self, from: data)
+                    
+                    // Import commands (Append/Merge)
+                    for command in commands {
+                         // We generate a new ID to avoid conflict if importing same file?
+                         // Or keep ID to update?
+                         // User requested simple import. Let's keep ID to allow updating existing,
+                         // or we can generate new IDs to allow duplicates.
+                         // Given the user might edit json, let's keep it simple: Just save.
+                         // If ID exists it updates, if not it acts as new.
+                        self?.saveShellCommand(command)
+                    }
+                } catch {
+                    print("Failed to import commands: \(error)")
+                }
+            }
         }
     }
 }

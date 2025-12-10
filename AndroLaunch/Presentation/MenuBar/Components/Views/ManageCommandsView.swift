@@ -30,6 +30,16 @@ struct ManageCommandsView: View {
                     .font(.headline)
                     .foregroundColor(.secondary)
                 Spacer()
+                
+                Button("Import") {
+                    viewModel.importCommands()
+                }
+                .font(.callout)
+                
+                Button("Export") {
+                    viewModel.exportCommands()
+                }
+                .font(.callout)
             }
             .padding(.horizontal)
             .padding(.top, 12)
