@@ -14,7 +14,7 @@
 | **Quick Controls**       | Toggle Wi-Fi, Bluetooth, Mobile Data, Location, DND, Auto-Rotate. Adjust volume and brightness. | **Uninstall Apps**, **Clear App Data**, install APKs from file.                            |
 | **App & System**         | List and launch installed apps, system reboot (normal, bootloader, recovery).                   | Improved app search and native menu integration.                                           |
 | **Screen Mirroring**     | Full device screen mirroring with custom resolution.                                            | **Borderless Window Mode**, **Camera Mirroring** (with custom settings), **Audio Toggle**. |
-| **Productivity**         | N/A                                                                                             | **Bi-directional Clipboard Sync** (Mac $leftrightarrow$ Android).                          |
+| **Productivity**         | Clipboard sync, command execution                                                                                             | **Bi-directional Clipboard Sync** (Mac $leftrightarrow$ Android).                          |
 
 ## 🛠️ Setup: Get Started in Minutes
 
