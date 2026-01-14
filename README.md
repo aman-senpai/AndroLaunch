@@ -1,10 +1,10 @@
-# AndroLaunch - Your Android Device Management Hub for macOS
+# AndroLaunch - Your Android Device Management Hub for macOS & Windows
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/1da15d00-ab8a-4afb-8d26-fd23ae3a3cda" alt="AndroLaunch" width="150">
+  <img src="https://github.com/user-attachments/assets/1da15d00-ab8a-4afb-8d26-fd23ae3a3cda" alt="AndroLaunch" width="150">
 </p>
 
-**AndroLaunch** is a professional and powerful macOS menu bar application designed to give you effortless control over your Android devices using the power of ADB (Android Debug Bridge) and Scrcpy. Manage quick settings, launch apps, install APKs, and even mirror your device screen—all from one convenient spot in your macOS menu bar.
+**AndroLaunch** is a professional and powerful cross-platform application (macOS & Windows) designed to give you effortless control over your Android devices using the power of ADB (Android Debug Bridge) and Scrcpy. Manage quick settings, launch apps, install APKs, and even mirror your device screen—all from one convenient spot.
 
 ## 🚀 Key Features at a Glance
 
@@ -14,35 +14,29 @@
 | **Quick Controls**       | Toggle Wi-Fi, Bluetooth, Mobile Data, Location, DND, Auto-Rotate. Adjust volume and brightness. | **Uninstall Apps**, **Clear App Data**, install APKs from file.                            |
 | **App & System**         | List and launch installed apps, system reboot (normal, bootloader, recovery).                   | Improved app search and native menu integration.                                           |
 | **Screen Mirroring**     | Full device screen mirroring with custom resolution.                                            | **Borderless Window Mode**, **Camera Mirroring** (with custom settings), **Audio Toggle**. |
-| **Productivity**         | Clipboard sync, command execution                                                                                             | **Bi-directional Clipboard Sync** (Mac $leftrightarrow$ Android).                          |
+| **Productivity**         | Clipboard sync, command execution                                                                                             | **Bi-directional Clipboard Sync** (Mac/PC $leftrightarrow$ Android).                          |
 
 ## 🛠️ Setup: Get Started in Minutes
 
-AndroLaunch works by utilizing two essential tools: `adb` and `scrcpy`. You need to install these on your macOS system before launching the app.
+AndroLaunch works by utilizing two essential tools: `adb` and `scrcpy`. You need to install these on your system before launching the app.
 
-### Step 1: Install Dependencies
+### macOS Installation
 
-Open your Terminal application and run the following command to install `android-platform-tools` (which includes ADB) and `scrcpy` using **Homebrew**:
+1.  **Install Dependencies**: Open your Terminal and run the following command using **Homebrew**:
+    ```bash
+    brew install android-platform-tools scrcpy
+    ```
+2.  **Launch**: Download the macOS version and move it to your Applications folder.
 
-```bash
-brew install android-platform-tools scrcpy
-```
+### Windows Installation
+
+1.  **Install Dependencies**: We recommend using **Scoop** or **Chocolatey**:
+    - **Scoop**: `scoop install adb scrcpy`
+    - **Chocolatey**: `choco install adb scrcpy`
+    *Alternatively, download them manually and ensure they are in your System PATH.*
+2.  **Launch**: Download the Windows version (exe) and run it.
 
 ### Step 2: Configure Your Android Device
-
-To allow AndroLaunch to communicate with your device, you must enable **Developer Options** and **USB Debugging** on your Android phone or tablet.
-
-1.  Go to **Settings** > **About Phone**.
-2.  Tap on **Build number** seven times to enable Developer Options.
-3.  Go back to **Settings** > **System** > **Developer options**.
-4.  Enable the **USB debugging** toggle.
-5.  Connect your device via a USB cable. When prompted, allow the connection.
-
-### Step 3: Launch AndroLaunch
-
-1.  Download and install the AndroLaunch application.
-2.  You will find the **AndroLaunch icon** in your macOS menu bar.
-3.  Click the icon to see your connected devices and available features.
 
 -----
 

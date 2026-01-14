@@ -1,26 +1,59 @@
+# Common
+.env
+.idea/
+*.swp
+misc/
+
 # macOS
 .DS_Store
 .AppleDouble
 .LSOverride
 ._*
 
-# Xcode
+# macOS Xcode
 build/
+DerivedData/
 *.pbxuser
-!default.pbxuser
-*.mode1v3
-!default.mode1v3
-*.mode2v3
-!default.mode2v3
-*.perspectivev3
-!default.perspectivev3
-xcuserdata/
+userdata/
 *.xccheckout
 *.moved-aside
-DerivedData/
 *.hmap
 *.ipa
 *.xcuserstate
+!default.pbxuser
+!default.mode1v3
+!default.mode2v3
+!default.perspectivev3
+
+# Windows Visual Studio
+[Bb]uild/
+bin/
+obj/
+*.exe
+*.msi
+*.msm
+*.msp
+*.suo
+*.user
+*.userossc*
+*.sln.doccache
+*.sln.docstates
+*.vspcl
+*.vspcc
+*.vspf
+*.vspx
+*.vspm
+*.vsix
+*.vsixmanifest
+.vs/
+packages/
+*.nuget.props
+*.nuget.targets
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 
 # Swift Package Manager
 .build/
@@ -38,10 +71,3 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots
 fastlane/test_output
-
-# Misc
-.env
-.idea/
-*.swp
-misc/scrcpy_doc/
-misc/
