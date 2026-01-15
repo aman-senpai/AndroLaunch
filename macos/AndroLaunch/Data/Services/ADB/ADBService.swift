@@ -501,7 +501,7 @@ final class ADBService: ADBServiceProtocol {
             "--stay-awake",
             "--window-title", "\(deviceName ?? deviceID) - \(appName ?? packageID)",
             "--new-display",
-            "-m \(resolution)",
+            "-m", "\(resolution)",
             "--start-app", packageID,
             "--audio-bit-rate=10000",
             "--audio-output-buffer=10"
@@ -521,10 +521,12 @@ final class ADBService: ADBServiceProtocol {
         cleanDeviceID.contains("_tcp") ||
         cleanDeviceID.contains("_udp")
         
-        if !isWireless {
+        let isEmulator = cleanDeviceID.lowercased().hasPrefix("emulator-")
+        
+        if !isWireless && !isEmulator {
             args.append("--keyboard=aoa")
         } else {
-            self.error.send("Wireless device detected (\(cleanDeviceID)), skipping --keyboard=aoa")
+            self.error.send("Wireless or Emulator device detected (\(cleanDeviceID)), skipping --keyboard=aoa")
         }
         
         task.arguments = args
