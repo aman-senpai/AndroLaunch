@@ -9,8 +9,8 @@ import Foundation
 
 public struct AndroidDevice: Identifiable, Equatable {
     public let id: String
-    public let name: String
-    public let model: String?
+    public var name: String
+    public var model: String?
     public let isConnected: Bool
     public let serialNumber: String?
     public let androidVersion: String?

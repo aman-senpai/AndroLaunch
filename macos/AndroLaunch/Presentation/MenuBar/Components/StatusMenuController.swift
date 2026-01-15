@@ -16,6 +16,7 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
     var currentDeviceID: String?
     var pairingWindow: NSWindow?
     var manageCommandsWindow: NSWindow?
+    var emulatorManagerWindow: NSWindow?
     
     init(viewModel: MenuViewModel) {
         self.viewModel = viewModel
@@ -186,6 +187,19 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
                 menu.addItem(deviceItem)
             }
         }
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // Emulator Manager Item
+        let emulatorManagerItem = NSMenuItem(
+            title: "Emulator Manager",
+            action: #selector(openEmulatorManager(_:)),
+            keyEquivalent: "e"
+        )
+        emulatorManagerItem.target = self
+        emulatorManagerItem.image = NSImage(systemSymbolName: "iphone.gen3", accessibilityDescription: "Emulator Manager")
+        emulatorManagerItem.image?.size = NSSize(width: 16, height: 16)
+        menu.addItem(emulatorManagerItem)
         
         menu.addItem(NSMenuItem.separator())
         

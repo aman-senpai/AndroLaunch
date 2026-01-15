@@ -219,6 +219,27 @@ extension StatusMenuController {
         NSApp.activate(ignoringOtherApps: true)
     }
     
+    @objc func openEmulatorManager(_ sender: NSMenuItem) {
+        if emulatorManagerWindow == nil {
+            let container = DependencyContainer.shared
+            let managerView = EmulatorManagerView(viewModel: container.emulatorManagerViewModel)
+            let hostingController = NSHostingController(rootView: managerView)
+            
+            let window = NSWindow(contentViewController: hostingController)
+            window.title = "Emulator Manager"
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.center()
+            window.isReleasedWhenClosed = false
+            self.emulatorManagerWindow = window
+        }
+        
+        emulatorManagerWindow?.center()
+        emulatorManagerWindow?.makeKeyAndOrderFront(nil)
+        emulatorManagerWindow?.orderFrontRegardless()
+        
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    
     @objc func executeSavedShellCommand(_ sender: NSMenuItem) {
         // representedObject should be the wrapper
         guard let wrapper = sender.representedObject as? ShellCommandWrapper else { return }

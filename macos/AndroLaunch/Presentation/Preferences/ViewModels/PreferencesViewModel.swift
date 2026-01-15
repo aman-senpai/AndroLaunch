@@ -14,6 +14,11 @@ import SwiftUI
 final class PreferencesViewModel: ObservableObject {
     @Published var adbStatus: String = "Checking..."
     @Published var errorMessage: String?
+    
+    var commandLineToolsPath: String {
+        get { repository.commandLineToolsPath ?? "" }
+        set { repository.setCommandLineToolsPath(newValue) }
+    }
 
     internal let repository: any DeviceRepositoryProtocol
     private var cancellables = Set<AnyCancellable>()

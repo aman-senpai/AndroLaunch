@@ -23,12 +23,27 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
     public var isLoadingPublisher: AnyPublisher<Bool, Never> { $isLoading.eraseToAnyPublisher() }
     public var isLoadingAppsPublisher: AnyPublisher<Bool, Never> { $isLoadingApps.eraseToAnyPublisher() }
     
+    public var imagesPublisher: AnyPublisher<[SystemImage], Never> { emulatorService.imagesPublisher.eraseToAnyPublisher() }
+    public var avdsPublisher: AnyPublisher<[AVD], Never> { emulatorService.avdsPublisher.eraseToAnyPublisher() }
+    public var downloadProgressPublisher: AnyPublisher<(String, Double), Never> { emulatorService.downloadProgress.eraseToAnyPublisher() }
+    
     public var adbPath: String? { adbService.adbPath }
+    
+    private let commandLineToolsPathKey = "android_command_line_tools_path"
+    public var commandLineToolsPath: String? {
+        UserDefaults.standard.string(forKey: commandLineToolsPathKey)
+    }
+
+    func setCommandLineToolsPath(_ path: String) {
+        UserDefaults.standard.set(path, forKey: commandLineToolsPathKey)
+        objectWillChange.send()
+    }
 
 
     // Dependencies (assuming these protocols are defined elsewhere, e.g., in a Service layer)
     private let adbService: ADBServiceProtocol // Assuming ADBServiceProtocol is defined elsewhere
     private let scrcpyService: ScrcpyServiceProtocol // Assuming ScrcpyServiceProtocol is defined elsewhere
+    private let emulatorService: EmulatorServiceProtocol
     private var cancellables = Set<AnyCancellable>()
     
     // App cache storage: [serialNumber: [apps]]
@@ -42,11 +57,15 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
     // This helps in looking up the serial number when an app list comes in for a deviceID.
     private var deviceIDToSerialNumberMap: [String: String] = [:]
 
+    // Mapping from Serial Number (emulator-5554) to AVD Name (Pixel)
+    private var serialToAVDNameMap: [String: String] = [:]
+
 
     // Initialize with dependencies
-    init(adbService: ADBServiceProtocol, scrcpyService: ScrcpyServiceProtocol) {
+    init(adbService: ADBServiceProtocol, scrcpyService: ScrcpyServiceProtocol, emulatorService: EmulatorServiceProtocol) {
         self.adbService = adbService
         self.scrcpyService = scrcpyService
+        self.emulatorService = emulatorService
         setupBindings()
     }
 
@@ -56,17 +75,58 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] devices in
                     guard let self = self else { return }
-                    self.devices = devices
+                    
+                    var updatedDevices = devices
+                    // Override names for emulators if we have a mapping
+                    for i in 0..<updatedDevices.count {
+                        if let serial = updatedDevices[i].serialNumber,
+                           let avdName = self.serialToAVDNameMap[serial] {
+                            updatedDevices[i].name = avdName
+                            updatedDevices[i].model = avdName
+                        }
+                    }
+                    
+                    self.devices = updatedDevices
                     self.isLoading = false
                     
                     // Update the deviceID to serial number map
-                    self.deviceIDToSerialNumberMap = devices.compactMap { device in
+                    self.deviceIDToSerialNumberMap = updatedDevices.compactMap { device in
                         if let serial = device.serialNumber {
                             return (device.id, serial)
                         }
                         return nil
                     }
                     .reduce(into: [:]) { $0[$1.0] = $1.1 }
+                }
+                .store(in: &cancellables)
+
+            // Listen for AVD updates from EmulatorService to maintain the serial-to-name mapping
+            emulatorService.avdsPublisher
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] avds in
+                    guard let self = self else { return }
+                    // Update our serial to name map
+                    for avd in avds {
+                        if let serial = avd.serial, !serial.isEmpty {
+                            self.serialToAVDNameMap[serial] = avd.name
+                        }
+                    }
+                    // Re-apply naming to current devices
+                    var updatedDevices = self.devices
+                    var changed = false
+                    for i in 0..<updatedDevices.count {
+                        if let serial = updatedDevices[i].serialNumber,
+                           let avdName = self.serialToAVDNameMap[serial] {
+                            if updatedDevices[i].name != avdName || updatedDevices[i].model != avdName {
+                                updatedDevices[i].name = avdName
+                                updatedDevices[i].model = avdName
+                                changed = true
+                            }
+                        }
+                    }
+                    if changed {
+                        self.devices = updatedDevices
+                    }
                 }
                 .store(in: &cancellables)
 
@@ -106,15 +166,21 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
 
         adbService.error
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] (error: String?) in // Explicit type annotation
+            .sink { [weak self] (error: String?) in
                 self?.error = error
                 if error != nil {
-                    if self?.isLoading == true {
-                        self?.isLoading = false
-                    }
-                    if self?.isLoadingApps == true {
-                        self?.isLoadingApps = false
-                    }
+                    self?.isLoading = false
+                    self?.isLoadingApps = false
+                }
+            }
+            .store(in: &cancellables)
+
+        emulatorService.errorPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] (error: String?) in
+                if let error = error {
+                    self?.error = error
+                    self?.isLoading = false
                 }
             }
             .store(in: &cancellables)
@@ -125,6 +191,7 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
 
     func refreshDevices() {
         isLoading = true
+        error = nil
         // Clear deviceID-to-serial map as IDs might change, but KEEP app cache (keyed by serial)
         // so we don't re-fetch apps unnecessarily when just refreshing device status.
         deviceIDToSerialNumberMap.removeAll()
@@ -476,4 +543,92 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
         adbService.fetchQuickActionsState(deviceID: deviceID, completion: completion)
     }
 
+    // MARK: - Emulator Manager
+    func listAvailableImages() {
+        guard let toolsPath = commandLineToolsPath else {
+            self.error = "Android Command Line Tools path not set in Preferences."
+            return
+        }
+        emulatorService.listAvailableImages(toolsPath: toolsPath)
+    }
+    
+    func downloadImage(imagePath: String) {
+        guard let toolsPath = commandLineToolsPath else {
+            self.error = "Android Command Line Tools path not set in Preferences."
+            return
+        }
+        emulatorService.downloadImage(toolsPath: toolsPath, imagePath: imagePath)
+    }
+    
+    func deleteImage(imagePath: String) {
+        guard let toolsPath = commandLineToolsPath else {
+            self.error = "Android Command Line Tools path not set in Preferences."
+            return
+        }
+        emulatorService.deleteImage(toolsPath: toolsPath, imagePath: imagePath)
+    }
+    
+    func listAVDs() {
+        guard let toolsPath = commandLineToolsPath else {
+            self.error = "Android Command Line Tools path not set in Preferences."
+            return
+        }
+        emulatorService.listAVDs(toolsPath: toolsPath)
+    }
+    
+    func listHardwareProfiles(completion: @escaping ([HardwareProfile]) -> Void) {
+        guard let toolsPath = commandLineToolsPath else {
+            completion([])
+            return
+        }
+        emulatorService.listHardwareProfiles(toolsPath: toolsPath, completion: completion)
+    }
+    
+    func createAVD(name: String, imagePath: String, device: String?, options: AVDOptions) {
+        guard let toolsPath = commandLineToolsPath else {
+            self.error = "Android Command Line Tools path not set in Preferences."
+            return
+        }
+        emulatorService.createAVD(toolsPath: toolsPath, name: name, imagePath: imagePath, device: device, options: options)
+    }
+    
+    func deleteAVD(name: String) {
+        guard let toolsPath = commandLineToolsPath else {
+            self.error = "Android Command Line Tools path not set in Preferences."
+            return
+        }
+        emulatorService.deleteAVD(toolsPath: toolsPath, name: name)
+    }
+    
+    func renameAVD(oldName: String, newName: String) {
+        guard let toolsPath = commandLineToolsPath else {
+            self.error = "Android Command Line Tools path not set in Preferences."
+            return
+        }
+        emulatorService.renameAVD(toolsPath: toolsPath, oldName: oldName, newName: newName)
+    }
+    
+    func startEmulator(avdName: String) {
+        guard let toolsPath = commandLineToolsPath else {
+            self.error = "Android Command Line Tools path not set in Preferences."
+            return
+        }
+        emulatorService.startEmulator(toolsPath: toolsPath, avdName: avdName)
+        
+        // After starting, refresh devices to see it appearing
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+            self.refreshDevices()
+        }
+    }
+    func stopEmulator(avdName: String) {
+        guard let toolsPath = commandLineToolsPath else {
+            self.error = "Android Command Line Tools path not set in Preferences."
+            return
+        }
+        emulatorService.stopEmulator(toolsPath: toolsPath, avdName: avdName)
+    }
+    
+    func cancelDownload(imagePath: String) {
+        emulatorService.cancelDownload(imagePath: imagePath)
+    }
 }

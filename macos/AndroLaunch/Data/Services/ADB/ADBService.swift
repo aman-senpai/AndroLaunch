@@ -169,7 +169,6 @@ final class ADBService: ADBServiceProtocol {
                     
                     DispatchQueue.main.async {
                         self.devices.send(devices)
-                        self.error.send(nil)
                     }
                 }
             } else {
@@ -263,7 +262,8 @@ final class ADBService: ADBServiceProtocol {
                     self.error.send("Skipping duplicate device name: \(modelName) (ID: \(cleanDeviceID))")
                 }
             } else {
-                self.error.send("Found device in state \(deviceState): \(cleanDeviceID)")
+                // self.error.send("Found device in state \(deviceState): \(cleanDeviceID)")
+                print("Found device in state \(deviceState): \(cleanDeviceID)")
             }
         }
         
@@ -316,21 +316,16 @@ final class ADBService: ADBServiceProtocol {
                 if task.terminationStatus == 0 {
                     let apps = self.parseScrcpyApps(from: combinedOutput)
                     
-                    if !apps.isEmpty {
-                        DispatchQueue.main.async {
-                            self.apps.send((deviceID, apps))
-                            self.error.send(nil)
-                        }
-                    } else {
-                        DispatchQueue.main.async {
-                            // Send raw output for debugging if 0 apps found
-                            self.error.send("No apps found via scrcpy. Output:\n\(combinedOutput)")
-                            self.apps.send((deviceID, []))
-                        }
+                    DispatchQueue.main.async {
+                        self.apps.send((deviceID, apps))
+                    }
+                    if apps.isEmpty && !combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        print("[ADBService] fetchApps: No apps found in output: \(combinedOutput)")
                     }
                 } else {
+                    print("[ADBService] fetchApps failed (code \(task.terminationStatus)). Output:\n\(combinedOutput)")
                     DispatchQueue.main.async {
-                        self.error.send("Scrcpy failed (code \(task.terminationStatus)). Output:\n\(combinedOutput)")
+                        self.error.send("Failed to fetch apps for \(deviceID). Scrcpy exited with code \(task.terminationStatus).")
                         self.apps.send((deviceID, []))
                     }
                 }
@@ -525,8 +520,6 @@ final class ADBService: ADBServiceProtocol {
         
         if !isWireless && !isEmulator {
             args.append("--keyboard=aoa")
-        } else {
-            self.error.send("Wireless or Emulator device detected (\(cleanDeviceID)), skipping --keyboard=aoa")
         }
         
         task.arguments = args

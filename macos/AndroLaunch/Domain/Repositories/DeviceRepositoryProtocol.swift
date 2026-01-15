@@ -15,6 +15,9 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     var appsPublisher: AnyPublisher<[AndroidApp], Never> { get }
     var isLoadingPublisher: AnyPublisher<Bool, Never> { get }
     var isLoadingAppsPublisher: AnyPublisher<Bool, Never> { get }
+    var imagesPublisher: AnyPublisher<[SystemImage], Never> { get }
+    var avdsPublisher: AnyPublisher<[AVD], Never> { get }
+    var downloadProgressPublisher: AnyPublisher<(String, Double), Never> { get }
     
     var devices: [AndroidDevice] { get }
     var apps: [AndroidApp] { get }
@@ -22,6 +25,9 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     var isLoading: Bool { get }
     var isLoadingApps: Bool { get }
     var adbPath: String? { get }
+    var commandLineToolsPath: String? { get }
+    
+    func setCommandLineToolsPath(_ path: String)
     
     func refreshDevices()
     func fetchApps(for deviceID: String)
@@ -91,4 +97,17 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     func toggleAdaptiveBrightness(deviceID: String, enable: Bool)
     
     func fetchQuickActionsState(deviceID: String, completion: @escaping (QuickActionsState) -> Void)
+    
+    // Emulator Manager
+    func listAvailableImages()
+    func downloadImage(imagePath: String)
+    func cancelDownload(imagePath: String)
+    func deleteImage(imagePath: String)
+    func listAVDs()
+    func listHardwareProfiles(completion: @escaping ([HardwareProfile]) -> Void)
+    func createAVD(name: String, imagePath: String, device: String?, options: AVDOptions)
+    func deleteAVD(name: String)
+    func renameAVD(oldName: String, newName: String)
+    func startEmulator(avdName: String)
+    func stopEmulator(avdName: String)
 }
