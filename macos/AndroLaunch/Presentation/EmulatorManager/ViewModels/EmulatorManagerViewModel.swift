@@ -178,9 +178,35 @@ final class EmulatorManagerViewModel: ObservableObject {
         refreshDisplayAVDs()
         
         repository.startEmulator(avdName: avdName)
-        // Instant feedback: refresh status after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+        
+        // Polling status: check more frequently while starting
+        pollEmulatorStatus(avdName: avdName, retryCount: 0)
+    }
+    
+    private func pollEmulatorStatus(avdName: String, retryCount: Int) {
+        // Max 30 retries (approx 60-90 seconds)
+        guard retryCount < 30 else {
+            startingAVDs.remove(avdName)
+            refreshDisplayAVDs()
+            return
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + (retryCount < 5 ? 2.0 : 5.0)) { [weak self] in
+            guard let self = self else { return }
+            
+            // If it's already running, stop polling
+            if self.existingAVDs.first(where: { $0.name == avdName })?.isRunning == true {
+                self.startingAVDs.remove(avdName)
+                self.refreshDisplayAVDs()
+                return
+            }
+            
+            // Still starting, refresh and poll again
             self.repository.listAVDs()
+            
+            if self.startingAVDs.contains(avdName) {
+                self.pollEmulatorStatus(avdName: avdName, retryCount: retryCount + 1)
+            }
         }
     }
     

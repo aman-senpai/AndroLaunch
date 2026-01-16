@@ -79,8 +79,6 @@ struct ManageImagesView: View {
                     }
                 }
             }
-            .id(UUID()) // Force redraw if layout gets stuck, purely experimental but safest for stubborn UI
-            
             // Action Bar
             if !viewModel.selectedImageIds.isEmpty || !imagesToDelete.isEmpty {
                 actionBar

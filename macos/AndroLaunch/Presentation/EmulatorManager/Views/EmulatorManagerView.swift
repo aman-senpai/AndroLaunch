@@ -102,7 +102,7 @@ struct EmulatorManagerView: View {
         let screen = NSScreen.main
         let scale = screen?.backingScaleFactor ?? 1.0
         
-        if let w = Int(screenWidth), let h = Int(screenHeight) {
+        if let w = Int(screenWidth), let _ = Int(screenHeight) {
             // Base calculation: for modern phones, we want ~400-440 dp width on standard screens.
             // On high-res Mac screens, we can afford more logical space.
             let baseDpi = Double(w) / 2.5 // Rough heuristic for comfortable width
@@ -567,7 +567,7 @@ struct EmulatorManagerView: View {
                                     }
                                     .pickerStyle(.menu)
                                     .frame(maxWidth: .infinity)
-                                    .onChange(of: selectedHardwareProfileId) { newId in
+                                    .onChange(of: selectedHardwareProfileId) { _, newId in
                                         // Update dims if using Default preset
                                         if selectedResolutionPreset == .deviceDefault,
                                            let profile = viewModel.hardwareProfiles.first(where: { $0.id == newId }) {
@@ -593,7 +593,7 @@ struct EmulatorManagerView: View {
                                     }
                                     .pickerStyle(.menu)
                                     .frame(width: 180)
-                                    .onChange(of: selectedResolutionPreset) { preset in
+                                    .onChange(of: selectedResolutionPreset) { _, preset in
                                         if preset == .deviceDefault {
                                             // Re-apply profile defaults
                                             if let profile = viewModel.hardwareProfiles.first(where: { $0.id == selectedHardwareProfileId }) {

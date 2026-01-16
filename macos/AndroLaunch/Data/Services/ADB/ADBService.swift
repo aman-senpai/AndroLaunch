@@ -45,6 +45,7 @@ final class ADBService: ADBServiceProtocol {
             "/opt/homebrew/bin/adb",
             "/usr/local/bin/adb",
             "/usr/bin/adb",
+            "\(NSHomeDirectory())/Documents/android/platform-tools/adb",
             "\(NSHomeDirectory())/Library/Android/sdk/platform-tools/adb",
             "/Library/Android/sdk/platform-tools/adb"
         ]
@@ -83,6 +84,13 @@ final class ADBService: ADBServiceProtocol {
         // Use a background queue for the potentially long-running process
         DispatchQueue.global(qos: .background).async {
             do {
+                var env = ProcessInfo.processInfo.environment
+                if let javaHome = EnvironmentManager.shared.javaHome {
+                    env["JAVA_HOME"] = javaHome
+                    env["PATH"] = "\(javaHome)/bin:\(env["PATH"] ?? "")"
+                }
+                task.environment = env
+                
                 try task.run()
                 task.waitUntilExit()
                 
@@ -291,7 +299,14 @@ final class ADBService: ADBServiceProtocol {
         if let adbPath = currentADBPath {
             var env = ProcessInfo.processInfo.environment
             env["ADB"] = adbPath
-            env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+            
+            if let javaHome = EnvironmentManager.shared.javaHome {
+                env["JAVA_HOME"] = javaHome
+                env["PATH"] = "\(javaHome)/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+            } else {
+                env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+            }
+            
             task.environment = env
         }
         
@@ -526,7 +541,14 @@ final class ADBService: ADBServiceProtocol {
         
         var env = ProcessInfo.processInfo.environment
         env["ADB"] = adbPath
-        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+        
+        if let javaHome = EnvironmentManager.shared.javaHome {
+            env["JAVA_HOME"] = javaHome
+            env["PATH"] = "\(javaHome)/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+        } else {
+            env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+        }
+        
         task.environment = env
         
         let errorPipe = Pipe()
@@ -626,7 +648,14 @@ final class ADBService: ADBServiceProtocol {
         
         var env = ProcessInfo.processInfo.environment
         env["ADB"] = adbPath
-        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+        
+        if let javaHome = EnvironmentManager.shared.javaHome {
+            env["JAVA_HOME"] = javaHome
+            env["PATH"] = "\(javaHome)/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+        } else {
+            env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+        }
+        
         task.environment = env
         
         let errorPipe = Pipe()
@@ -745,7 +774,14 @@ final class ADBService: ADBServiceProtocol {
         
         var env = ProcessInfo.processInfo.environment
         env["ADB"] = adbPath // Explicitly tell scrcpy where to find adb
-        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+        
+        if let javaHome = EnvironmentManager.shared.javaHome {
+            env["JAVA_HOME"] = javaHome
+            env["PATH"] = "\(javaHome)/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+        } else {
+            env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+        }
+        
         task.environment = env
         
         let errorPipe = Pipe()

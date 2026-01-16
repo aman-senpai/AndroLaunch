@@ -22,6 +22,7 @@ final class EmulatorService: EmulatorServiceProtocol {
     private var cancellables = Set<AnyCancellable>()
     private var startingAVDs = Set<String>()
     private var downloadProcesses: [String: Process] = [:]
+    private var runningEmulatorProcesses: [String: Process] = [:]
     private let downloadQueue = DispatchQueue(label: "com.androlaunch.downloadQueue")
     
     // MARK: - List Available Images
@@ -458,52 +459,126 @@ final class EmulatorService: EmulatorServiceProtocol {
     
     // MARK: - Start Emulator
     func startEmulator(toolsPath: String, avdName: String) {
-        let sdkRoot = getSDKRoot(from: toolsPath)
-        let emulatorPath = (sdkRoot as NSString).appendingPathComponent("emulator/emulator")
-        
-        print("[EmulatorService] startEmulator: \(emulatorPath) -avd \(avdName) -no-window")
+        let originalSdkRoot = getSDKRoot(from: toolsPath)
+        let sdkRoot = findValidSDKRoot(primary: originalSdkRoot)
+        let emulatorPath = (originalSdkRoot as NSString).appendingPathComponent("emulator/emulator")
         
         startingAVDs.insert(avdName)
         self.listAVDs(toolsPath: toolsPath) // Propagate starting state
         
+        // 1. Check AVD config for GPU mode
+        let gpuMode = getGpuMode(avdName: avdName)
+        
         let task = Process()
+        let homeDir = NSHomeDirectory()
         task.executableURL = URL(fileURLWithPath: emulatorPath)
+        task.currentDirectoryURL = URL(fileURLWithPath: homeDir)
+        
         let safeAvdName = avdName.replacingOccurrences(of: " ", with: "_")
-        task.arguments = ["-avd", avdName, "-no-window", "-no-audio", "-prop", "ro.product.model=\(safeAvdName)"]
+        // The user now prefers -no-window in their diff.
+        // Added -verbose to help diagnostic startup hangs.
+        var args = ["-avd", avdName, "-no-audio", "-no-window", "-verbose", "-prop", "ro.product.model=\(safeAvdName)"]
+        
+        // Only pass -gpu if it's explicitly set to something interesting in config.ini.
+        // If it's 'auto' or 'none', it's usually better to let the emulator decide or use its own defaults.
+        if let gpu = gpuMode?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), gpu != "none" && gpu != "auto" {
+            args.append("-gpu")
+            args.append(gpu)
+        }
+        
+        task.arguments = args
+        
+        print("[EmulatorService] startEmulator: \(emulatorPath) \(args.joined(separator: " "))")
         
         var env = ProcessInfo.processInfo.environment
         env["ANDROID_SDK_ROOT"] = sdkRoot
         env["ANDROID_HOME"] = sdkRoot
+        
+        if sdkRoot != originalSdkRoot {
+            print("[EmulatorService] Note: Your SDK root at \(originalSdkRoot) is missing platform-tools. Using valid SDK root at \(sdkRoot) for environment.")
+            // Some emulators need the image path specifically
+            env["ANDROID_IMAGE_ROOT"] = (originalSdkRoot as NSString).appendingPathComponent("system-images")
+        }
+        
+        env["HOME"] = homeDir
+        env["USER"] = NSUserName()
+        env["ANDROID_AVD_HOME"] = "\(homeDir)/.android/avd"
+        
+        var currentPath = env["PATH"] ?? "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        if let javaHome = EnvironmentManager.shared.javaHome {
+            env["JAVA_HOME"] = javaHome
+            currentPath = "\(javaHome)/bin:\(currentPath)"
+        }
+        env["PATH"] = currentPath
+        
         task.environment = env
         
-        // We don't want the app to wait for the emulator
+        // Use a pipe to capture output for debugging startup failures
         let pipe = Pipe()
         task.standardOutput = pipe
         task.standardError = pipe
         
+        let fileHandle = pipe.fileHandleForReading
+        fileHandle.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty else { return }
+            if let line = String(data: data, encoding: .utf8) {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    print("[Emulator Output] \(trimmed)")
+                }
+            }
+        }
+        
+        task.standardInput = FileHandle.nullDevice
+        
         do {
             try task.run()
-            print("[EmulatorService] Emulator started in background")
+            runningEmulatorProcesses[avdName] = task
+            print("[EmulatorService] Emulator started. Pid: \(task.processIdentifier)")
         } catch {
             print("[EmulatorService] Failed to start emulator: \(error)")
             self.errorSubject.send("Failed to start emulator: \(error.localizedDescription)")
         }
     }
     
+    private func getGpuMode(avdName: String) -> String? {
+        // Use a more robust home directory resolution
+        let home = NSHomeDirectory()
+        let configPath = URL(fileURLWithPath: home).appendingPathComponent(".android/avd/\(avdName).avd/config.ini")
+        
+        do {
+            let content = try String(contentsOf: configPath, encoding: .utf8)
+            let lines = content.components(separatedBy: .newlines)
+            for line in lines {
+                if line.contains("gpu.mode=") {
+                    let mode = line.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return mode
+                }
+            }
+        } catch {
+            print("[EmulatorService] Could not read config.ini for \(avdName) at \(configPath.path): \(error)")
+        }
+        return nil
+    }
+    
     func stopEmulator(toolsPath: String, avdName: String) {
         let sdkRoot = getSDKRoot(from: toolsPath)
-        let adbPath = (sdkRoot as NSString).appendingPathComponent("platform-tools/adb")
         
         // Find serial for this AVD
         detectRunningAVDs(toolsPath: toolsPath, avds: []) { runningAVDs in
             if let serial = runningAVDs.first(where: { $0.name == avdName })?.serial {
-                print("[EmulatorService] stopEmulator: killing \(serial) (\(avdName))")
+                let adbPath = self.getAdbPath(sdkRoot: sdkRoot)
+                print("[EmulatorService] stopEmulator: killing \(serial) (\(avdName)) using \(adbPath)")
                 self.executeCommand(executable: adbPath, arguments: ["-s", serial, "emu", "kill"]) { success, _, _ in
                     print("[EmulatorService] stopEmulator completed: \(success)")
+                    self.runningEmulatorProcesses.removeValue(forKey: avdName)
                     self.listAVDs(toolsPath: toolsPath)
                 }
             } else {
                 print("[EmulatorService] stopEmulator: could not find running serial for \(avdName)")
+                // Clean up process object anyway if it exists
+                self.runningEmulatorProcesses.removeValue(forKey: avdName)
             }
         }
     }
@@ -511,7 +586,7 @@ final class EmulatorService: EmulatorServiceProtocol {
     // MARK: - Status Detection Logic
     private func detectRunningAVDs(toolsPath: String, avds: [AVD], completion: @escaping ([AVD]) -> Void) {
         let sdkRoot = getSDKRoot(from: toolsPath)
-        let adbPath = (sdkRoot as NSString).appendingPathComponent("platform-tools/adb")
+        let adbPath = getAdbPath(sdkRoot: sdkRoot)
         
         executeCommand(executable: adbPath, arguments: ["devices"]) { success, output, _ in
             guard success, let output = output else {
@@ -544,25 +619,26 @@ final class EmulatorService: EmulatorServiceProtocol {
             
             for serial in serials {
                 group.enter()
-                // Try method 1: adb emu avd name
-                self.executeCommand(executable: adbPath, arguments: ["-s", serial, "emu", "avd", "name"]) { success, output, _ in
-                    if success, var name = output?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
-                        // Clean up "OK" suffix and newlines from telnet response
-                        if name.hasSuffix("OK") {
-                            name = name.replacingOccurrences(of: "OK", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-                        }
-                        runningMap[name] = serial
-                        group.leave()
-                    } else {
-                        // Try method 2: shell getprop ro.boot.qemu.avd_name
-                        self.executeCommand(executable: adbPath, arguments: ["-s", serial, "shell", "getprop", "ro.boot.qemu.avd_name"]) { success2, output2, _ in
-                            if success2, let name = output2?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+                        self.executeCommand(executable: adbPath, arguments: ["-s", serial, "shell", "getprop", "ro.boot.qemu.avd_name"]) { success, output, _ in
+                            if success, let name = output?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+                                print("[EmulatorService] Found running AVD name (getprop): \(name) for \(serial)")
                                 runningMap[name] = serial
+                                group.leave()
+                            } else {
+                                // Method 2: Fallback to adb emu avd name (Reliable but slower)
+                                self.executeCommand(executable: adbPath, arguments: ["-s", serial, "emu", "avd", "name"]) { success2, output2, _ in
+                                    if success2, var name = output2?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+                                        // Clean up "OK" suffix from telnet
+                                        if name.hasSuffix("OK") {
+                                            name = name.replacingOccurrences(of: "OK", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                                        }
+                                        print("[EmulatorService] Found running AVD name (emu): \(name) for \(serial)")
+                                        runningMap[name] = serial
+                                    }
+                                    group.leave()
+                                }
                             }
-                            group.leave()
                         }
-                    }
-                }
             }
             
             group.notify(queue: .main) {
@@ -614,6 +690,13 @@ final class EmulatorService: EmulatorServiceProtocol {
         var env = ProcessInfo.processInfo.environment
         env["ANDROID_SDK_ROOT"] = sdkRoot
         env["ANDROID_HOME"] = sdkRoot
+        
+        if let javaHome = EnvironmentManager.shared.javaHome {
+            env["JAVA_HOME"] = javaHome
+            // Also append to PATH just in case
+            env["PATH"] = "\(javaHome)/bin:\(env["PATH"] ?? "")"
+        }
+        
         task.environment = env
         
         let outputPipe = Pipe()
@@ -677,6 +760,12 @@ final class EmulatorService: EmulatorServiceProtocol {
         var env = ProcessInfo.processInfo.environment
         env["ANDROID_SDK_ROOT"] = sdkRoot
         env["ANDROID_HOME"] = sdkRoot
+        
+        if let javaHome = EnvironmentManager.shared.javaHome {
+            env["JAVA_HOME"] = javaHome
+            env["PATH"] = "\(javaHome)/bin:\(env["PATH"] ?? "")"
+        }
+        
         task.environment = env
         
         let inputPipe = Pipe()
@@ -863,6 +952,65 @@ final class EmulatorService: EmulatorServiceProtocol {
         let path2 = (path1 as NSString).deletingLastPathComponent
         let path3 = (path2 as NSString).deletingLastPathComponent
         return path3
+    }
+    
+    private func findValidSDKRoot(primary: String) -> String {
+        let fm = FileManager.default
+        let home = NSHomeDirectory()
+        
+        // A "valid" SDK root must have platform-tools
+        func isValid(_ path: String) -> Bool {
+            let pt = (path as NSString).appendingPathComponent("platform-tools")
+            return fm.fileExists(atPath: pt)
+        }
+        
+        if isValid(primary) {
+            return primary
+        }
+        
+        // Check standard locations
+        let commonPaths = [
+            "\(home)/Library/Android/sdk",
+            "/Users/Shared/Android/sdk",
+            "/opt/android-sdk"
+        ]
+        
+        for path in commonPaths {
+            if isValid(path) {
+                return path
+            }
+        }
+        
+        return primary // Fallback
+    }
+
+    private func getAdbPath(sdkRoot: String) -> String {
+        let fm = FileManager.default
+        
+        // 1. Try SDK platform-tools
+        let sdkAdb = (sdkRoot as NSString).appendingPathComponent("platform-tools/adb")
+        if fm.fileExists(atPath: sdkAdb) {
+            return sdkAdb
+        }
+        
+        // 2. Try common system paths
+        let systemPaths = [
+            "/usr/local/bin/adb",
+            "/opt/homebrew/bin/adb",
+            "/usr/bin/adb",
+            "/Library/Android/sdk/platform-tools/adb",
+            "\(NSHomeDirectory())/Library/Android/sdk/platform-tools/adb",
+            "\(NSHomeDirectory())/Documents/android/platform-tools/adb"
+        ]
+        
+        for path in systemPaths {
+            if fm.fileExists(atPath: path) {
+                return path
+            }
+        }
+        
+        // 3. Fallback to just "adb" and hope it's in the process PATH
+        return "adb"
     }
 
     private func isImageCompatible(id: String) -> Bool {
