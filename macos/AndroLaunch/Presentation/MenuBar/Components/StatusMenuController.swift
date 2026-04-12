@@ -17,6 +17,7 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
     var pairingWindow: NSWindow?
     var manageCommandsWindow: NSWindow?
     var emulatorManagerWindow: NSWindow?
+    var fileExplorerWindows: [String: NSWindow] = [:]
     
     init(viewModel: MenuViewModel) {
         self.viewModel = viewModel

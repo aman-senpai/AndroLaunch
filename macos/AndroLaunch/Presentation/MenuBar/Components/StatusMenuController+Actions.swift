@@ -424,4 +424,45 @@ extension StatusMenuController {
         // Update menu item state
         sender.state = viewModel.isClipboardEnabled(for: deviceID) ? .on : .off
     }
+    
+    @objc func openFileExplorer(_ sender: Any) {
+        var deviceID: String?
+        if let button = sender as? DeviceActionButton {
+            deviceID = button.deviceID
+        } else if let item = sender as? NSMenuItem {
+            deviceID = item.representedObject as? String
+        }
+        
+        guard let deviceID = deviceID else { return }
+        
+        // If window already exists, bring it to front
+        if let existingWindow = fileExplorerWindows[deviceID] {
+            existingWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        
+        // Create new window
+        let explorerViewModel = FileExplorerViewModel(repository: viewModel.repository, deviceID: deviceID)
+        let explorerView = FileExplorerView(viewModel: explorerViewModel)
+        let hostingController = NSHostingController(rootView: explorerView)
+        
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "File Explorer - \(deviceID)"
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.minSize = NSSize(width: 800, height: 500)
+        window.center()
+        window.isReleasedWhenClosed = false
+        
+        // Remove from map when closed
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: nil) { [weak self] _ in
+            self?.fileExplorerWindows.removeValue(forKey: deviceID)
+        }
+        
+        fileExplorerWindows[deviceID] = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        
+        if let menu = statusItem.menu { menu.cancelTracking() }
+    }
 }

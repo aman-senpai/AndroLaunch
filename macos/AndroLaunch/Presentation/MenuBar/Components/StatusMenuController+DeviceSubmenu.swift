@@ -130,6 +130,14 @@ extension StatusMenuController {
         
         submenu.addItem(NSMenuItem.separator())
         
+        // File Explorer
+        let explorerItem = NSMenuItem(title: "File Explorer", action: #selector(openFileExplorer(_:)), keyEquivalent: "f")
+        explorerItem.target = self
+        explorerItem.image = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: "File Explorer")
+        explorerItem.image?.size = NSSize(width: 16, height: 16)
+        explorerItem.representedObject = device.id
+        submenu.addItem(explorerItem)
+        
         // Mirror Screen
         let mirrorItem = NSMenuItem(title: "Mirror Screen", action: #selector(mirrorDevice(_:)), keyEquivalent: "m")
         mirrorItem.target = self

@@ -631,4 +631,25 @@ final class DeviceRepository: DeviceRepositoryProtocol { // Conform to the proto
     func cancelDownload(imagePath: String) {
         emulatorService.cancelDownload(imagePath: imagePath)
     }
+    
+    // File Management
+    func listFiles(for deviceID: String, at path: String, completion: @escaping (Result<[AndroidFile], Error>) -> Void) {
+        adbService.listFiles(for: deviceID, at: path, completion: completion)
+    }
+    
+    func pushFile(deviceID: String, localPath: String, remotePath: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        adbService.pushFile(deviceID: deviceID, localPath: localPath, remotePath: remotePath, completion: completion)
+    }
+    
+    func pullFile(deviceID: String, remotePath: String, localPath: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        adbService.pullFile(deviceID: deviceID, remotePath: remotePath, localPath: localPath, completion: completion)
+    }
+    
+    func deleteFile(deviceID: String, path: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        adbService.deleteFile(deviceID: deviceID, path: path, completion: completion)
+    }
+    
+    func createDirectory(deviceID: String, path: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        adbService.createDirectory(deviceID: deviceID, path: path, completion: completion)
+    }
 }

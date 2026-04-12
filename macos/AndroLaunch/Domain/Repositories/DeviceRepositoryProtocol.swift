@@ -110,4 +110,11 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     func renameAVD(oldName: String, newName: String)
     func startEmulator(avdName: String)
     func stopEmulator(avdName: String)
+    
+    // File Management
+    func listFiles(for deviceID: String, at path: String, completion: @escaping (Result<[AndroidFile], Error>) -> Void)
+    func pushFile(deviceID: String, localPath: String, remotePath: String, completion: @escaping (Result<Void, Error>) -> Void)
+    func pullFile(deviceID: String, remotePath: String, localPath: String, completion: @escaping (Result<Void, Error>) -> Void)
+    func deleteFile(deviceID: String, path: String, completion: @escaping (Result<Void, Error>) -> Void)
+    func createDirectory(deviceID: String, path: String, completion: @escaping (Result<Void, Error>) -> Void)
 }
