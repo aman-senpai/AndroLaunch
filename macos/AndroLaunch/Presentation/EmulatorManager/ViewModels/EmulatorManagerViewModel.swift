@@ -9,6 +9,20 @@ import Combine
 import Foundation
 import SwiftUI
 
+enum SidebarTab: String, CaseIterable {
+    case avds = "My Devices"
+    case images = "System Images"
+    case settings = "Settings"
+
+    var icon: String {
+        switch self {
+        case .avds: return "iphone.gen3"
+        case .images: return "square.and.arrow.down"
+        case .settings: return "gearshape"
+        }
+    }
+}
+
 final class EmulatorManagerViewModel: ObservableObject {
     @Published var availableImages: [SystemImage] = []
     @Published var existingAVDs: [AVD] = []
@@ -19,30 +33,33 @@ final class EmulatorManagerViewModel: ObservableObject {
     @Published var isCreatingAVD: Bool = false
     @Published var selectedImageIds: Set<String> = []
     @Published var hardwareProfiles: [HardwareProfile] = []
-    
+    @Published var selectedSidebarTab: SidebarTab = .avds
+    @Published var imageSearchText: String = ""
+    @Published var imagesToDelete: Set<String> = []
+
     var commandLineToolsPath: String {
         get { repository.commandLineToolsPath ?? "" }
         set { repository.setCommandLineToolsPath(newValue) }
     }
-    
+
     private let repository: any DeviceRepositoryProtocol
     private var cancellables = Set<AnyCancellable>()
     private var pollingTimer: AnyCancellable?
-    
+
     // Transient state tracking for immediate UI feedback
     private var startingAVDs: Set<String> = []
     private var stoppingAVDs: Set<String> = []
-    
+
     init(repository: any DeviceRepositoryProtocol) {
         self.repository = repository
         setupBindings()
         startPolling()
     }
-    
+
     deinit {
         stopPolling()
     }
-    
+
     private func setupBindings() {
         repository.imagesPublisher
             .receive(on: DispatchQueue.main)
@@ -51,15 +68,15 @@ final class EmulatorManagerViewModel: ObservableObject {
                 self?.isLoadingImages = false
             }
             .store(in: &cancellables)
-            
+
         repository.avdsPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] avds in
                 guard let self else { return }
-                
+
                 // Merge real state with transient state
                 var displayAVDs = avds
-                
+
                 // 1. Clean up transient states based on real state updates
                 for avd in avds {
                     if avd.isRunning {
@@ -70,7 +87,7 @@ final class EmulatorManagerViewModel: ObservableObject {
                         self.stoppingAVDs.remove(avd.name)
                     }
                 }
-                
+
                 // 2. Apply transient states to display models
                 for i in 0..<displayAVDs.count {
                     let name = displayAVDs[i].name
@@ -81,13 +98,13 @@ final class EmulatorManagerViewModel: ObservableObject {
                         displayAVDs[i].isStopping = true
                     }
                 }
-                
+
                 self.existingAVDs = displayAVDs
                 self.isLoadingAVDs = false
                 self.isCreatingAVD = false
             }
             .store(in: &cancellables)
-            
+
         repository.downloadProgressPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] (imagePath, progress) in
@@ -99,7 +116,7 @@ final class EmulatorManagerViewModel: ObservableObject {
                 }
             }
             .store(in: &cancellables)
-            
+
         repository.errorPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] error in
@@ -110,7 +127,7 @@ final class EmulatorManagerViewModel: ObservableObject {
             }
             .store(in: &cancellables)
     }
-    
+
     func refresh() {
         errorMessage = nil
         isLoadingImages = true
@@ -121,11 +138,11 @@ final class EmulatorManagerViewModel: ObservableObject {
             self?.hardwareProfiles = profiles
         }
     }
-    
+
     func downloadImage(_ imagePath: String) {
         repository.downloadImage(imagePath: imagePath)
     }
-    
+
     func toggleSelection(_ imageId: String) {
         if selectedImageIds.contains(imageId) {
             selectedImageIds.remove(imageId)
@@ -133,7 +150,7 @@ final class EmulatorManagerViewModel: ObservableObject {
             selectedImageIds.insert(imageId)
         }
     }
-    
+
     func downloadSelected() {
         let ids = Array(selectedImageIds)
         selectedImageIds.removeAll()
@@ -141,7 +158,7 @@ final class EmulatorManagerViewModel: ObservableObject {
             repository.downloadImage(imagePath: id)
         }
     }
-    
+
     func cancelDownload(_ imageId: String) {
         repository.cancelDownload(imagePath: imageId)
         // Optimistically remove progress so UI updates immediately
@@ -149,40 +166,40 @@ final class EmulatorManagerViewModel: ObservableObject {
             self.downloadProgress.removeValue(forKey: imageId)
         }
     }
-    
+
     func deleteSelectedImages(_ ids: Set<String>) {
         isLoadingImages = true
         for id in ids {
             repository.deleteImage(imagePath: id)
         }
     }
-    
+
     func createAVD(name: String, imagePath: String, device: String? = nil, options: AVDOptions) {
         isCreatingAVD = true
         repository.createAVD(name: name, imagePath: imagePath, device: device, options: options)
     }
-    
+
     func deleteAVD(name: String) {
         isLoadingAVDs = true
         repository.deleteAVD(name: name)
     }
-    
+
     func renameAVD(oldName: String, newName: String) {
         isLoadingAVDs = true
         repository.renameAVD(oldName: oldName, newName: newName)
     }
-    
+
     func startEmulator(avdName: String) {
         startingAVDs.insert(avdName)
         // Force update to show spinner immediately
         refreshDisplayAVDs()
-        
+
         repository.startEmulator(avdName: avdName)
-        
+
         // Polling status: check more frequently while starting
         pollEmulatorStatus(avdName: avdName, retryCount: 0)
     }
-    
+
     private func pollEmulatorStatus(avdName: String, retryCount: Int) {
         // Max 30 retries (approx 60-90 seconds)
         guard retryCount < 30 else {
@@ -190,38 +207,39 @@ final class EmulatorManagerViewModel: ObservableObject {
             refreshDisplayAVDs()
             return
         }
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + (retryCount < 5 ? 2.0 : 5.0)) { [weak self] in
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + (retryCount < 5 ? 2.0 : 5.0)) {
+            [weak self] in
             guard let self = self else { return }
-            
+
             // If it's already running, stop polling
             if self.existingAVDs.first(where: { $0.name == avdName })?.isRunning == true {
                 self.startingAVDs.remove(avdName)
                 self.refreshDisplayAVDs()
                 return
             }
-            
+
             // Still starting, refresh and poll again
             self.repository.listAVDs()
-            
+
             if self.startingAVDs.contains(avdName) {
                 self.pollEmulatorStatus(avdName: avdName, retryCount: retryCount + 1)
             }
         }
     }
-    
+
     func stopEmulator(avdName: String) {
         stoppingAVDs.insert(avdName)
         // Force update to show spinner immediately
         refreshDisplayAVDs()
-        
+
         repository.stopEmulator(avdName: avdName)
         // Instant feedback
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.repository.listAVDs()
         }
     }
-    
+
     // Helper to refresh the existingAVDs list with current transient states
     // This is useful when we want to update the UI without waiting for a repository fetch
     private func refreshDisplayAVDs() {
@@ -250,5 +268,27 @@ final class EmulatorManagerViewModel: ObservableObject {
     private func stopPolling() {
         pollingTimer?.cancel()
         pollingTimer = nil
+    }
+
+    // MARK: - Image Filtering
+
+    var filteredImages: [SystemImage] {
+        guard !imageSearchText.isEmpty else { return availableImages }
+        return availableImages.filter {
+            $0.description.localizedCaseInsensitiveContains(imageSearchText)
+                || $0.id.localizedCaseInsensitiveContains(imageSearchText)
+        }
+    }
+
+    var installedImages: [SystemImage] {
+        filteredImages.filter {
+            $0.isDownloaded || downloadProgress.keys.contains($0.id)
+        }
+    }
+
+    var availableForDownloadImages: [SystemImage] {
+        filteredImages.filter {
+            !$0.isDownloaded && !downloadProgress.keys.contains($0.id)
+        }
     }
 }

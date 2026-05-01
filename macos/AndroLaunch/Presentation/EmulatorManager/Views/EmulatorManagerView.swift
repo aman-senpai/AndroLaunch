@@ -7,481 +7,525 @@
 
 import SwiftUI
 
+// MARK: - Sidebar Navigation Item
+
+private enum SidebarItem: String, Identifiable, CaseIterable {
+    case myDevices = "My Devices"
+    case systemImages = "System Images"
+    case settings = "Settings"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .myDevices: return "iphone.gen3"
+        case .systemImages: return "square.and.arrow.down"
+        case .settings: return "gearshape"
+        }
+    }
+}
+
+// MARK: - Resolution Preset
+
+enum ResolutionPreset: String, CaseIterable, Identifiable {
+    case deviceDefault = "Device Default"
+    case res360p = "360p (360×800)"
+    case res480p = "480p (480×1080)"
+    case res540p = "540p (540×1200)"
+    case res720p = "720p (720×1600)"
+    case res900p = "900p (900×2000)"
+    case res1080p = "1080p (1080×2400)"
+    case res1440p = "1440p (1440×3200)"
+    case res4k = "4K (1644×3840)"
+    case custom = "Custom"
+
+    var id: String { rawValue }
+
+    var width: Int? {
+        switch self {
+        case .deviceDefault, .custom: return nil
+        case .res360p: return 360
+        case .res480p: return 480
+        case .res540p: return 540
+        case .res720p: return 720
+        case .res900p: return 900
+        case .res1080p: return 1080
+        case .res1440p: return 1440
+        case .res4k: return 1644
+        }
+    }
+
+    var height: Int? {
+        switch self {
+        case .deviceDefault, .custom: return nil
+        case .res360p: return 800
+        case .res480p: return 1080
+        case .res540p: return 1200
+        case .res720p: return 1600
+        case .res900p: return 2000
+        case .res1080p: return 2400
+        case .res1440p: return 3200
+        case .res4k: return 3840
+        }
+    }
+
+    var suggestedDensity: Int? {
+        switch self {
+        case .deviceDefault, .custom: return nil
+        case .res360p: return 120
+        case .res480p: return 160
+        case .res540p: return 240
+        case .res720p: return 320
+        case .res900p: return 360
+        case .res1080p: return 420
+        case .res1440p: return 560
+        case .res4k: return 640
+        }
+    }
+}
+
+// MARK: - EmulatorManagerView
+
 struct EmulatorManagerView: View {
     @ObservedObject var viewModel: EmulatorManagerViewModel
-    @State private var selectedTab = 0
+
+    // Sidebar
+    @State private var selectedSidebarItem: SidebarItem = .myDevices
+
+    // Create AVD sheet
     @State private var showingCreateSheet = false
     @State private var newAvdName = ""
     @State private var selectedImage: SystemImage?
-    
-    // Advanced Creation Options
+
+    // Hardware
     @State private var selectedHardwareProfileId = "pixel"
-    @State private var showAdvancedOptions = false
-    
-    // Core Hardware
+
+    // Memory & Performance
     @State private var ramSize: String = "2048"
     @State private var heapSize: String = "512"
     @State private var storageSize: String = "4096"
-    
+    @State private var selectedGPUMode = "auto"
+    @State private var useColdBoot = false
+    @State private var showDeviceFrame = false
+
     // Display
     @State private var screenWidth: String = "1080"
     @State private var screenHeight: String = "2400"
     @State private var screenDensity: String = "420"
-    
-    // Storage & Misc
+    @State private var selectedResolutionPreset: ResolutionPreset = .deviceDefault
+
+    // Storage & Sensors
     @State private var sdCardSize: String = "512"
     @State private var selectedCamera = "emulated"
     @State private var enableGPS = false
     @State private var enableKeyboard = true
-    
-    // Performance
-    @State private var selectedGPUMode = "auto"
-    @State private var useColdBoot = false
-    @State private var showDeviceFrame = false
-    
-    // Resolution Presets (Modern 20:9 Aspect Ratios)
-    enum ResolutionPreset: String, CaseIterable, Identifiable {
-        case deviceDefault = "Device Default"
-        case res360p = "360p (360x800)"
-        case res480p = "480p (480x1080)"
-        case res540p = "540p (540x1200)"
-        case res720p = "720p (720x1600)"
-        case res900p = "900p (900x2000)"
-        case res1080p = "1080p (1080x2400)"
-        case res1440p = "1440p (1440x3200)"
-        case res4k = "4K (1644x3840)"
-        case custom = "Custom"
-        
-        var id: String { self.rawValue }
-        var width: Int? {
-            switch self {
-            case .deviceDefault: return nil
-            case .res360p: return 360
-            case .res480p: return 480
-            case .res540p: return 540
-            case .res720p: return 720
-            case .res900p: return 900
-            case .res1080p: return 1080
-            case .res1440p: return 1440
-            case .res4k: return 1644
-            case .custom: return nil
-            }
-        }
-        var height: Int? {
-            switch self {
-            case .deviceDefault: return nil
-            case .res360p: return 800
-            case .res480p: return 1080
-            case .res540p: return 1200
-            case .res720p: return 1600
-            case .res900p: return 2000
-            case .res1080p: return 2400
-            case .res1440p: return 3200
-            case .res4k: return 3840
-            case .custom: return nil
-            }
-        }
-        var suggestedDensity: Int? {
-            switch self {
-            case .deviceDefault: return nil
-            case .res360p: return 120
-            case .res480p: return 160
-            case .res540p: return 240
-            case .res720p: return 320
-            case .res900p: return 360
-            case .res1080p: return 420
-            case .res1440p: return 560
-            case .res4k: return 640
-            case .custom: return nil
-            }
-        }
-    }
-    @State private var selectedResolutionPreset: ResolutionPreset = .deviceDefault
-    
-    private func suggestDensityForMac() {
-        let screen = NSScreen.main
-        let scale = screen?.backingScaleFactor ?? 1.0
-        
-        if let w = Int(screenWidth), let _ = Int(screenHeight) {
-            // Base calculation: for modern phones, we want ~400-440 dp width on standard screens.
-            // On high-res Mac screens, we can afford more logical space.
-            let baseDpi = Double(w) / 2.5 // Rough heuristic for comfortable width
-            
-            // Adjust based on Mac scaling
-            // On Retina (2.0), things look smaller, so we might want a slightly higher logical density to keep it readable,
-            // OR lower it even more if the user wants "more space".
-            // Since the user said "too big", we definitely want to bias lower.
-            var suggested = Int(baseDpi)
-            
-            if scale > 1.0 {
-                suggested = Int(Double(suggested) * 0.9) // 10% more space on Retina
-            }
-            
-            // Snap to nearest 20
-            screenDensity = "\((suggested / 20) * 20)"
-        }
-    }
-    
+
+    // System Images tab
+    @State private var imageSearchText = ""
+    @State private var imagesToDelete: Set<String> = []
+
+    // MARK: - Body
+
     var body: some View {
-        VStack(spacing: 0) {
-            // Error Banner
-            if let error = viewModel.errorMessage {
-                errorBanner(error)
-            }
-            
-            // 3-Tab Picker
-            Picker("", selection: $selectedTab) {
-                Text("AVDs").tag(0)
-                Text("System Images").tag(1)
-                Text("Manage Images").tag(2)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
-            
-            Divider()
-            
-            // Content Area
-            Group {
-                switch selectedTab {
-                case 0:
-                    avdListView
-                case 1:
-                    systemImagesView
-                case 2:
-                    ManageImagesView(viewModel: viewModel)
-                default:
-                    avdListView
-                }
-            }
-            
-            Divider()
-            
-            // Path Settings Footer
-            pathSettingsView
+        NavigationSplitView {
+            sidebar
+                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
+        } detail: {
+            detailContent
         }
-        .frame(minWidth: 800, idealWidth: 900, minHeight: 650, idealHeight: 750)
+        .frame(minWidth: 780, idealWidth: 900, minHeight: 580, idealHeight: 700)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button(action: { viewModel.refresh() }) {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
+                .help("Refresh all data")
             }
         }
         .onAppear {
             viewModel.refresh()
         }
         .sheet(isPresented: $showingCreateSheet) {
-            createAvdView
+            createAvdSheet
         }
     }
-    
-    // MARK: - Error Banner
-    private func errorBanner(_ error: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.orange)
-            Text(error)
-                .foregroundColor(.primary)
-                .font(.callout)
-                .lineLimit(2)
-            Spacer()
-            Button(action: { viewModel.errorMessage = nil }) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.secondary)
+
+    // MARK: - Sidebar
+
+    private var sidebar: some View {
+        List {
+            ForEach(SidebarItem.allCases) { item in
+                SidebarRow(
+                    item: item,
+                    isSelected: selectedSidebarItem == item,
+                    action: { selectedSidebarItem = item }
+                )
             }
-            .buttonStyle(.plain)
         }
-        .padding(12)
-        .background(Color.orange.opacity(0.15))
-        .cornerRadius(8)
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
+        .listStyle(.sidebar)
+        .navigationTitle("AndroLaunch")
     }
-    
-    // MARK: - Tab 1: AVD List View
+
+    // MARK: - Detail Content
+
+    @ViewBuilder
+    private var detailContent: some View {
+        switch selectedSidebarItem {
+        case .myDevices:
+            avdListView
+        case .systemImages:
+            systemImagesTab
+        case .settings:
+            settingsView
+        }
+    }
+
+    // MARK: - Error Overlay
+
+    @ViewBuilder
+    private func errorOverlay() -> some View {
+        if let error = viewModel.errorMessage {
+            VStack {
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    Text(error)
+                        .font(.callout)
+                        .lineLimit(2)
+                    Spacer()
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            viewModel.errorMessage = nil
+                        }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.orange.opacity(0.12))
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                Spacer()
+            }
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .zIndex(10)
+        }
+    }
+
+    // MARK: - My Devices (AVD List)
+
     private var avdListView: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                if viewModel.existingAVDs.isEmpty && !viewModel.isLoadingAVDs {
-                    emptyStateView(
-                        icon: "desktopcomputer",
-                        title: "No AVDs Found",
-                        subtitle: "Go to 'System Images' tab to select an image and create an AVD."
-                    )
-                    .padding(.top, 80)
-                }
-                
-                ForEach(viewModel.existingAVDs) { avd in
-                    avdRow(avd)
-                    Divider().padding(.leading, 20)
+        ZStack {
+            if viewModel.existingAVDs.isEmpty && !viewModel.isLoadingAVDs {
+                EmptyDeviceState(action: {
+                    selectedSidebarItem = .systemImages
+                })
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(viewModel.existingAVDs) { avd in
+                            AvdRowView(
+                                avd: avd,
+                                onRun: { viewModel.startEmulator(avdName: avd.name) },
+                                onStop: { viewModel.stopEmulator(avdName: avd.name) },
+                                onRename: { renameAction(avd: avd) },
+                                onDelete: { viewModel.deleteAVD(name: avd.name) }
+                            )
+                            Divider()
+                                .padding(.leading, 56)
+                        }
+                    }
+                    .padding(.vertical, 12)
                 }
             }
-        }
-        .overlay {
+
             if viewModel.isLoadingAVDs {
-                loadingOverlay("Loading AVDs...")
+                loadingOverlay("Loading devices…")
             }
+
+            errorOverlay()
         }
+        .navigationTitle("My Devices")
     }
-    
-    private func avdRow(_ avd: AVD) -> some View {
-        HStack(spacing: 16) {
-            Image(systemName: "iphone.gen3")
-                .font(.title)
-                .foregroundColor(.accentColor)
-                .frame(width: 44)
-            
-            VStack(alignment: .leading, spacing: 4) {
+
+    // MARK: - System Images Tab (Merged)
+
+    private var systemImagesTab: some View {
+        let filteredImages = viewModel.availableImages.filter { image in
+            imageSearchText.isEmpty
+                || image.description.localizedCaseInsensitiveContains(imageSearchText)
+                || image.id.localizedCaseInsensitiveContains(imageSearchText)
+        }
+        let downloadingIds = Set(viewModel.downloadProgress.keys)
+        let installedImages = filteredImages.filter {
+            $0.isDownloaded || downloadingIds.contains($0.id)
+        }
+        let availableDownloads = filteredImages.filter {
+            !$0.isDownloaded && !downloadingIds.contains($0.id)
+        }
+        let hasSelection = !viewModel.selectedImageIds.isEmpty || !imagesToDelete.isEmpty
+
+        return ZStack {
+            VStack(spacing: 0) {
+                // Search bar
                 HStack(spacing: 8) {
-                    Text(avd.name)
-                        .font(.headline)
-                    if avd.isStopping {
-                        Text("Stopping...")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.red.opacity(0.1))
-                            .foregroundColor(.red)
-                            .cornerRadius(4)
-                    } else if avd.isRunning {
-                        Text("Running")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.green.opacity(0.2))
-                            .foregroundColor(.green)
-                            .cornerRadius(4)
-                    } else if avd.isStarting {
-                        Text("Starting...")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.blue.opacity(0.2))
-                            .foregroundColor(.blue)
-                            .cornerRadius(4)
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                    TextField("Search system images…", text: $imageSearchText)
+                        .textFieldStyle(.plain)
+                        .controlSize(.regular)
+                    if !imageSearchText.isEmpty {
+                        Button {
+                            imageSearchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                HStack(spacing: 8) {
-                    if let device = avd.device, !device.isEmpty {
-                        Label(device, systemImage: "cpu")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+                if filteredImages.isEmpty && !viewModel.isLoadingImages {
+                    VStack(spacing: 20) {
+                        Image(
+                            systemName: imageSearchText.isEmpty
+                                ? "externaldrive.badge.questionmark" : "magnifyingglass"
+                        )
+                        .font(.system(size: 40))
+                        .foregroundColor(.secondary.opacity(0.5))
+                        Text(
+                            imageSearchText.isEmpty
+                                ? "No System Images Found" : "No Matching Images"
+                        )
+                        .font(.title3)
+                        .fontWeight(.medium)
+                        Text(
+                            imageSearchText.isEmpty
+                                ? "Check your Android SDK settings and click Refresh."
+                                : "Try adjusting your search terms."
+                        )
+                        .font(.callout)
+                        .foregroundColor(.secondary)
                     }
-                    if let target = avd.target, !target.isEmpty {
-                        Text("•").foregroundColor(.secondary)
-                        Text(target)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-            }
-            
-            Spacer()
-            
-            HStack(spacing: 8) {
-                if avd.isStopping {
-                    Button(action: {}) {
-                        HStack(spacing: 4) {
-                            ProgressView()
-                                .controlSize(.small)
-                                .scaleEffect(0.7)
-                            Text("Stopping")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(true)
-                    .controlSize(.small)
-                } else if avd.isRunning {
-                    Button(action: { viewModel.stopEmulator(avdName: avd.name) }) {
-                        Label("Stop", systemImage: "stop.fill")
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.red)
-                    .controlSize(.small)
-                } else if avd.isStarting {
-                    Button(action: {}) {
-                        HStack(spacing: 4) {
-                            ProgressView()
-                                .controlSize(.small)
-                                .scaleEffect(0.7)
-                            Text("Starting")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(true)
-                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    Button(action: { viewModel.startEmulator(avdName: avd.name) }) {
-                        Label("Run", systemImage: "play.fill")
+                    ScrollView {
+                        LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                            // Installed section
+                            if !installedImages.isEmpty {
+                                Section {
+                                    ForEach(installedImages) { image in
+                                        SystemImageRowView(
+                                            image: image,
+                                            mode: .installed(
+                                                isSelected: Binding(
+                                                    get: { imagesToDelete.contains(image.id) },
+                                                    set: { selected in
+                                                        if selected {
+                                                            imagesToDelete.insert(image.id)
+                                                        } else {
+                                                            imagesToDelete.remove(image.id)
+                                                        }
+                                                    }
+                                                ),
+                                                deleteDisabled: !viewModel.selectedImageIds.isEmpty
+                                            ),
+                                            downloadProgress: viewModel.downloadProgress[image.id],
+                                            onCancelDownload: { viewModel.cancelDownload(image.id) }
+                                        )
+                                        Divider().padding(.leading, 52)
+                                    }
+                                } header: {
+                                    sectionHeader("Installed")
+                                }
+                            }
+
+                            // Available section
+                            if !availableDownloads.isEmpty {
+                                Section {
+                                    ForEach(availableDownloads) { image in
+                                        SystemImageRowView(
+                                            image: image,
+                                            mode: .available(
+                                                isSelected: Binding(
+                                                    get: {
+                                                        viewModel.selectedImageIds.contains(
+                                                            image.id)
+                                                    },
+                                                    set: { selected in
+                                                        if selected {
+                                                            viewModel.selectedImageIds.insert(
+                                                                image.id)
+                                                        } else {
+                                                            viewModel.selectedImageIds.remove(
+                                                                image.id)
+                                                        }
+                                                    }
+                                                ),
+                                                isDisabled: image.isDownloaded
+                                                    || !imagesToDelete.isEmpty
+                                            ),
+                                            downloadProgress: nil,
+                                            onCancelDownload: {}
+                                        )
+                                        Divider().padding(.leading, 52)
+                                    }
+                                } header: {
+                                    sectionHeader("Available for Download")
+                                }
+                            }
+                        }
+                        .padding(.bottom, hasSelection ? 60 : 12)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
                 }
-                
-                Button(action: { renameAction(avd: avd) }) {
-                    Image(systemName: "pencil")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("Rename AVD")
-                .disabled(avd.isRunning || avd.isStarting)
-                
-                Button(action: { viewModel.deleteAVD(name: avd.name) }) {
-                    Image(systemName: "trash")
-                        .foregroundColor(.red)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("Delete AVD")
-                .disabled(avd.isRunning || avd.isStarting)
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-    }
-    
-    // MARK: - Tab 2: System Images (for AVD creation)
-    private var systemImagesView: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                if viewModel.availableImages.isEmpty && !viewModel.isLoadingImages {
-                    emptyStateView(
-                        icon: "square.and.arrow.down",
-                        title: "No Images Available",
-                        subtitle: "Go to 'Manage Images' tab to download system images first."
-                    )
-                    .padding(.top, 80)
-                }
-                
-                // Only show downloaded images for AVD creation
-                let downloadedImages = viewModel.availableImages.filter { $0.isDownloaded }
-                
-                if !downloadedImages.isEmpty {
-                    ForEach(downloadedImages) { image in
-                        systemImageRowForAVD(image)
-                        Divider().padding(.leading, 60)
-                    }
-                } else if !viewModel.isLoadingImages && !viewModel.availableImages.isEmpty {
-                    emptyStateView(
-                        icon: "arrow.down.circle",
-                        title: "No Downloaded Images",
-                        subtitle: "Go to 'Manage Images' tab to download system images first."
-                    )
-                    .padding(.top, 80)
+
+                // Action bar
+                if hasSelection {
+                    actionBar
                 }
             }
-        }
-        .overlay {
+
             if viewModel.isLoadingImages {
-                loadingOverlay("Loading images...")
+                loadingOverlay("Loading images…")
             }
+
+            errorOverlay()
         }
+        .navigationTitle("System Images")
     }
-    
-    private func systemImageRowForAVD(_ image: SystemImage) -> some View {
-        HStack(spacing: 16) {
-            Image(systemName: "internaldrive.fill")
-                .font(.title2)
-                .foregroundColor(.green)
-                .frame(width: 44)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(image.description)
-                    .font(.body)
-                    .fontWeight(.medium)
-                Text(image.id)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            
-            Spacer()
-            
-            Button("Create AVD") {
-                selectedImage = image
-                newAvdName = ""
-                // Reset defaults for modern experience
-                selectedHardwareProfileId = "pixel_8"
-                ramSize = "4096"
-                heapSize = "512"
-                storageSize = "8192"
-                screenWidth = "1080"
-                screenHeight = "2400"
-                screenDensity = "420"
-                sdCardSize = "1024"
-                selectedCamera = "emulated"
-                enableGPS = false
-                enableKeyboard = true
-                selectedGPUMode = "auto"
-                useColdBoot = false
-                showDeviceFrame = false
-                selectedResolutionPreset = .deviceDefault
-                showingCreateSheet = true
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-    }
-    
-    
-    
-    // MARK: - Path Settings View
-    private var pathSettingsView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Android Command Line Tools Path")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-            
-            HStack(spacing: 10) {
-                TextField("/path/to/android/cmdline-tools/latest/bin", text: Binding(
-                    get: { viewModel.commandLineToolsPath },
-                    set: { viewModel.commandLineToolsPath = $0 }
-                ))
-                .textFieldStyle(.roundedBorder)
-                
-                Button("Browse...") {
-                    let panel = NSOpenPanel()
-                    panel.canChooseFiles = false
-                    panel.canChooseDirectories = true
-                    panel.allowsMultipleSelection = false
-                    if panel.runModal() == .OK, let url = panel.url {
-                        viewModel.commandLineToolsPath = url.path
+
+    // MARK: - Settings View
+
+    private var settingsView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Text("Settings")
+                    .font(.title)
+                    .fontWeight(.bold)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Android Command Line Tools Path", systemImage: "terminal")
+                            .font(.headline)
+
+                        HStack(spacing: 10) {
+                            TextField(
+                                "/path/to/android/cmdline-tools/latest/bin",
+                                text: Binding(
+                                    get: { viewModel.commandLineToolsPath },
+                                    set: { viewModel.commandLineToolsPath = $0 }
+                                )
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.regular)
+
+                            Button("Browse…") {
+                                let panel = NSOpenPanel()
+                                panel.canChooseFiles = false
+                                panel.canChooseDirectories = true
+                                panel.allowsMultipleSelection = false
+                                panel.title = "Select Android SDK Command Line Tools Directory"
+                                panel.message =
+                                    "Choose the folder containing the Android SDK command-line tools (e.g., cmdline-tools/latest/bin)."
+                                if panel.runModal() == .OK, let url = panel.url {
+                                    viewModel.commandLineToolsPath = url.path
+                                }
+                            }
+                            .controlSize(.regular)
+                        }
+
+                        Text(
+                            "This path should point to the Android SDK command-line tools directory containing avdmanager and sdkmanager."
+                        )
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     }
+                    .padding(12)
                 }
-                .controlSize(.small)
+                .padding(.horizontal, 20)
+
+                errorOverlay()
+                    .padding(.horizontal, 20)
+
+                Spacer()
             }
         }
-        .padding(16)
-        .background(Color.primary.opacity(0.03))
+        .navigationTitle("Settings")
     }
-    
-    // MARK: - Helper Views
-    private func emptyStateView(icon: String, title: String, subtitle: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.system(size: 48))
-                .foregroundColor(.secondary.opacity(0.5))
-            Text(title)
-                .font(.title3)
-                .fontWeight(.medium)
-            Text(subtitle)
+
+    // MARK: - Shared Subviews
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundColor(.secondary)
+            .textCase(.uppercase)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(.regularMaterial)
+    }
+
+    private var actionBar: some View {
+        HStack(spacing: 16) {
+            if !imagesToDelete.isEmpty {
+                Label("\(imagesToDelete.count) selected for deletion", systemImage: "trash")
+                    .font(.callout)
+                    .foregroundColor(.red)
+
+                Spacer()
+
+                Button {
+                    viewModel.deleteSelectedImages(imagesToDelete)
+                    imagesToDelete.removeAll()
+                } label: {
+                    Label("Delete Selected", systemImage: "trash.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .controlSize(.regular)
+            } else if !viewModel.selectedImageIds.isEmpty {
+                Label(
+                    "\(viewModel.selectedImageIds.count) selected for download",
+                    systemImage: "square.and.arrow.down"
+                )
                 .font(.callout)
                 .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+
+                Spacer()
+
+                Button {
+                    viewModel.downloadSelected()
+                } label: {
+                    Label("Download Selected", systemImage: "square.and.arrow.down.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+            }
         }
-        .frame(maxWidth: 350)
-        .padding()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.regularMaterial)
     }
-    
+
     private func loadingOverlay(_ message: String) -> some View {
         VStack(spacing: 12) {
             ProgressView()
-                .scaleEffect(1.2)
+                .scaleEffect(1.1)
             Text(message)
                 .font(.callout)
                 .foregroundColor(.secondary)
@@ -489,76 +533,124 @@ struct EmulatorManagerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.primary.opacity(0.02))
     }
-    
+
+    // MARK: - Helper: Suggest Density for Mac
+
+    private func suggestDensityForMac() {
+        let screen = NSScreen.main
+        let scale = screen?.backingScaleFactor ?? 1.0
+
+        if let w = Int(screenWidth), Int(screenHeight) != nil {
+            let baseDpi = Double(w) / 2.5
+            var suggested = Int(baseDpi)
+            if scale > 1.0 {
+                suggested = Int(Double(suggested) * 0.9)
+            }
+            screenDensity = "\((suggested / 20) * 20)"
+        }
+    }
+
+    // MARK: - Rename Action (NSAlert)
+
+    private func renameAction(avd: AVD) {
+        let alert = NSAlert()
+        alert.messageText = "Rename AVD"
+        alert.informativeText = "Enter a new name for '\(avd.name)':"
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+
+        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 250, height: 24))
+        textField.stringValue = avd.name
+        alert.accessoryView = textField
+
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            let newName = textField.stringValue.trimmingCharacters(in: .whitespaces)
+            if !newName.isEmpty && newName != avd.name {
+                viewModel.renameAVD(oldName: avd.name, newName: newName)
+            }
+        }
+    }
+
     // MARK: - Create AVD Sheet
-    private var createAvdView: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                VStack(spacing: 8) {
-                    Text("Create New AVD")
+
+    private var createAvdSheet: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Create New Virtual Device")
                         .font(.title2)
                         .fontWeight(.semibold)
-                    Text("Configure your device hardware and identity")
+                    Text("Configure your virtual device hardware and identity.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
-                .padding(.top, 8)
-                
-                VStack(alignment: .leading, spacing: 20) {
-                    // Basic Info Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Basic Information")
-                            .font(.headline)
-                        
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("AVD Name")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            TextField("e.g. Pixel 8 Pro", text: $newAvdName)
-                                .textFieldStyle(.roundedBorder)
-                                .controlSize(.large)
-                        }
-                        
-                        if let image = selectedImage {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("System Image")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                HStack {
-                                    Image(systemName: "internaldrive")
-                                        .foregroundColor(.accentColor)
-                                    VStack(alignment: .leading) {
-                                        Text(image.description)
-                                            .font(.body)
-                                        Text(image.id)
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                .padding(12)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.primary.opacity(0.05))
-                                .cornerRadius(8)
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 12)
+
+            Divider()
+
+            // Form content
+            ScrollView {
+                VStack(spacing: 0) {
+                    Form {
+                        // MARK: Basic Information
+                        Section {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("AVD Name")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                TextField("e.g. Pixel 8 Pro", text: $newAvdName)
+                                    .textFieldStyle(.roundedBorder)
+                                    .controlSize(.regular)
                             }
+                            .padding(.vertical, 2)
+
+                            if let image = selectedImage {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("System Image")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+
+                                    Label {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(image.description)
+                                                .font(.body)
+                                            Text(image.id)
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                    } icon: {
+                                        Image(systemName: "internaldrive")
+                                            .foregroundColor(.accentColor)
+                                    }
+                                    .padding(10)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6).fill(
+                                            Color.primary.opacity(0.05)))
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        } header: {
+                            Text("Basic Information")
                         }
-                    }
-                    
-                    Divider()
-                    
-                    // Hardware Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Hardware Profile")
-                            .font(.headline)
-                        
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 12) {
+
+                        // MARK: Hardware Profile
+                        Section {
+                            HStack(alignment: .top, spacing: 16) {
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text("Device Template")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
                                     Picker("", selection: $selectedHardwareProfileId) {
                                         if viewModel.hardwareProfiles.isEmpty {
-                                            Text("Loading devices...").tag("pixel")
+                                            Text("Loading devices…").tag("pixel")
                                         } else {
                                             ForEach(viewModel.hardwareProfiles) { profile in
                                                 Text(profile.name).tag(profile.id)
@@ -566,38 +658,41 @@ struct EmulatorManagerView: View {
                                         }
                                     }
                                     .pickerStyle(.menu)
-                                    .frame(maxWidth: .infinity)
+                                    .frame(maxWidth: 220)
                                     .onChange(of: selectedHardwareProfileId) { _, newId in
-                                        // Update dims if using Default preset
-                                        if selectedResolutionPreset == .deviceDefault,
-                                           let profile = viewModel.hardwareProfiles.first(where: { $0.id == newId }) {
+                                        guard selectedResolutionPreset == .deviceDefault else {
+                                            return
+                                        }
+                                        if let profile = viewModel.hardwareProfiles.first(where: {
+                                            $0.id == newId
+                                        }) {
                                             if let w = profile.width, let h = profile.height {
                                                 screenWidth = "\(w)"
                                                 screenHeight = "\(h)"
                                             }
-                                            if let d = profile.density {
-                                                screenDensity = "\(d)"
-                                            }
+                                            if let d = profile.density { screenDensity = "\(d)" }
                                         }
                                     }
+                                    .controlSize(.regular)
                                 }
-                                
+
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text("Resolution")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
+                                    Text("Resolution Preset")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
                                     Picker("", selection: $selectedResolutionPreset) {
                                         ForEach(ResolutionPreset.allCases) { preset in
                                             Text(preset.rawValue).tag(preset)
                                         }
                                     }
                                     .pickerStyle(.menu)
-                                    .frame(width: 180)
+                                    .frame(width: 200)
                                     .onChange(of: selectedResolutionPreset) { _, preset in
                                         if preset == .deviceDefault {
-                                            // Re-apply profile defaults
-                                            if let profile = viewModel.hardwareProfiles.first(where: { $0.id == selectedHardwareProfileId }) {
-                                                 if let w = profile.width, let h = profile.height {
+                                            if let profile = viewModel.hardwareProfiles.first(
+                                                where: { $0.id == selectedHardwareProfileId })
+                                            {
+                                                if let w = profile.width, let h = profile.height {
                                                     screenWidth = "\(w)"
                                                     screenHeight = "\(h)"
                                                 }
@@ -613,213 +708,609 @@ struct EmulatorManagerView: View {
                                             }
                                         }
                                     }
+                                    .controlSize(.regular)
                                 }
                             }
+                            .padding(.vertical, 2)
+                        } header: {
+                            Text("Hardware Profile")
                         }
-                        
-                        Button(action: { withAnimation { showAdvancedOptions.toggle() } }) {
-                            HStack {
-                                Text("Advanced Settings (Memory & Storage)")
-                                Image(systemName: showAdvancedOptions ? "chevron.up" : "chevron.down")
+
+                        // MARK: Advanced Settings
+                        Section {
+                            DisclosureGroup {
+                                // Memory & Performance
+                                GroupBox {
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Label("Memory & Performance", systemImage: "memorychip")
+                                            .font(.callout)
+                                            .fontWeight(.semibold)
+
+                                        HStack(spacing: 12) {
+                                            FormField(label: "RAM (MB)", value: $ramSize)
+                                            FormField(label: "VM Heap (MB)", value: $heapSize)
+                                        }
+
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("Graphics Acceleration")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                            Picker("", selection: $selectedGPUMode) {
+                                                Text("Auto").tag("auto")
+                                                Text("Hardware (GPU)").tag("host")
+                                                Text("Software (CPU)").tag("software")
+                                            }
+                                            .pickerStyle(.menu)
+                                            .controlSize(.regular)
+                                        }
+
+                                        Toggle("Force Cold Boot", isOn: $useColdBoot)
+                                        Toggle("Show Device Frame", isOn: $showDeviceFrame)
+                                    }
+                                    .padding(8)
+                                }
+
+                                // Display
+                                GroupBox {
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Label("Display Settings", systemImage: "display")
+                                            .font(.callout)
+                                            .fontWeight(.semibold)
+
+                                        if selectedResolutionPreset == .custom {
+                                            HStack(spacing: 12) {
+                                                FormField(label: "Width (px)", value: $screenWidth)
+                                                FormField(
+                                                    label: "Height (px)", value: $screenHeight)
+                                            }
+                                        } else {
+                                            HStack(spacing: 20) {
+                                                LabeledContent("Width") {
+                                                    Text(screenWidth).monospacedDigit()
+                                                }
+                                                LabeledContent("Height") {
+                                                    Text(screenHeight).monospacedDigit()
+                                                }
+                                            }
+                                            .font(.callout)
+                                        }
+
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            HStack {
+                                                Text("Density (DPI)")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                                Spacer()
+                                                Button("Auto-Suggest for Mac") {
+                                                    suggestDensityForMac()
+                                                }
+                                                .buttonStyle(.link)
+                                                .font(.caption)
+                                            }
+                                            TextField("420", text: $screenDensity)
+                                                .textFieldStyle(.roundedBorder)
+                                                .controlSize(.regular)
+                                        }
+                                    }
+                                    .padding(8)
+                                }
+
+                                // Storage & Features
+                                GroupBox {
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Label("Storage & Features", systemImage: "externaldrive")
+                                            .font(.callout)
+                                            .fontWeight(.semibold)
+
+                                        HStack(spacing: 12) {
+                                            FormField(
+                                                label: "Internal Storage (MB)", value: $storageSize)
+                                            FormField(label: "SD Card (MB)", value: $sdCardSize)
+                                        }
+
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("Camera Support")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                            Picker("", selection: $selectedCamera) {
+                                                Text("None").tag("none")
+                                                Text("Emulated").tag("emulated")
+                                                Text("Webcam (Physical)").tag("webcam0")
+                                            }
+                                            .pickerStyle(.menu)
+                                            .controlSize(.regular)
+                                        }
+
+                                        HStack(spacing: 24) {
+                                            Toggle("GPS Support", isOn: $enableGPS)
+                                            Toggle("Physical Keyboard", isOn: $enableKeyboard)
+                                        }
+                                    }
+                                    .padding(8)
+                                }
+                            } label: {
+                                Label("Advanced Settings", systemImage: "slider.horizontal.3")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
                             }
-                            .font(.subheadline)
-                            .foregroundColor(.accentColor)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.top, 4)
-                        
-                        if showAdvancedOptions {
-                            VStack(spacing: 24) {
-                                // Memory Section
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Label("Memory & Performance", systemImage: "memorychip")
-                                        .font(.subheadline).fontWeight(.bold)
-                                    
-                                    HStack(spacing: 16) {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text("RAM (MB)").font(.caption).foregroundColor(.secondary)
-                                            TextField("4096", text: $ramSize).textFieldStyle(.roundedBorder)
-                                        }
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text("VM Heap (MB)").font(.caption).foregroundColor(.secondary)
-                                            TextField("512", text: $heapSize).textFieldStyle(.roundedBorder)
-                                        }
-                                    }
-                                    
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Graphics Acceleration").font(.caption).foregroundColor(.secondary)
-                                        Picker("", selection: $selectedGPUMode) {
-                                            Text("Auto").tag("auto")
-                                            Text("Hardware (GPU)").tag("host")
-                                            Text("Software (CPU)").tag("software")
-                                        }
-                                        .pickerStyle(.menu)
-                                    }
-                                    
-                                    Toggle("Force Cold Boot", isOn: $useColdBoot)
-                                    Toggle("Show Device Frame", isOn: $showDeviceFrame)
-                                }
-                                .font(.caption)
-                                
-                                Divider()
-                                
-                                // Display Section
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Label("Display Settings", systemImage: "display")
-                                        .font(.subheadline).fontWeight(.bold)
-                                    
-                                    if selectedResolutionPreset == .custom {
-                                        HStack(spacing: 16) {
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                Text("Width").font(.caption).foregroundColor(.secondary)
-                                                TextField("1080", text: $screenWidth).textFieldStyle(.roundedBorder)
-                                            }
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                Text("Height").font(.caption).foregroundColor(.secondary)
-                                                TextField("2400", text: $screenHeight).textFieldStyle(.roundedBorder)
-                                            }
-                                        }
-                                        .transition(.scale.combined(with: .opacity))
-                                    }
-                                    
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        HStack {
-                                            Text("Density (DPI)").font(.caption).foregroundColor(.secondary)
-                                            Spacer()
-                                            Button("Auto-Suggest for Mac") {
-                                                suggestDensityForMac()
-                                            }
-                                            .buttonStyle(.plain)
-                                            .font(.caption2)
-                                            .foregroundColor(.accentColor)
-                                        }
-                                        TextField("420", text: $screenDensity).textFieldStyle(.roundedBorder)
-                                    }
-                                }
-                                
-                                Divider()
-                                
-                                // Storage & Sensors
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Label("Storage & Features", systemImage: "externaldrive")
-                                        .font(.subheadline).fontWeight(.bold)
-                                    
-                                    HStack(spacing: 16) {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text("Internal Storage (MB)").font(.caption).foregroundColor(.secondary)
-                                            TextField("8192", text: $storageSize).textFieldStyle(.roundedBorder)
-                                        }
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text("SD Card (MB)").font(.caption).foregroundColor(.secondary)
-                                            TextField("1024", text: $sdCardSize).textFieldStyle(.roundedBorder)
-                                        }
-                                    }
-                                    
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Camera Support").font(.caption).foregroundColor(.secondary)
-                                        Picker("", selection: $selectedCamera) {
-                                            Text("None").tag("none")
-                                            Text("Emulated").tag("emulated")
-                                            Text("Webcam (Physical)").tag("webcam0")
-                                        }
-                                        .pickerStyle(.menu)
-                                    }
-                                    
-                                    HStack(spacing: 24) {
-                                        Toggle("GPS Support", isOn: $enableGPS)
-                                        Toggle("Physical Keyboard", isOn: $enableKeyboard)
-                                    }
-                                    .font(.caption)
-                                }
-                            }
-                            .padding(.vertical, 8)
-                            .transition(.move(edge: .top).combined(with: .opacity))
+                        } header: {
+                            Text("Configuration")
                         }
                     }
+                    .formStyle(.grouped)
                 }
-                .padding(.horizontal, 8)
-                
+            }
+
+            Divider()
+
+            // Footer with cancel/create buttons
+            HStack {
+                Button("Cancel") {
+                    showingCreateSheet = false
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .keyboardShortcut(.cancelAction)
+                .disabled(viewModel.isCreatingAVD)
+
+                Spacer()
+
                 if viewModel.isCreatingAVD {
-                    HStack {
+                    HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
-                        Text("Creating AVD and applying configurations...")
+                            .scaleEffect(0.8)
+                        Text("Creating AVD…")
                             .font(.callout)
                             .foregroundColor(.secondary)
                     }
                 }
-                
-                HStack(spacing: 16) {
-                    Button("Cancel") {
-                        showingCreateSheet = false
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(viewModel.isCreatingAVD)
-                    
-                    Spacer()
-                    
-                    Button(action: {
-                        if let image = selectedImage {
-                            let options = AVDOptions(
-                                ramMB: Int(ramSize),
-                                heapMB: Int(heapSize),
-                                storageMB: Int(storageSize),
-                                width: Int(screenWidth),
-                                height: Int(screenHeight),
-                                density: Int(screenDensity),
-                                sdCardMB: Int(sdCardSize),
-                                cameraBack: selectedCamera,
-                                gps: enableGPS,
-                                keyboard: enableKeyboard,
-                                gpuMode: selectedGPUMode,
-                                coldBoot: useColdBoot,
-                                showDeviceFrame: showDeviceFrame
-                            )
-                            
-                            viewModel.createAVD(
-                                name: newAvdName,
-                                imagePath: image.id,
-                                device: selectedHardwareProfileId,
-                                options: options
-                            )
-                            showingCreateSheet = false
-                        }
-                    }) {
-                        Text("Create Device")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(newAvdName.trimmingCharacters(in: .whitespaces).isEmpty || viewModel.isCreatingAVD)
+
+                Button {
+                    guard let image = selectedImage else { return }
+                    let options = AVDOptions(
+                        ramMB: Int(ramSize),
+                        heapMB: Int(heapSize),
+                        storageMB: Int(storageSize),
+                        width: Int(screenWidth),
+                        height: Int(screenHeight),
+                        density: Int(screenDensity),
+                        sdCardMB: Int(sdCardSize),
+                        cameraBack: selectedCamera,
+                        gps: enableGPS,
+                        keyboard: enableKeyboard,
+                        gpuMode: selectedGPUMode,
+                        coldBoot: useColdBoot,
+                        showDeviceFrame: showDeviceFrame
+                    )
+                    viewModel.createAVD(
+                        name: newAvdName,
+                        imagePath: image.id,
+                        device: selectedHardwareProfileId,
+                        options: options
+                    )
+                    showingCreateSheet = false
+                } label: {
+                    Text("Create Device")
+                        .frame(minWidth: 120)
                 }
-                .padding(.top, 10)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+                .disabled(
+                    newAvdName.trimmingCharacters(in: .whitespaces).isEmpty
+                        || viewModel.isCreatingAVD)
             }
-            .padding(32)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
         }
-        .frame(width: 520, height: 650)
+        .frame(minWidth: 560, idealWidth: 600, minHeight: 580, idealHeight: 680)
     }
-    
-    // MARK: - Rename Action
-    private func renameAction(avd: AVD) {
-        let alert = NSAlert()
-        alert.messageText = "Rename AVD"
-        alert.informativeText = "Enter a new name for '\(avd.name)':"
-        alert.addButton(withTitle: "Rename")
-        alert.addButton(withTitle: "Cancel")
-        
-        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 250, height: 24))
-        textField.stringValue = avd.name
-        alert.accessoryView = textField
-        
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            let newName = textField.stringValue.trimmingCharacters(in: .whitespaces)
-            if !newName.isEmpty && newName != avd.name {
-                viewModel.renameAVD(oldName: avd.name, newName: newName)
+}
+
+// MARK: - FormField Helper
+
+private struct FormField: View {
+    let label: String
+    @Binding var value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            TextField("", text: $value)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.regular)
+        }
+    }
+}
+
+// MARK: - Sidebar Row
+
+private struct SidebarRow: View {
+    let item: SidebarItem
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Label(item.rawValue, systemImage: item.icon)
+                .font(.body)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(backgroundColor)
+        )
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.15)) {
+                isHovering = hovering
             }
+        }
+    }
+
+    private var backgroundColor: Color {
+        if isSelected {
+            Color.accentColor.opacity(0.15)
+        } else if isHovering {
+            Color.primary.opacity(0.06)
+        } else {
+            Color.clear
+        }
+    }
+}
+
+// MARK: - Empty Device State
+
+private struct EmptyDeviceState: View {
+    var action: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "iphone.gen3")
+                .font(.system(size: 48))
+                .foregroundColor(.secondary.opacity(0.4))
+            Text("No Virtual Devices")
+                .font(.title2)
+                .fontWeight(.medium)
+            Text("Create your first Android Virtual Device by downloading a system image.")
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 320)
+            Button {
+                action()
+            } label: {
+                Label("Browse System Images", systemImage: "square.and.arrow.down")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - AVD Row View (with hover reveal)
+
+private struct AvdRowView: View {
+    let avd: AVD
+    let onRun: () -> Void
+    let onStop: () -> Void
+    let onRename: () -> Void
+    let onDelete: () -> Void
+
+    @State private var isHovering = false
+
+    private var isDisabled: Bool { avd.isRunning || avd.isStarting }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Icon
+            Image(systemName: avd.isRunning ? "iphone.gen3" : "iphone.gen3")
+                .font(.title2)
+                .foregroundColor(avd.isRunning ? .green : .accentColor)
+                .frame(width: 32)
+                .symbolEffect(.pulse, isActive: avd.isStarting || avd.isStopping)
+
+            // Info
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(avd.name)
+                        .font(.body)
+                        .fontWeight(.medium)
+                    statusBadge
+                }
+                HStack(spacing: 6) {
+                    if let device = avd.device, !device.isEmpty {
+                        Text(device)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    if let target = avd.target, !target.isEmpty {
+                        if avd.device != nil, !avd.device!.isEmpty {
+                            Text("•")
+                                .font(.caption)
+                                .foregroundColor(Color(NSColor.tertiaryLabelColor))
+                        }
+                        Text(target)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+            }
+
+            Spacer()
+
+            // Primary action
+            primaryButton
+
+            // Secondary actions (hover-revealed)
+            if isHovering && !avd.isStopping {
+                HStack(spacing: 4) {
+                    Button {
+                        onRename()
+                    } label: {
+                        Image(systemName: "pencil")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .help("Rename")
+                    .disabled(isDisabled)
+
+                    Button {
+                        onDelete()
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundColor(.red)
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .help("Delete")
+                    .disabled(isDisabled)
+                }
+                .transition(.scale(scale: 0.8).combined(with: .opacity))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 0)
+                .fill(isHovering ? Color.primary.opacity(0.05) : Color.clear)
+        )
+        .onHover { hovering in
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                isHovering = hovering
+            }
+        }
+        .contextMenu {
+            Button("Rename…") { onRename() }
+                .disabled(isDisabled)
+            Button("Delete", role: .destructive) { onDelete() }
+                .disabled(isDisabled)
+            Divider()
+            Button("Show in Finder") {
+                // no-op for now; placeholder
+            }
+            .disabled(true)
+        }
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        if avd.isStopping {
+            Badge(text: "Stopping…", color: .red)
+        } else if avd.isRunning {
+            Badge(text: "Running", color: .green)
+        } else if avd.isStarting {
+            Badge(text: "Starting…", color: .blue)
+        }
+    }
+
+    @ViewBuilder
+    private var primaryButton: some View {
+        if avd.isStopping {
+            Button {
+            } label: {
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.7)
+                    Text("Stopping")
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(true)
+        } else if avd.isRunning {
+            Button {
+                onStop()
+            } label: {
+                Label("Stop", systemImage: "stop.fill")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.bordered)
+            .tint(.red)
+            .controlSize(.small)
+            .help("Stop emulator")
+        } else if avd.isStarting {
+            Button {
+            } label: {
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.7)
+                    Text("Starting")
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(true)
+        } else {
+            Button {
+                onRun()
+            } label: {
+                Label("Run", systemImage: "play.fill")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .help("Run emulator")
+        }
+    }
+}
+
+// MARK: - Status Badge
+
+private struct Badge: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        Text(text)
+            .font(.caption2)
+            .fontWeight(.medium)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.15))
+            .foregroundColor(color)
+            .clipShape(Capsule())
+    }
+}
+
+// MARK: - System Image Row View
+
+private struct SystemImageRowView: View {
+    enum Mode {
+        case installed(isSelected: Binding<Bool>, deleteDisabled: Bool)
+        case available(isSelected: Binding<Bool>, isDisabled: Bool)
+    }
+
+    let image: SystemImage
+    let mode: Mode
+    let downloadProgress: Double?
+    let onCancelDownload: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Left: selection control
+            selectionControl
+
+            // Icon
+            Image(systemName: image.isDownloaded ? "internaldrive.fill" : "icloud.and.arrow.down")
+                .font(.title3)
+                .foregroundColor(image.isDownloaded ? .green : .secondary)
+                .frame(width: 24)
+
+            // Info
+            VStack(alignment: .leading, spacing: 3) {
+                Text(image.description)
+                    .font(.body)
+                    .fontWeight(.medium)
+                Text(image.id)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer()
+
+            // Status / Progress
+            statusView
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 0)
+                .fill(isHovering ? Color.primary.opacity(0.05) : Color.clear)
+        )
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.15)) {
+                isHovering = hovering
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var selectionControl: some View {
+        switch mode {
+        case .installed(let isSelected, let deleteDisabled):
+            if downloadProgress != nil {
+                Button {
+                    onCancelDownload()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                        .font(.title3)
+                }
+                .buttonStyle(.plain)
+                .help("Cancel download")
+            } else {
+                Toggle("", isOn: isSelected)
+                    .toggleStyle(.checkbox)
+                    .disabled(deleteDisabled)
+                    .controlSize(.small)
+            }
+
+        case .available(let isSelected, let isDisabled):
+            Toggle("", isOn: isSelected)
+                .toggleStyle(.checkbox)
+                .disabled(isDisabled)
+                .controlSize(.small)
+        }
+    }
+
+    @ViewBuilder
+    private var statusView: some View {
+        if image.isDownloaded {
+            VStack(alignment: .trailing, spacing: 2) {
+                Label("Installed", systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundColor(.green)
+
+                if let size = image.sizeBytes {
+                    Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+        } else if let progress = downloadProgress {
+            if progress > 0 {
+                HStack(spacing: 8) {
+                    ProgressView(value: progress)
+                        .frame(width: 100)
+                        .controlSize(.small)
+                    Text("\(Int(progress * 100))%")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .monospacedDigit()
+                        .frame(width: 36, alignment: .trailing)
+                }
+            } else {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.8)
+                    Text("Downloading…")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        } else {
+            Text("Not installed")
+                .font(.caption)
+                .foregroundColor(.secondary)
         }
     }
 }
