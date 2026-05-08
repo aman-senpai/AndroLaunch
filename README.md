@@ -18,15 +18,17 @@
 
 ## 🛠️ Setup: Get Started in Minutes
 
-AndroLaunch works by utilizing two essential tools: `adb` and `scrcpy`. You need to install these on your system before launching the app.
+AndroLaunch bundles `adb` directly — no manual Android SDK install needed. For screen mirroring features, `scrcpy` is required.
 
 ### macOS Installation
 
-1.  **Install Dependencies**: Open your Terminal and run the following command using **Homebrew**:
+1.  **Install scrcpy** (for screen mirroring): Open Terminal and run:
     ```bash
-    brew install android-platform-tools scrcpy
+    brew install scrcpy
     ```
-2.  **Launch**: Download the macOS version and move it to your Applications folder.
+    Or click **Install with Homebrew** in-app when scrcpy features are used.
+
+2.  **Launch**: Download AndroLaunch, move to Applications, and run. ADB is bundled inside the app.
 
 ### 💻 CLI Tool (New!)
 
@@ -132,10 +134,10 @@ androlaunch emulator-start MyAVD
 
 ### Windows Installation
 
-1.  **Install Dependencies**: We recommend using **Scoop** or **Chocolatey**:
-    - **Scoop**: `scoop install adb scrcpy`
-    - **Chocolatey**: `choco install adb scrcpy`
-    *Alternatively, download them manually and ensure they are in your System PATH.*
+1.  **Install scrcpy** (for screen mirroring): We recommend using **Scoop** or **Chocolatey**:
+    - **Scoop**: `scoop install scrcpy`
+    - **Chocolatey**: `choco install scrcpy`
+    *Note: ADB is bundled with the app.*
 2.  **Launch**: Download the Windows version (exe) and run it.
 
 ### Step 2: Configure Your Android Device

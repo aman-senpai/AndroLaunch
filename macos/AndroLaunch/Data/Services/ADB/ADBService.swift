@@ -41,14 +41,18 @@ final class ADBService: ADBServiceProtocol {
 
     // Common system paths for ADB
     private var systemADBPaths: [String] {
-        [
+        let bundled = Bundle.main.url(forResource: "adb", withExtension: nil)?.path
+        var paths: [String] = []
+        if let bundled { paths.append(bundled) }
+        paths.append(contentsOf: [
             "/opt/homebrew/bin/adb",
             "/usr/local/bin/adb",
             "/usr/bin/adb",
             "\(NSHomeDirectory())/Documents/android/platform-tools/adb",
             "\(NSHomeDirectory())/Library/Android/sdk/platform-tools/adb",
             "/Library/Android/sdk/platform-tools/adb"
-        ]
+        ])
+        return paths
     }
 
     // Common system paths for SCRCPY
@@ -554,11 +558,16 @@ final class ADBService: ADBServiceProtocol {
                 alert.messageText = "SCRCPY Not Found"
                 alert.informativeText = errorMessage + "\n\nCommon installation method on macOS:\nOpen Terminal and run: `brew install scrcpy`"
                 alert.addButton(withTitle: "OK")
-                alert.addButton(withTitle: "Open scrcpy GitHub")
+                alert.addButton(withTitle: "Install with Homebrew")
                 alert.alertStyle = .warning
                 let response = alert.runModal()
                 if response == .alertSecondButtonReturn {
-                    NSWorkspace.shared.open(URL(string: "https://github.com/Genymobile/scrcpy")!)
+                    let command = "clear; echo 'Installing scrcpy via Homebrew...'; brew install scrcpy; echo 'Done! Close this window and try again.'"
+                    let scriptSource = "tell application \"Terminal\" to activate\ntell application \"Terminal\" to do script \"\(command)\""
+                    if let script = NSAppleScript(source: scriptSource) {
+                        var error: NSDictionary?
+                        script.executeAndReturnError(&error)
+                    }
                 }
             }
 #endif
@@ -789,11 +798,16 @@ final class ADBService: ADBServiceProtocol {
                 alert.messageText = "SCRCPY Not Found"
                 alert.informativeText = errorMessage + "\n\nCommon installation method on macOS:\nOpen Terminal and run: `brew install scrcpy`"
                 alert.addButton(withTitle: "OK")
-                alert.addButton(withTitle: "Open scrcpy GitHub")
+                alert.addButton(withTitle: "Install with Homebrew")
                 alert.alertStyle = .warning
                 let response = alert.runModal()
                 if response == .alertSecondButtonReturn {
-                    NSWorkspace.shared.open(URL(string: "https://github.com/Genymobile/scrcpy")!)
+                    let command = "clear; echo 'Installing scrcpy via Homebrew...'; brew install scrcpy; echo 'Done! Close this window and try again.'"
+                    let scriptSource = "tell application \"Terminal\" to activate\ntell application \"Terminal\" to do script \"\(command)\""
+                    if let script = NSAppleScript(source: scriptSource) {
+                        var error: NSDictionary?
+                        script.executeAndReturnError(&error)
+                    }
                 }
             }
 #endif
@@ -1202,11 +1216,16 @@ final class ADBService: ADBServiceProtocol {
             Open Terminal and run: `brew install scrcpy`
             """
             alert.addButton(withTitle: "OK")
-            alert.addButton(withTitle: "Open scrcpy GitHub")
+            alert.addButton(withTitle: "Install with Homebrew")
             alert.alertStyle = .warning
             let response = alert.runModal()
             if response == .alertSecondButtonReturn {
-                NSWorkspace.shared.open(URL(string: "https://github.com/Genymobile/scrcpy")!)
+                let command = "clear; echo 'Installing scrcpy via Homebrew...'; brew install scrcpy; echo 'Done! Close this window and try again.'"
+                let scriptSource = "tell application \"Terminal\" to activate\ntell application \"Terminal\" to do script \"\(command)\""
+                if let script = NSAppleScript(source: scriptSource) {
+                    var error: NSDictionary?
+                    script.executeAndReturnError(&error)
+                }
             }
         }
 #endif
