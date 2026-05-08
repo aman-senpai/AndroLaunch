@@ -36,10 +36,66 @@ final class EmulatorManagerViewModel: ObservableObject {
     @Published var selectedSidebarTab: SidebarTab = .avds
     @Published var imageSearchText: String = ""
     @Published var imagesToDelete: Set<String> = []
+    @Published var enabledOsTypes: Set<SystemImageType> = Set(SystemImageType.allCases)
 
     var commandLineToolsPath: String {
         get { repository.commandLineToolsPath ?? "" }
         set { repository.setCommandLineToolsPath(newValue) }
+    }
+
+    var avdPath: String {
+        get { repository.avdPath ?? defaultAVDPath }
+        set {
+            if newValue == defaultAVDPath || newValue.isEmpty {
+                repository.setAVDPath(nil)
+            } else {
+                repository.setAVDPath(newValue)
+            }
+        }
+    }
+
+    var defaultAVDPath: String {
+        NSHomeDirectory() + "/.android/avd"
+    }
+
+    var imageDownloadPath: String {
+        get { repository.imageDownloadPath ?? defaultImageDownloadPath }
+        set {
+            if newValue == defaultImageDownloadPath || newValue.isEmpty {
+                repository.setImageDownloadPath(nil)
+            } else {
+                repository.setImageDownloadPath(newValue)
+            }
+        }
+    }
+
+    var emulatorPath: String {
+        get { repository.emulatorPath ?? "" }
+        set {
+            if newValue.isEmpty {
+                repository.setEmulatorPath(nil)
+            } else {
+                repository.setEmulatorPath(newValue)
+            }
+        }
+    }
+
+    func getLaunchFlags(for avdName: String) -> LaunchFlags {
+        repository.getLaunchFlags(for: avdName)
+    }
+
+    func setLaunchFlags(for avdName: String, flags: LaunchFlags) {
+        repository.setLaunchFlags(for: avdName, flags: flags)
+    }
+
+    var defaultImageDownloadPath: String {
+        if let toolsPath = repository.commandLineToolsPath {
+            let bin = (toolsPath as NSString).deletingLastPathComponent
+            let latest = (bin as NSString).deletingLastPathComponent
+            let cmdlineTools = (latest as NSString).deletingLastPathComponent
+            return (cmdlineTools as NSString).deletingLastPathComponent
+        }
+        return NSHomeDirectory() + "/Library/Android/sdk"
     }
 
     private let repository: any DeviceRepositoryProtocol
@@ -108,8 +164,7 @@ final class EmulatorManagerViewModel: ObservableObject {
         repository.downloadProgressPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] (imagePath, progress) in
-                self?.objectWillChange.send()
-                if progress >= 1.0 {
+                if progress >= 1.0 || progress < 0 {
                     self?.downloadProgress.removeValue(forKey: imagePath)
                 } else {
                     self?.downloadProgress[imagePath] = progress
@@ -161,10 +216,6 @@ final class EmulatorManagerViewModel: ObservableObject {
 
     func cancelDownload(_ imageId: String) {
         repository.cancelDownload(imagePath: imageId)
-        // Optimistically remove progress so UI updates immediately
-        DispatchQueue.main.async {
-            self.downloadProgress.removeValue(forKey: imageId)
-        }
     }
 
     func deleteSelectedImages(_ ids: Set<String>) {
@@ -194,21 +245,26 @@ final class EmulatorManagerViewModel: ObservableObject {
         // Force update to show spinner immediately
         refreshDisplayAVDs()
 
-        repository.startEmulator(avdName: avdName)
+        let launchFlags = repository.getLaunchFlags(for: avdName)
+        repository.startEmulator(avdName: avdName, launchFlags: launchFlags)
 
         // Polling status: check more frequently while starting
         pollEmulatorStatus(avdName: avdName, retryCount: 0)
     }
 
     private func pollEmulatorStatus(avdName: String, retryCount: Int) {
-        // Max 30 retries (approx 60-90 seconds)
-        guard retryCount < 30 else {
+        // Cold boot for ARM64 API 36 can take 5-8 min. Keep polling as long
+        // as the emulator process is alive, up to a generous limit.
+        let processAlive = repository.isEmulatorProcessRunning(avdName: avdName)
+        guard retryCount < 120 || processAlive else {
             startingAVDs.remove(avdName)
             refreshDisplayAVDs()
             return
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + (retryCount < 5 ? 2.0 : 5.0)) {
+        // Early: 3s (quick ADB check), later: 10s (let it boot)
+        let delay: Double = retryCount < 10 ? 3.0 : 10.0
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             [weak self] in
             guard let self = self else { return }
 
@@ -272,11 +328,17 @@ final class EmulatorManagerViewModel: ObservableObject {
 
     // MARK: - Image Filtering
 
+    var osTypeCounts: [SystemImageType: Int] {
+        Dictionary(grouping: availableImages, by: \.osType).mapValues(\.count)
+    }
+
     var filteredImages: [SystemImage] {
-        guard !imageSearchText.isEmpty else { return availableImages }
-        return availableImages.filter {
-            $0.description.localizedCaseInsensitiveContains(imageSearchText)
-                || $0.id.localizedCaseInsensitiveContains(imageSearchText)
+        availableImages.filter { image in
+            let matchesSearch = imageSearchText.isEmpty
+                || image.displayName.localizedCaseInsensitiveContains(imageSearchText)
+                || image.id.localizedCaseInsensitiveContains(imageSearchText)
+            let matchesOsType = enabledOsTypes.contains(image.osType)
+            return matchesSearch && matchesOsType
         }
     }
 

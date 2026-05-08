@@ -188,38 +188,30 @@ final class ADBService: ADBServiceProtocol {
 
     // MARK: - Private Helper: Parse ADB Devices Output
     private func parseDevices(from output: String) -> [AndroidDevice] {
-        let pattern = #"^(\S+)\s+(device|unauthorized|offline|no permissions)\s*(.*)$"# // Adjusted regex slightly for end of line
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .anchorsMatchLines) else {
-            self.error.send("Failed to create regex for device parsing.")
-            return []
-        }
+        let states = ["device", "unauthorized", "offline", "no permissions", "authorizing",
+                      "connecting", "recovery", "sideload", "bootloader", "host", "rescue"]
+
         var devices = [AndroidDevice]()
-        var seenDeviceNames = Set<String>() // To track unique device names
+        var seenDeviceNames = Set<String>()
 
         output.enumerateLines { line, _ in
             guard !line.lowercased().contains("list of devices attached") && !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
-            let range = NSRange(line.startIndex..., in: line)
-            guard let match = regex.firstMatch(in: line, options: [], range: range),
-                  match.numberOfRanges >= 3 else {
-                self.error.send("Line did not match device pattern: \(line)")
+            // Find the device state keyword — serial can contain spaces (mDNS/bonjour)
+            guard let (deviceID, state, details) = Self.splitDeviceLine(line, states: states) else {
+                print("[ADBService] Line did not match device pattern: \(line)")
                 return
             }
 
-            let idRange = match.range(at: 1)
-            let stateRange = match.range(at: 2)
-            let detailsRange = match.range(at: 3)
-
-            guard let id = Range(idRange, in: line),
-                  let state = Range(stateRange, in: line) else {
-                self.error.send("Could not extract ID or state from line: \(line)")
-                return
-            }
-
-            let deviceID = String(line[id])
             var cleanDeviceID = deviceID
             if cleanDeviceID.contains(".:") {
                 cleanDeviceID = cleanDeviceID.replacingOccurrences(of: ".:", with: ":")
+            }
+            // Strip mDNS/bonjour suffix: "adb-XXX (N)._adb-tls-connect._tcp" -> "adb-XXX"
+            let mdnsPattern = #"\s+\d+\._adb-tls-connect\._tcp$"#
+            if let mdnsRegex = try? NSRegularExpression(pattern: mdnsPattern),
+               let _ = mdnsRegex.firstMatch(in: cleanDeviceID, range: NSRange(cleanDeviceID.startIndex..., in: cleanDeviceID)) {
+                cleanDeviceID = mdnsRegex.stringByReplacingMatches(in: cleanDeviceID, range: NSRange(cleanDeviceID.startIndex..., in: cleanDeviceID), withTemplate: "")
             }
 
             // Fetch serial number for this device
@@ -234,12 +226,11 @@ final class ADBService: ADBServiceProtocol {
                 self.error.send("Failed to get serial number for \(cleanDeviceID): \(error.localizedDescription)")
             }
 
-            let deviceState = String(line[state])
+            let deviceState = state
             var modelName = "Android Device"
             var rawModel: String?
 
-            if let detailsRng = Range(detailsRange, in: line) {
-                let details = String(line[detailsRng])
+            if let details = details {
                 let modelPattern = #"model:([^\s]+)"#
                 if let modelMatch = try? NSRegularExpression(pattern: modelPattern)
                     .firstMatch(in: details, range: NSRange(details.startIndex..., in: details)),
@@ -278,6 +269,39 @@ final class ADBService: ADBServiceProtocol {
         return devices
     }
 
+    /// Split an `adb devices -l` line into (serial, state, details?).
+    /// Serial may contain spaces for mDNS/bonjour-discovered devices.
+    private static func splitDeviceLine(_ line: String,
+                                        states: [String]) -> (String, String, String?)? {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Find first occurrence of any state keyword as a whole word
+        var bestMatch: (range: Range<String.Index>, state: String)?
+        for state in states {
+            let escaped = NSRegularExpression.escapedPattern(for: state)
+            let pattern = "(?:^|\\s)(\(escaped))(?:$|\\s)"
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let nsRange = NSRange(trimmed.startIndex..., in: trimmed)
+            if let match = regex.firstMatch(in: trimmed, range: nsRange),
+               match.numberOfRanges >= 2,
+               let stateRange = Range(match.range(at: 1), in: trimmed) {
+                if bestMatch == nil || stateRange.lowerBound < bestMatch!.range.lowerBound {
+                    bestMatch = (stateRange, state)
+                }
+            }
+        }
+        guard let match = bestMatch else { return nil }
+
+        let deviceID = String(trimmed[trimmed.startIndex..<match.range.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let detailsStart = trimmed.index(after: match.range.upperBound)
+        let details: String?
+        if detailsStart < trimmed.endIndex {
+            details = String(trimmed[detailsStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            details = nil
+        }
+        return (deviceID, match.state, details)
+    }
 
     // MARK: - App Listing
     func fetchApps(for deviceID: String) {
@@ -317,38 +341,81 @@ final class ADBService: ADBServiceProtocol {
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            do {
-                try task.run()
-                task.waitUntilExit()
+            let maxRetries = 3
+            var lastOutput = ""
+            var lastExitCode: Int32 = 0
 
-                let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            for attempt in 1...maxRetries {
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: scrcpyPath)
+                task.arguments = ["--serial", cleanDeviceID, "--list-apps"]
 
-                let output = String(data: outputData, encoding: .utf8) ?? ""
-                let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
-                let combinedOutput = output + "\n" + errorOutput
-
-                if task.terminationStatus == 0 {
-                    let apps = self.parseScrcpyApps(from: combinedOutput)
-
-                    DispatchQueue.main.async {
-                        self.apps.send((deviceID, apps))
+                if let adbPath = self.currentADBPath {
+                    var env = ProcessInfo.processInfo.environment
+                    env["ADB"] = adbPath
+                    if let javaHome = EnvironmentManager.shared.javaHome {
+                        env["JAVA_HOME"] = javaHome
+                        env["PATH"] = "\(javaHome)/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+                    } else {
+                        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
                     }
-                    if apps.isEmpty && !combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        print("[ADBService] fetchApps: No apps found in output: \(combinedOutput)")
+                    task.environment = env
+                }
+
+                let outputPipe = Pipe()
+                let errorPipe = Pipe()
+                task.standardOutput = outputPipe
+                task.standardError = errorPipe
+
+                do {
+                    // Timeout watchdog
+                    let timeoutWorkItem = DispatchWorkItem { task.terminate() }
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 30, execute: timeoutWorkItem)
+
+                    try task.run()
+                    task.waitUntilExit()
+                    timeoutWorkItem.cancel()
+
+                    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                    let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    let output = String(data: outputData, encoding: .utf8) ?? ""
+                    let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
+                    let combinedOutput = output + "\n" + errorOutput
+                    lastOutput = combinedOutput
+                    lastExitCode = task.terminationStatus
+
+                    if task.terminationStatus == 0 {
+                        let apps = self.parseScrcpyApps(from: combinedOutput)
+                        DispatchQueue.main.async {
+                            self.apps.send((deviceID, apps))
+                        }
+                        if apps.isEmpty && !combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            print("[ADBService] fetchApps: No apps found in output: \(combinedOutput)")
+                        }
+                        return
                     }
-                } else {
-                    print("[ADBService] fetchApps failed (code \(task.terminationStatus)). Output:\n\(combinedOutput)")
-                    DispatchQueue.main.async {
-                        self.error.send("Failed to fetch apps for \(deviceID). Scrcpy exited with code \(task.terminationStatus).")
-                        self.apps.send((deviceID, []))
+
+                    if task.terminationStatus == 15 {
+                        print("[ADBService] fetchApps timed out (attempt \(attempt)/\(maxRetries))")
+                    } else {
+                        print("[ADBService] fetchApps failed (attempt \(attempt)/\(maxRetries), code \(task.terminationStatus)). Output:\n\(combinedOutput)")
+                    }
+
+                    if attempt < maxRetries {
+                        Thread.sleep(forTimeInterval: 2.0)
+                    }
+                } catch {
+                    print("[ADBService] fetchApps error (attempt \(attempt)/\(maxRetries)): \(error.localizedDescription)")
+                    if attempt < maxRetries {
+                        Thread.sleep(forTimeInterval: 2.0)
                     }
                 }
-            } catch {
-                DispatchQueue.main.async {
-                    self.error.send("Failed to execute scrcpy: \(error.localizedDescription)")
-                    self.apps.send((deviceID, []))
-                }
+            }
+
+            // All retries exhausted
+            DispatchQueue.main.async {
+                self.error.send("Failed to fetch apps for \(deviceID). Scrcpy exited with code \(lastExitCode) after \(maxRetries) attempts.")
+                self.apps.send((deviceID, []))
             }
         }
     }

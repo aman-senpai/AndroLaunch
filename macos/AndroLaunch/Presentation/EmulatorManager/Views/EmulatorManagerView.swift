@@ -29,14 +29,14 @@ private enum SidebarItem: String, Identifiable, CaseIterable {
 
 enum ResolutionPreset: String, CaseIterable, Identifiable {
     case deviceDefault = "Device Default"
-    case res360p = "360p (360×800)"
-    case res480p = "480p (480×1080)"
-    case res540p = "540p (540×1200)"
-    case res720p = "720p (720×1600)"
-    case res900p = "900p (900×2000)"
-    case res1080p = "1080p (1080×2400)"
-    case res1440p = "1440p (1440×3200)"
-    case res4k = "4K (1644×3840)"
+    case res360p = "360p"
+    case res480p = "480p"
+    case res540p = "540p"
+    case res720p = "720p"
+    case res900p = "900p"
+    case res1080p = "1080p"
+    case res1440p = "1440p"
+    case res4k = "4K"
     case custom = "Custom"
 
     var id: String { rawValue }
@@ -96,6 +96,7 @@ struct EmulatorManagerView: View {
     @State private var showingCreateSheet = false
     @State private var newAvdName = ""
     @State private var selectedImage: SystemImage?
+    @State private var selectedImageId: String?
 
     // Hardware
     @State private var selectedHardwareProfileId = "pixel"
@@ -121,7 +122,6 @@ struct EmulatorManagerView: View {
     @State private var enableKeyboard = true
 
     // System Images tab
-    @State private var imageSearchText = ""
     @State private var imagesToDelete: Set<String> = []
 
     // MARK: - Body
@@ -135,6 +135,19 @@ struct EmulatorManagerView: View {
         }
         .frame(minWidth: 780, idealWidth: 900, minHeight: 580, idealHeight: 700)
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                if selectedSidebarItem == .myDevices {
+                    Button(action: {
+                        newAvdName = ""
+                        selectedImage = nil
+                        selectedImageId = nil
+                        showingCreateSheet = true
+                    }) {
+                        Label("Create Device", systemImage: "plus")
+                    }
+                    .help("Create a new virtual device")
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button(action: { viewModel.refresh() }) {
                     Label("Refresh", systemImage: "arrow.clockwise")
@@ -183,48 +196,53 @@ struct EmulatorManagerView: View {
     // MARK: - Error Overlay
 
     @ViewBuilder
-    private func errorOverlay() -> some View {
-        if let error = viewModel.errorMessage {
-            VStack {
-                HStack(spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                    Text(error)
-                        .font(.callout)
-                        .lineLimit(2)
-                    Spacer()
-                    Button {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            viewModel.errorMessage = nil
-                        }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
+private func errorOverlay() -> some View {
+    if let error = viewModel.errorMessage {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.orange)
+            Text(error)
+                .font(.callout)
+                .lineLimit(2)
+            Spacer()
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    viewModel.errorMessage = nil
                 }
-                .padding(10)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.orange.opacity(0.12))
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                Spacer()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.secondary)
             }
-            .transition(.move(edge: .top).combined(with: .opacity))
-            .zIndex(10)
+            .buttonStyle(.plain)
         }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.orange.opacity(0.12))
+        )
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .zIndex(10)
     }
+}
 
     // MARK: - My Devices (AVD List)
 
     private var avdListView: some View {
         ZStack {
             if viewModel.existingAVDs.isEmpty && !viewModel.isLoadingAVDs {
-                EmptyDeviceState(action: {
-                    selectedSidebarItem = .systemImages
-                })
+                EmptyDeviceState(
+                    onBrowseImages: {
+                        selectedSidebarItem = .systemImages
+                    },
+                    onCreate: {
+                        newAvdName = ""
+                        selectedImage = nil
+                        selectedImageId = nil
+                        showingCreateSheet = true
+                    }
+                )
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -234,7 +252,9 @@ struct EmulatorManagerView: View {
                                 onRun: { viewModel.startEmulator(avdName: avd.name) },
                                 onStop: { viewModel.stopEmulator(avdName: avd.name) },
                                 onRename: { renameAction(avd: avd) },
-                                onDelete: { viewModel.deleteAVD(name: avd.name) }
+                                onDelete: { viewModel.deleteAVD(name: avd.name) },
+                                getLaunchFlags: { viewModel.getLaunchFlags(for: avd.name) },
+                                setLaunchFlags: { viewModel.setLaunchFlags(for: avd.name, flags: $0) }
                             )
                             Divider()
                                 .padding(.leading, 56)
@@ -256,14 +276,11 @@ struct EmulatorManagerView: View {
     // MARK: - System Images Tab (Merged)
 
     private var systemImagesTab: some View {
-        let filteredImages = viewModel.availableImages.filter { image in
-            imageSearchText.isEmpty
-                || image.description.localizedCaseInsensitiveContains(imageSearchText)
-                || image.id.localizedCaseInsensitiveContains(imageSearchText)
-        }
+        let filteredImages = viewModel.filteredImages
         let downloadingIds = Set(viewModel.downloadProgress.keys)
-        let installedImages = filteredImages.filter {
-            $0.isDownloaded || downloadingIds.contains($0.id)
+        let installedImages = filteredImages.filter { $0.isDownloaded }
+        let downloadingImages = filteredImages.filter {
+            !$0.isDownloaded && downloadingIds.contains($0.id)
         }
         let availableDownloads = filteredImages.filter {
             !$0.isDownloaded && !downloadingIds.contains($0.id)
@@ -276,12 +293,12 @@ struct EmulatorManagerView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.secondary)
-                    TextField("Search system images…", text: $imageSearchText)
+                    TextField("Search system images…", text: $viewModel.imageSearchText)
                         .textFieldStyle(.plain)
                         .controlSize(.regular)
-                    if !imageSearchText.isEmpty {
+                    if !viewModel.imageSearchText.isEmpty {
                         Button {
-                            imageSearchText = ""
+                            viewModel.imageSearchText = ""
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundColor(.secondary)
@@ -295,22 +312,69 @@ struct EmulatorManagerView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 8)
 
+                // OS Type filter chips
+                if !viewModel.availableImages.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(SystemImageType.allCases, id: \.self) { type in
+                                let isSelected = viewModel.enabledOsTypes.contains(type)
+                                let count = viewModel.osTypeCounts[type] ?? 0
+                                Button {
+                                    if isSelected {
+                                        viewModel.enabledOsTypes.remove(type)
+                                    } else {
+                                        viewModel.enabledOsTypes.insert(type)
+                                    }
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: type.icon)
+                                        Text(type.rawValue)
+                                        Text("\(count)")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .font(.caption)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        isSelected
+                                            ? Color.accentColor.opacity(0.15)
+                                            : Color.primary.opacity(0.06)
+                                    )
+                                    .foregroundColor(isSelected ? .accentColor : .secondary)
+                                    .cornerRadius(12)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(
+                                                isSelected ? Color.accentColor.opacity(0.3) : Color.clear,
+                                                lineWidth: 1
+                                            )
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                    .padding(.bottom, 8)
+                }
+
                 if filteredImages.isEmpty && !viewModel.isLoadingImages {
                     VStack(spacing: 20) {
                         Image(
-                            systemName: imageSearchText.isEmpty
+                            systemName: viewModel.imageSearchText.isEmpty
                                 ? "externaldrive.badge.questionmark" : "magnifyingglass"
                         )
                         .font(.system(size: 40))
                         .foregroundColor(.secondary.opacity(0.5))
                         Text(
-                            imageSearchText.isEmpty
+                            viewModel.imageSearchText.isEmpty
                                 ? "No System Images Found" : "No Matching Images"
                         )
                         .font(.title3)
                         .fontWeight(.medium)
                         Text(
-                            imageSearchText.isEmpty
+                            viewModel.imageSearchText.isEmpty
                                 ? "Check your Android SDK settings and click Refresh."
                                 : "Try adjusting your search terms."
                         )
@@ -341,12 +405,46 @@ struct EmulatorManagerView: View {
                                                 deleteDisabled: !viewModel.selectedImageIds.isEmpty
                                             ),
                                             downloadProgress: viewModel.downloadProgress[image.id],
-                                            onCancelDownload: { viewModel.cancelDownload(image.id) }
+                                            onCancelDownload: {
+                                                viewModel.cancelDownload(image.id)
+                                            },
+                                            onCreateAVD: {
+                                                selectedImage = image
+                                                selectedImageId = image.id
+                                                newAvdName = ""
+                                                showingCreateSheet = true
+                                            }
                                         )
                                         Divider().padding(.leading, 52)
                                     }
                                 } header: {
                                     sectionHeader("Installed")
+                                }
+                            }
+
+                            // Downloading section
+                            if !downloadingImages.isEmpty {
+                                Section {
+                                    ForEach(downloadingImages) { image in
+                                        SystemImageRowView(
+                                            image: image,
+                                            mode: .installed(
+                                                isSelected: Binding(
+                                                    get: { false },
+                                                    set: { _ in }
+                                                ),
+                                                deleteDisabled: true
+                                            ),
+                                            downloadProgress: viewModel.downloadProgress[image.id],
+                                            onCancelDownload: {
+                                                viewModel.cancelDownload(image.id)
+                                            },
+                                            onCreateAVD: nil
+                                        )
+                                        Divider().padding(.leading, 52)
+                                    }
+                                } header: {
+                                    sectionHeader("Downloading")
                                 }
                             }
 
@@ -376,7 +474,8 @@ struct EmulatorManagerView: View {
                                                     || !imagesToDelete.isEmpty
                                             ),
                                             downloadProgress: nil,
-                                            onCancelDownload: {}
+                                            onCancelDownload: {},
+                                            onCreateAVD: nil
                                         )
                                         Divider().padding(.leading, 52)
                                     }
@@ -448,6 +547,152 @@ struct EmulatorManagerView: View {
 
                         Text(
                             "This path should point to the Android SDK command-line tools directory containing avdmanager and sdkmanager."
+                        )
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(12)
+                }
+                .padding(.horizontal, 20)
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Android Virtual Device (AVD) Path", systemImage: "externaldrive")
+                            .font(.headline)
+
+                        HStack(spacing: 10) {
+                            TextField(
+                                viewModel.defaultAVDPath,
+                                text: Binding(
+                                    get: { viewModel.avdPath },
+                                    set: { viewModel.avdPath = $0 }
+                                )
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.regular)
+
+                            Button("Browse…") {
+                                let panel = NSOpenPanel()
+                                panel.canChooseFiles = false
+                                panel.canChooseDirectories = true
+                                panel.allowsMultipleSelection = false
+                                panel.title = "Select AVD Storage Directory"
+                                panel.message =
+                                    "Choose the directory where Android Virtual Devices (AVDs) will be stored."
+                                if panel.runModal() == .OK, let url = panel.url {
+                                    viewModel.avdPath = url.path
+                                }
+                            }
+                            .controlSize(.regular)
+                        }
+
+                        HStack(spacing: 4) {
+                            Text("Default:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(viewModel.defaultAVDPath)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .textSelection(.enabled)
+                        }
+
+                        Text(
+                            "This directory stores AVD configuration and data files. Changing this requires restarting any running emulators."
+                        )
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(12)
+                }
+                .padding(.horizontal, 20)
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("System Image Download Path", systemImage: "arrow.down.circle")
+                            .font(.headline)
+
+                        HStack(spacing: 10) {
+                            TextField(
+                                viewModel.defaultImageDownloadPath,
+                                text: Binding(
+                                    get: { viewModel.imageDownloadPath },
+                                    set: { viewModel.imageDownloadPath = $0 }
+                                )
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.regular)
+
+                            Button("Browse…") {
+                                let panel = NSOpenPanel()
+                                panel.canChooseFiles = false
+                                panel.canChooseDirectories = true
+                                panel.allowsMultipleSelection = false
+                                panel.title = "Select System Image Download Directory"
+                                panel.message =
+                                    "Choose the SDK root directory where system images will be downloaded and installed."
+                                if panel.runModal() == .OK, let url = panel.url {
+                                    viewModel.imageDownloadPath = url.path
+                                }
+                            }
+                            .controlSize(.regular)
+                        }
+
+                        HStack(spacing: 4) {
+                            Text("Default:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(viewModel.defaultImageDownloadPath)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .textSelection(.enabled)
+                        }
+
+                        Text(
+                            "System images are downloaded to the 'system-images' subdirectory of this path. This overrides the SDK root derived from the command-line tools path."
+                        )
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(12)
+                }
+                .padding(.horizontal, 20)
+
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Emulator Path", systemImage: "display")
+                            .font(.headline)
+
+                        HStack(spacing: 10) {
+                            TextField(
+                                "/path/to/emulator/emulator",
+                                text: Binding(
+                                    get: { viewModel.emulatorPath },
+                                    set: { viewModel.emulatorPath = $0 }
+                                )
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .controlSize(.regular)
+
+                            Button("Browse…") {
+                                let panel = NSOpenPanel()
+                                panel.canChooseFiles = true
+                                panel.canChooseDirectories = false
+                                panel.allowsMultipleSelection = false
+                                panel.title = "Select Emulator Binary"
+                                panel.message =
+                                    "Choose the emulator executable (e.g., emulator/emulator)."
+                                if panel.runModal() == .OK, let url = panel.url {
+                                    viewModel.emulatorPath = url.path
+                                }
+                            }
+                            .controlSize(.regular)
+                        }
+
+                        Text(
+                            "Explicit path to the Android emulator binary. Leave blank to auto-detect from SDK root."
                         )
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -610,33 +855,64 @@ struct EmulatorManagerView: View {
                             }
                             .padding(.vertical, 2)
 
-                            if let image = selectedImage {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("System Image")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("System Image")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
 
-                                    Label {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(image.description)
-                                                .font(.body)
-                                            Text(image.id)
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                                .lineLimit(1)
-                                        }
-                                    } icon: {
-                                        Image(systemName: "internaldrive")
-                                            .foregroundColor(.accentColor)
+                                let installed = viewModel.availableImages.filter { $0.isDownloaded }
+                                if installed.isEmpty {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .foregroundColor(.orange)
+                                        Text(
+                                            "No system images installed. Download one from the System Images tab first."
+                                        )
+                                        .font(.callout)
+                                        .foregroundColor(.secondary)
                                     }
                                     .padding(10)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .background(
                                         RoundedRectangle(cornerRadius: 6).fill(
-                                            Color.primary.opacity(0.05)))
+                                            Color.orange.opacity(0.08)))
+                                } else {
+                                    Picker("", selection: $selectedImageId) {
+                                        Text("Select a system image…").tag(nil as String?)
+                                        ForEach(installed) { image in
+                                            Text(image.description).tag(image.id as String?)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .controlSize(.regular)
+                                    .labelsHidden()
+                                    .onChange(of: selectedImageId) { _, newId in
+                                        selectedImage = installed.first { $0.id == newId }
+                                    }
+
+                                    if let image = installed.first(where: {
+                                        $0.id == selectedImageId
+                                    }) {
+                                        Label {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(image.id)
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                                    .lineLimit(1)
+                                            }
+                                        } icon: {
+                                            Image(systemName: "internaldrive")
+                                                .foregroundColor(.accentColor)
+                                        }
+                                        .padding(10)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 6).fill(
+                                                Color.primary.opacity(0.05)))
+                                    }
                                 }
-                                .padding(.vertical, 2)
                             }
+                            .padding(.vertical, 2)
                         } header: {
                             Text("Basic Information")
                         }
@@ -899,6 +1175,7 @@ struct EmulatorManagerView: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(
                     newAvdName.trimmingCharacters(in: .whitespaces).isEmpty
+                        || selectedImage == nil
                         || viewModel.isCreatingAVD)
             }
             .padding(.horizontal, 24)
@@ -970,7 +1247,8 @@ private struct SidebarRow: View {
 // MARK: - Empty Device State
 
 private struct EmptyDeviceState: View {
-    var action: () -> Void
+    var onBrowseImages: () -> Void
+    var onCreate: () -> Void
 
     var body: some View {
         VStack(spacing: 20) {
@@ -985,13 +1263,22 @@ private struct EmptyDeviceState: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 320)
-            Button {
-                action()
-            } label: {
-                Label("Browse System Images", systemImage: "square.and.arrow.down")
+            HStack(spacing: 12) {
+                Button {
+                    onCreate()
+                } label: {
+                    Label("Create Device", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                Button {
+                    onBrowseImages()
+                } label: {
+                    Label("Browse System Images", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -1005,8 +1292,12 @@ private struct AvdRowView: View {
     let onStop: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
+    let getLaunchFlags: () -> LaunchFlags
+    let setLaunchFlags: (LaunchFlags) -> Void
 
     @State private var isHovering = false
+    @State private var showLaunchFlagsPopover = false
+    @State private var currentLaunchFlags = LaunchFlags.default
 
     private var isDisabled: Bool { avd.isRunning || avd.isStarting }
 
@@ -1057,6 +1348,195 @@ private struct AvdRowView: View {
             if isHovering && !avd.isStopping {
                 HStack(spacing: 4) {
                     Button {
+                        currentLaunchFlags = getLaunchFlags()
+                        showLaunchFlagsPopover = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .help("Launch Options")
+                    .popover(isPresented: $showLaunchFlagsPopover) {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Launch Flags")
+                                    .font(.headline)
+
+                                Divider()
+
+                                // MARK: Core
+                                Text("Core").font(.subheadline).foregroundColor(.secondary)
+                                Toggle("No Audio (-no-audio)", isOn: $currentLaunchFlags.noAudio)
+                                Toggle("No Window (-no-window)", isOn: $currentLaunchFlags.noWindow)
+                                Toggle("Verbose (-verbose)", isOn: $currentLaunchFlags.verbose)
+
+                                Divider()
+
+                                // MARK: Boot
+                                Text("Boot").font(.subheadline).foregroundColor(.secondary)
+                                Toggle("Wipe Data (-wipe-data)", isOn: $currentLaunchFlags.wipeData)
+                                Toggle("Read Only (-read-only)", isOn: $currentLaunchFlags.readOnly)
+                                Toggle("No Boot Anim (-no-boot-anim)", isOn: $currentLaunchFlags.noBootAnim)
+                                Toggle("No JNI (-nojni)", isOn: $currentLaunchFlags.noJni)
+
+                                Divider()
+
+                                // MARK: Snapshot
+                                Text("Snapshot").font(.subheadline).foregroundColor(.secondary)
+                                Toggle("No Snapshot Save (-no-snapshot-save)", isOn: $currentLaunchFlags.noSnapshotSave)
+                                Toggle("No Snapshot Load (-no-snapshot-load)", isOn: $currentLaunchFlags.noSnapshotLoad)
+                                HStack(spacing: 8) {
+                                    Text("Name:").frame(width: 90, alignment: .leading)
+                                    TextField("snapshot name", text: $currentLaunchFlags.snapshot)
+                                        .textFieldStyle(.roundedBorder).controlSize(.small)
+                                }
+
+                                Divider()
+
+                                // MARK: GPU
+                                Text("GPU").font(.subheadline).foregroundColor(.secondary)
+                                HStack(spacing: 8) {
+                                    Text("Mode:").frame(width: 90, alignment: .leading)
+                                    Picker("", selection: $currentLaunchFlags.gpuMode) {
+                                        Text("host").tag("host")
+                                        Text("auto").tag("auto")
+                                        Text("swiftshader").tag("swiftshader_indirect")
+                                        Text("angle").tag("angle_indirect")
+                                        Text("off").tag("off")
+                                    }
+                                    .pickerStyle(.menu).controlSize(.small).frame(width: 130)
+                                }
+
+                                Divider()
+
+                                // MARK: Network
+                                Text("Network").font(.subheadline).foregroundColor(.secondary)
+                                HStack(spacing: 8) {
+                                    Text("Speed:").frame(width: 90, alignment: .leading)
+                                    Picker("", selection: $currentLaunchFlags.netSpeed) {
+                                        Text("full").tag("full")
+                                        Text("gsm").tag("gsm")
+                                        Text("hscsd").tag("hscsd")
+                                        Text("gprs").tag("gprs")
+                                        Text("edge").tag("edge")
+                                        Text("umts").tag("umts")
+                                        Text("hsdpa").tag("hsdpa")
+                                        Text("lte").tag("lte")
+                                        Text("evdo").tag("evdo")
+                                    }
+                                    .pickerStyle(.menu).controlSize(.small).frame(width: 130)
+                                }
+                                HStack(spacing: 8) {
+                                    Text("Delay:").frame(width: 90, alignment: .leading)
+                                    Picker("", selection: $currentLaunchFlags.netDelay) {
+                                        Text("none").tag("none")
+                                        Text("gprs").tag("gprs")
+                                        Text("edge").tag("edge")
+                                        Text("umts").tag("umts")
+                                    }
+                                    .pickerStyle(.menu).controlSize(.small).frame(width: 130)
+                                }
+                                HStack(spacing: 8) {
+                                    Text("Proxy:").frame(width: 90, alignment: .leading)
+                                    TextField("http://proxy:8080", text: $currentLaunchFlags.httpProxy)
+                                        .textFieldStyle(.roundedBorder).controlSize(.small)
+                                }
+                                HStack(spacing: 8) {
+                                    Text("DNS:").frame(width: 90, alignment: .leading)
+                                    TextField("8.8.8.8", text: $currentLaunchFlags.dnsServer)
+                                        .textFieldStyle(.roundedBorder).controlSize(.small)
+                                }
+
+                                Divider()
+
+                                // MARK: Performance
+                                Text("Performance").font(.subheadline).foregroundColor(.secondary)
+                                HStack(spacing: 8) {
+                                    Text("RAM (MB):").frame(width: 90, alignment: .leading)
+                                    TextField("2048", text: $currentLaunchFlags.memoryMB)
+                                        .textFieldStyle(.roundedBorder).controlSize(.small).frame(width: 80)
+                                    Text("Cores:").frame(width: 40, alignment: .leading)
+                                    TextField("4", text: $currentLaunchFlags.cores)
+                                        .textFieldStyle(.roundedBorder).controlSize(.small).frame(width: 50)
+                                }
+                                HStack(spacing: 8) {
+                                    Text("Port:").frame(width: 90, alignment: .leading)
+                                    TextField("5554", text: $currentLaunchFlags.port)
+                                        .textFieldStyle(.roundedBorder).controlSize(.small).frame(width: 80)
+                                }
+
+                                Divider()
+
+                                // MARK: Camera
+                                Text("Camera").font(.subheadline).foregroundColor(.secondary)
+                                HStack(spacing: 8) {
+                                    Text("Back:").frame(width: 90, alignment: .leading)
+                                    Picker("", selection: $currentLaunchFlags.cameraBack) {
+                                        Text("AVD default").tag("")
+                                        Text("emulated").tag("emulated")
+                                        Text("webcam0").tag("webcam0")
+                                        Text("none").tag("none")
+                                    }
+                                    .pickerStyle(.menu).controlSize(.small).frame(width: 130)
+                                }
+                                HStack(spacing: 8) {
+                                    Text("Front:").frame(width: 90, alignment: .leading)
+                                    Picker("", selection: $currentLaunchFlags.cameraFront) {
+                                        Text("AVD default").tag("")
+                                        Text("emulated").tag("emulated")
+                                        Text("webcam0").tag("webcam0")
+                                        Text("none").tag("none")
+                                    }
+                                    .pickerStyle(.menu).controlSize(.small).frame(width: 130)
+                                }
+
+                                Divider()
+
+                                // MARK: Audio
+                                Text("Audio").font(.subheadline).foregroundColor(.secondary)
+                                Toggle("Audio Input (-prop hw.audioInput=yes)", isOn: $currentLaunchFlags.audioInput)
+                                    .disabled(currentLaunchFlags.noAudio)
+                                Toggle("Audio Output (-prop hw.audioOutput=yes)", isOn: $currentLaunchFlags.audioOutput)
+                                    .disabled(currentLaunchFlags.noAudio)
+                                if currentLaunchFlags.noAudio {
+                                    Text("Disabled when No Audio is on").font(.caption).foregroundColor(.secondary)
+                                }
+
+                                Divider()
+
+                                // MARK: Extra
+                                Text("Extra").font(.subheadline).foregroundColor(.secondary)
+                                HStack(spacing: 8) {
+                                    Text("Timezone:").frame(width: 90, alignment: .leading)
+                                    TextField("Asia/Kolkata", text: $currentLaunchFlags.timezone)
+                                        .textFieldStyle(.roundedBorder).controlSize(.small)
+                                }
+                                HStack(spacing: 8) {
+                                    Text("tcpdump:").frame(width: 90, alignment: .leading)
+                                    TextField("/path/to/capture.pcap", text: $currentLaunchFlags.tcpdump)
+                                        .textFieldStyle(.roundedBorder).controlSize(.small)
+                                }
+
+                                HStack {
+                                    Spacer()
+                                    Button("Apply") {
+                                        setLaunchFlags(currentLaunchFlags)
+                                        showLaunchFlagsPopover = false
+                                    }
+                                    .buttonStyle(.borderedProminent).controlSize(.small)
+                                    Button("Cancel") {
+                                        showLaunchFlagsPopover = false
+                                    }
+                                    .buttonStyle(.borderless).controlSize(.small)
+                                }
+                            }
+                            .padding(16)
+                        }
+                        .frame(height: 600)
+                        .frame(width: 325)
+                    }
+
+                    Button {
                         onRename()
                     } label: {
                         Image(systemName: "pencil")
@@ -1088,7 +1568,12 @@ private struct AvdRowView: View {
         )
         .onHover { hovering in
             withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                isHovering = hovering
+                isHovering = showLaunchFlagsPopover || hovering
+            }
+        }
+        .onChange(of: showLaunchFlagsPopover) { newValue in
+            if !newValue {
+                isHovering = false
             }
         }
         .contextMenu {
@@ -1198,6 +1683,7 @@ private struct SystemImageRowView: View {
     let mode: Mode
     let downloadProgress: Double?
     let onCancelDownload: () -> Void
+    let onCreateAVD: (() -> Void)?
 
     @State private var isHovering = false
 
@@ -1207,24 +1693,63 @@ private struct SystemImageRowView: View {
             selectionControl
 
             // Icon
-            Image(systemName: image.isDownloaded ? "internaldrive.fill" : "icloud.and.arrow.down")
+            Image(systemName: downloadProgress != nil
+                ? "arrow.down.circle"
+                : (image.isDownloaded ? "internaldrive.fill" : image.osType.icon))
                 .font(.title3)
-                .foregroundColor(image.isDownloaded ? .green : .secondary)
+                .foregroundColor(downloadProgress != nil
+                    ? .blue
+                    : (image.isDownloaded ? .green : .accentColor))
                 .frame(width: 24)
 
             // Info
             VStack(alignment: .leading, spacing: 3) {
-                Text(image.description)
-                    .font(.body)
-                    .fontWeight(.medium)
-                Text(image.id)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                HStack(spacing: 6) {
+                    if let apiLevel = image.apiLevel {
+                        Text("API \(apiLevel)")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor)
+                            .cornerRadius(4)
+                    }
+                    Text(image.displayName)
+                        .font(.body)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                }
+                HStack(spacing: 4) {
+                    if let arch = image.architecture {
+                        Text(arch)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    if image.architecture != nil {
+                        Text("\u{00B7}")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Text(image.osType.rawValue)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
 
             Spacer()
+
+            // Hover: Create AVD button for installed images
+            if image.isDownloaded, let onCreateAVD = onCreateAVD, isHovering {
+                Button(action: onCreateAVD) {
+                    Label("Create AVD", systemImage: "plus.circle")
+                        .labelStyle(.iconOnly)
+                        .font(.title3)
+                }
+                .buttonStyle(.borderless)
+                .help("Create virtual device from this image")
+                .transition(.scale.combined(with: .opacity))
+            }
 
             // Status / Progress
             statusView
@@ -1297,14 +1822,17 @@ private struct SystemImageRowView: View {
                         .monospacedDigit()
                         .frame(width: 36, alignment: .trailing)
                 }
+                .animation(.easeInOut(duration: 0.25), value: progress)
             } else {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
                         .scaleEffect(0.8)
+                        .frame(width: 100)
                     Text("Downloading…")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                        .frame(width: 36, alignment: .trailing)
                 }
             }
         } else {

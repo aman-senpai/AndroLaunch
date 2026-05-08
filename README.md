@@ -28,6 +28,108 @@ AndroLaunch works by utilizing two essential tools: `adb` and `scrcpy`. You need
     ```
 2.  **Launch**: Download the macOS version and move it to your Applications folder.
 
+### 💻 CLI Tool (New!)
+
+AndroLaunch now ships with a powerful command-line interface! Use all features directly from your terminal.
+
+**Install the CLI:**
+```bash
+cd cli
+swift build -c release
+sudo cp .build/release/androlaunch /usr/local/bin/
+```
+
+Or use the install script:
+```bash
+./scripts/install-cli.sh
+```
+
+**Quick examples:**
+```bash
+# List devices
+androlaunch devices
+
+# Show device info
+androlaunch device-info
+
+# List installed apps
+androlaunch apps
+
+# Launch an app
+androlaunch launch com.instagram.android
+
+# Mirror device screen
+androlaunch mirror --no-audio
+
+# Toggle Wi-Fi
+androlaunch wifi on
+
+# Reboot to recovery
+androlaunch reboot --recovery
+
+# Install an APK
+androlaunch install /path/to/app.apk
+
+# Execute a shell command
+androlaunch shell "ls /sdcard/Download"
+
+# List files on device
+androlaunch files /sdcard
+
+# Push a file to device
+androlaunch push ./file.txt /sdcard/file.txt
+
+# Pull a file from device
+androlaunch pull /sdcard/file.txt ./file.txt
+
+# Manage emulators
+androlaunch emulator-images
+androlaunch emulator-av-ds
+androlaunch emulator-start MyAVD
+```
+
+**All available commands:**
+| Command | Description |
+| :--- | :--- |
+| `devices` | List connected Android devices |
+| `device-info` | Show detailed device info |
+| `apps` | List installed apps |
+| `launch` | Launch an app by package ID |
+| `uninstall` | Uninstall an app |
+| `clear-data` | Clear app data |
+| `install` | Install an APK file |
+| `mirror` | Mirror device screen via Scrcpy |
+| `camera` | Mirror device camera via Scrcpy |
+| `scrcpy-app` | Launch app in a scrcpy window |
+| `reboot` | Reboot device (normal/bootloader/recovery) |
+| `wifi` | Toggle Wi-Fi (on/off) |
+| `bluetooth` | Toggle Bluetooth (on/off) |
+| `dark-mode` | Toggle Dark Mode (on/off) |
+| `airplane-mode` | Toggle Airplane Mode (on/off) |
+| `mobile-data` | Toggle Mobile Data (on/off) |
+| `location` | Toggle Location (on/off) |
+| `do-not-disturb` | Toggle Do Not Disturb (on/off) |
+| `auto-rotate` | Toggle Auto-Rotate (on/off) |
+| `adaptive-brightness` | Toggle Adaptive Brightness (on/off) |
+| `ringer` | Set ringer mode (normal/vibrate/silent) |
+| `quick-state` | Show all quick settings states |
+| `shell` | Execute a raw shell command |
+| `files` | List files on device |
+| `push` | Push a file to device |
+| `pull` | Pull a file from device |
+| `rm` | Delete a file/directory on device |
+| `mkdir` | Create a directory on device |
+| `pair` | Pair device wirelessly |
+| `disconnect` | Disconnect a device |
+| `emulator-images` | List available system images |
+| `emulator-av-ds` | List Android Virtual Devices |
+| `emulator-profiles` | List hardware profiles |
+| `emulator-create` | Create a new AVD |
+| `emulator-delete` | Delete an AVD |
+| `emulator-rename` | Rename an AVD |
+| `emulator-start` | Start an emulator |
+| `emulator-stop` | Stop a running emulator |
+
 ### Windows Installation
 
 1.  **Install Dependencies**: We recommend using **Scoop** or **Chocolatey**:
