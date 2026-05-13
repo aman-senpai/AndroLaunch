@@ -13,8 +13,8 @@
 | **Setup & Connectivity** | Automatic device detection, ADB status monitoring.                                              | **Wireless Pairing via QR Code**, dedicated ADB Shell terminal.                            |
 | **Quick Controls**       | Toggle Wi-Fi, Bluetooth, Mobile Data, Location, DND, Auto-Rotate. Adjust volume and brightness. | **Uninstall Apps**, **Clear App Data**, install APKs from file.                            |
 | **App & System**         | List and launch installed apps, system reboot (normal, bootloader, recovery).                   | Improved app search and native menu integration.                                           |
-| **Screen Mirroring**     | Full device screen mirroring with custom resolution.                                            | **Borderless Window Mode**, **Camera Mirroring** (with custom settings), **Audio Toggle**. |
-| **Productivity**         | Clipboard sync, command execution                                                                                             | **Bi-directional Clipboard Sync** (Mac/PC $leftrightarrow$ Android).                          |
+| **Screen Mirroring**     | Full device screen mirroring with custom resolution.                                            | **Flex Display**, **Camera Torch & Zoom**, **Aspect Ratio Lock**, **Custom Background**, **Keep Active**, **Render Fit**. |
+| **Productivity**         | Clipboard sync, command execution, file management.                                           | **Bi-directional Clipboard Sync** (Mac/PC $leftrightarrow$ Android).                          |
 
 ## 🛠️ Setup: Get Started in Minutes
 
@@ -90,6 +90,11 @@ androlaunch pull /sdcard/file.txt ./file.txt
 androlaunch emulator-images
 androlaunch emulator-av-ds
 androlaunch emulator-start MyAVD
+
+# Scrcpy v4.0: Flex display, camera torch, custom background
+androlaunch scrcpy-app com.android.settings --flex-display
+androlaunch camera --camera-torch --camera-zoom=2.0
+androlaunch mirror --background-color=#234567
 ```
 
 **All available commands:**
@@ -131,7 +136,7 @@ androlaunch emulator-start MyAVD
 | `emulator-create` | Create a new AVD |
 | `emulator-delete` | Delete an AVD |
 | `emulator-rename` | Rename an AVD |
-| `emulator-start` | Start an emulator |
+| `emulator-start` | Start an emulator | `--no-skin`, `--qt-hide-window` |
 | `emulator-stop` | Stop a running emulator |
 
 **Scrcpy v4.0 examples:**
@@ -195,9 +200,9 @@ Control your installed applications and manage APK files effortlessly:
 Mirror your Android screen to your Mac with advanced options:
 
   * **Full Mirroring**: Launch a window showing your device's screen.
-  * **New! Borderless Mode**: For a cleaner, more integrated view.
-  * **New! Camera Mirroring**: Preview your device's camera (front or back) in a separate window with custom FPS and resolution settings.
-  * **New! Audio Toggle**: Choose to mirror the audio from your device to your Mac.
+  * **Borderless Mode**: For a cleaner, more integrated view.
+  * **Camera Mirroring**: Preview your device's camera (front or back) in a separate window with custom FPS and resolution settings.
+  * **Audio Toggle**: Choose to mirror the audio from your device to your Mac.
   * **🔒 Aspect Ratio Lock**: Window automatically maintains device aspect ratio when resizing (disable with `--no-aspect-ratio-lock`).
   * **🎨 Custom Background**: Set any background color with hex code (e.g., `--background-color=#234567`). Default is now dark gray instead of black.
   * **🔋 Keep Active**: Prevent device sleep without changing global settings (`--keep-active`).
