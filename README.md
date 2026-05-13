@@ -34,18 +34,24 @@ AndroLaunch bundles `adb` directly — no manual Android SDK install needed. For
 
 ### 💻 CLI Tool (New!)
 
-AndroLaunch now ships with a powerful command-line interface! Use all features directly from your terminal.
+AndroLaunch ships with a powerful command-line interface bundled inside the app! Use it directly from your terminal.
 
-**Install the CLI:**
+The `androlaunch` CLI binary is already included in the app bundle's Contents directory. Access it from the installed app:
+
+```bash
+/Applications/AndroLaunch.app/Contents/Resources/androlaunch --help
+```
+
+For convenience, symlink it to your PATH:
+```bash
+sudo ln -sf /Applications/AndroLaunch.app/Contents/Resources/androlaunch /usr/local/bin/androlaunch
+```
+
+Alternatively, build from source:
 ```bash
 cd cli
 swift build -c release
 sudo cp .build/release/androlaunch /usr/local/bin/
-```
-
-Or use the install script:
-```bash
-./scripts/install-cli.sh
 ```
 
 **Quick examples:**
