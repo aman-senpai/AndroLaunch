@@ -40,12 +40,38 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     public var adbPath: String? { adbService.adbPath }
 
     private let commandLineToolsPathKey = "android_command_line_tools_path"
+    private var didAttemptAutoDetect = false
+
     public var commandLineToolsPath: String? {
-        UserDefaults.standard.string(forKey: commandLineToolsPathKey)
+        if let saved = UserDefaults.standard.string(forKey: commandLineToolsPathKey),
+            !saved.isEmpty
+        {
+            return saved
+        }
+        // Auto-detect on first access only
+        if !didAttemptAutoDetect {
+            didAttemptAutoDetect = true
+            if let detected = AppConstants.detectCmdlineToolsPath() {
+                UserDefaults.standard.set(detected, forKey: commandLineToolsPathKey)
+                return detected
+            }
+        }
+        return nil
+    }
+
+    /// Returns the effective tools path (auto-detected or user-configured), or nil if unavailable.
+    private var effectiveToolsPath: String? {
+        guard let path = commandLineToolsPath, !path.isEmpty else { return nil }
+        return path
     }
 
     func setCommandLineToolsPath(_ path: String) {
-        UserDefaults.standard.set(path, forKey: commandLineToolsPathKey)
+        if path.isEmpty {
+            UserDefaults.standard.removeObject(forKey: commandLineToolsPathKey)
+            didAttemptAutoDetect = false
+        } else {
+            UserDefaults.standard.set(path, forKey: commandLineToolsPathKey)
+        }
         objectWillChange.send()
     }
 
@@ -93,14 +119,16 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
 
     private let avdLaunchFlagsKey = "avd_launch_flags"
     private var avdLaunchFlagsRaw: [String: String] {
-        get { UserDefaults.standard.dictionary(forKey: avdLaunchFlagsKey) as? [String: String] ?? [:] }
+        get {
+            UserDefaults.standard.dictionary(forKey: avdLaunchFlagsKey) as? [String: String] ?? [:]
+        }
         set { UserDefaults.standard.set(newValue, forKey: avdLaunchFlagsKey) }
     }
 
     func getLaunchFlags(for avdName: String) -> LaunchFlags {
         guard let jsonStr = avdLaunchFlagsRaw[avdName],
-              let data = jsonStr.data(using: .utf8),
-              let flags = try? JSONDecoder().decode(LaunchFlags.self, from: data)
+            let data = jsonStr.data(using: .utf8),
+            let flags = try? JSONDecoder().decode(LaunchFlags.self, from: data)
         else { return LaunchFlags.default }
         return flags
     }
@@ -110,7 +138,8 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
             avdLaunchFlagsRaw.removeValue(forKey: avdName)
             UserDefaults.standard.set(avdLaunchFlagsRaw, forKey: avdLaunchFlagsKey)
         } else if let data = try? JSONEncoder().encode(flags),
-                  let jsonStr = String(data: data, encoding: .utf8) {
+            let jsonStr = String(data: data, encoding: .utf8)
+        {
             avdLaunchFlagsRaw[avdName] = jsonStr
             UserDefaults.standard.set(avdLaunchFlagsRaw, forKey: avdLaunchFlagsKey)
         }
@@ -253,6 +282,9 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
                     self?.isLoading = false
                     self?.isLoadingApps = false
                 }
+                if let error = error {
+                    AlertPresenter.showWarning(message: error)
+                }
             }
             .store(in: &cancellables)
 
@@ -262,6 +294,7 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
                 if let error = error {
                     self?.error = error
                     self?.isLoading = false
+                    AlertPresenter.showWarning(message: error)
                 }
             }
             .store(in: &cancellables)
@@ -428,6 +461,17 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
         return borderlessPreferences[deviceID] ?? false  // Default false
     }
 
+    private var flexDisplayPreferences: [String: Bool] = [:]
+
+    func toggleFlexDisplay(for deviceID: String) {
+        let current = isFlexDisplayEnabled(for: deviceID)
+        flexDisplayPreferences[deviceID] = !current
+    }
+
+    func isFlexDisplayEnabled(for deviceID: String) -> Bool {
+        return flexDisplayPreferences[deviceID] ?? false  // Default false
+    }
+
     // Orientation Preferences
     private var orientationPreferences: [String: String] = [:]
     private var captureOrientationEnabledPreferences: [String: Bool] = [:]
@@ -523,10 +567,12 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
         let audioEnabled = isAudioEnabled(for: deviceID)
         let clipboardEnabled = isClipboardEnabled(for: deviceID)
         let resolution = getResolution(for: deviceID)
+        let flexDisplay = isFlexDisplayEnabled(for: deviceID)
         let deviceName = devices.first(where: { $0.id == deviceID })?.name
         adbService.launchApp(
             packageID: packageID, deviceID: deviceID, appName: appName, deviceName: deviceName,
-            audioEnabled: audioEnabled, resolution: resolution, clipboardEnabled: clipboardEnabled)
+            audioEnabled: audioEnabled, resolution: resolution, clipboardEnabled: clipboardEnabled,
+            flexDisplay: flexDisplay)
     }
 
     func mirrorDevice(deviceID: String) {
@@ -536,6 +582,7 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
         let maxFPS = getMaxFPS(for: deviceID)
         let bitRate = getBitRate(for: deviceID)
         let orientation = getOrientation(for: deviceID)
+        let flexDisplay = isFlexDisplayEnabled(for: deviceID)
 
         let deviceName = devices.first(where: { $0.id == deviceID })?.name
         adbService.mirrorDevice(
@@ -547,7 +594,8 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
             maxFPS: maxFPS,
             bitRate: bitRate,
             orientation: orientation,
-            borderless: isBorderlessEnabled(for: deviceID)
+            borderless: isBorderlessEnabled(for: deviceID),
+            flexDisplay: flexDisplay
         )
     }
 
@@ -632,7 +680,7 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
 
     // MARK: - Emulator Manager
     func listAvailableImages() {
-        guard let toolsPath = commandLineToolsPath else {
+        guard let toolsPath = effectiveToolsPath else {
             self.error = "Android Command Line Tools path not set in Preferences."
             return
         }
@@ -640,23 +688,25 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     }
 
     func downloadImage(imagePath: String) {
-        guard let toolsPath = commandLineToolsPath else {
+        guard let toolsPath = effectiveToolsPath else {
             self.error = "Android Command Line Tools path not set in Preferences."
             return
         }
-        emulatorService.downloadImage(toolsPath: toolsPath, imagePath: imagePath, sdkRoot: imageDownloadPath)
+        emulatorService.downloadImage(
+            toolsPath: toolsPath, imagePath: imagePath, sdkRoot: imageDownloadPath)
     }
 
     func deleteImage(imagePath: String) {
-        guard let toolsPath = commandLineToolsPath else {
+        guard let toolsPath = effectiveToolsPath else {
             self.error = "Android Command Line Tools path not set in Preferences."
             return
         }
-        emulatorService.deleteImage(toolsPath: toolsPath, imagePath: imagePath, sdkRoot: imageDownloadPath)
+        emulatorService.deleteImage(
+            toolsPath: toolsPath, imagePath: imagePath, sdkRoot: imageDownloadPath)
     }
 
     func listAVDs() {
-        guard let toolsPath = commandLineToolsPath else {
+        guard let toolsPath = effectiveToolsPath else {
             self.error = "Android Command Line Tools path not set in Preferences."
             return
         }
@@ -664,7 +714,7 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     }
 
     func listHardwareProfiles(completion: @escaping ([HardwareProfile]) -> Void) {
-        guard let toolsPath = commandLineToolsPath else {
+        guard let toolsPath = effectiveToolsPath else {
             completion([])
             return
         }
@@ -672,18 +722,19 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     }
 
     func createAVD(name: String, imagePath: String, device: String?, options: AVDOptions) {
-        guard let toolsPath = commandLineToolsPath else {
+        guard let toolsPath = effectiveToolsPath else {
             self.error = "Android Command Line Tools path not set in Preferences."
             return
         }
         emulatorService.createAVD(
-            toolsPath: toolsPath, name: name, imagePath: imagePath, device: device, options: options,
+            toolsPath: toolsPath, name: name, imagePath: imagePath, device: device,
+            options: options,
             avdPath: avdPath, sdkRoot: imageDownloadPath
         )
     }
 
     func deleteAVD(name: String) {
-        guard let toolsPath = commandLineToolsPath else {
+        guard let toolsPath = effectiveToolsPath else {
             self.error = "Android Command Line Tools path not set in Preferences."
             return
         }
@@ -691,15 +742,16 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     }
 
     func renameAVD(oldName: String, newName: String) {
-        guard let toolsPath = commandLineToolsPath else {
+        guard let toolsPath = effectiveToolsPath else {
             self.error = "Android Command Line Tools path not set in Preferences."
             return
         }
-        emulatorService.renameAVD(toolsPath: toolsPath, oldName: oldName, newName: newName, avdPath: avdPath)
+        emulatorService.renameAVD(
+            toolsPath: toolsPath, oldName: oldName, newName: newName, avdPath: avdPath)
     }
 
     func startEmulator(avdName: String, launchFlags: LaunchFlags = LaunchFlags.default) {
-        guard let toolsPath = commandLineToolsPath else {
+        guard let toolsPath = effectiveToolsPath else {
             self.error = "Android Command Line Tools path not set in Preferences."
             return
         }
@@ -713,7 +765,7 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
         }
     }
     func stopEmulator(avdName: String) {
-        guard let toolsPath = commandLineToolsPath else {
+        guard let toolsPath = effectiveToolsPath else {
             self.error = "Android Command Line Tools path not set in Preferences."
             return
         }

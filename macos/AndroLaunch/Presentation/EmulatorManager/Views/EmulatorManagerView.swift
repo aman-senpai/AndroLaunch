@@ -193,40 +193,6 @@ struct EmulatorManagerView: View {
         }
     }
 
-    // MARK: - Error Overlay
-
-    @ViewBuilder
-private func errorOverlay() -> some View {
-    if let error = viewModel.errorMessage {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.orange)
-            Text(error)
-                .font(.callout)
-                .lineLimit(2)
-            Spacer()
-            Button {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    viewModel.errorMessage = nil
-                }
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.orange.opacity(0.12))
-        )
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .transition(.move(edge: .top).combined(with: .opacity))
-        .zIndex(10)
-    }
-}
-
     // MARK: - My Devices (AVD List)
 
     private var avdListView: some View {
@@ -254,7 +220,9 @@ private func errorOverlay() -> some View {
                                 onRename: { renameAction(avd: avd) },
                                 onDelete: { viewModel.deleteAVD(name: avd.name) },
                                 getLaunchFlags: { viewModel.getLaunchFlags(for: avd.name) },
-                                setLaunchFlags: { viewModel.setLaunchFlags(for: avd.name, flags: $0) }
+                                setLaunchFlags: {
+                                    viewModel.setLaunchFlags(for: avd.name, flags: $0)
+                                }
                             )
                             Divider()
                                 .padding(.leading, 56)
@@ -267,8 +235,6 @@ private func errorOverlay() -> some View {
             if viewModel.isLoadingAVDs {
                 loadingOverlay("Loading devices…")
             }
-
-            errorOverlay()
         }
         .navigationTitle("My Devices")
     }
@@ -346,7 +312,8 @@ private func errorOverlay() -> some View {
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 12)
                                             .stroke(
-                                                isSelected ? Color.accentColor.opacity(0.3) : Color.clear,
+                                                isSelected
+                                                    ? Color.accentColor.opacity(0.3) : Color.clear,
                                                 lineWidth: 1
                                             )
                                     )
@@ -497,8 +464,6 @@ private func errorOverlay() -> some View {
             if viewModel.isLoadingImages {
                 loadingOverlay("Loading images…")
             }
-
-            errorOverlay()
         }
         .navigationTitle("System Images")
     }
@@ -701,9 +666,6 @@ private func errorOverlay() -> some View {
                     .padding(12)
                 }
                 .padding(.horizontal, 20)
-
-                errorOverlay()
-                    .padding(.horizontal, 20)
 
                 Spacer()
             }
@@ -1369,6 +1331,10 @@ private struct AvdRowView: View {
                                 Toggle("No Audio (-no-audio)", isOn: $currentLaunchFlags.noAudio)
                                 Toggle("No Window (-no-window)", isOn: $currentLaunchFlags.noWindow)
                                 Toggle("Verbose (-verbose)", isOn: $currentLaunchFlags.verbose)
+                                Toggle("No Skin (-no-skin)", isOn: $currentLaunchFlags.noSkin)
+                                Toggle(
+                                    "Qt Hide Window (-qt-hide-window)",
+                                    isOn: $currentLaunchFlags.qtHideWindow)
 
                                 Divider()
 
@@ -1376,15 +1342,21 @@ private struct AvdRowView: View {
                                 Text("Boot").font(.subheadline).foregroundColor(.secondary)
                                 Toggle("Wipe Data (-wipe-data)", isOn: $currentLaunchFlags.wipeData)
                                 Toggle("Read Only (-read-only)", isOn: $currentLaunchFlags.readOnly)
-                                Toggle("No Boot Anim (-no-boot-anim)", isOn: $currentLaunchFlags.noBootAnim)
+                                Toggle(
+                                    "No Boot Anim (-no-boot-anim)",
+                                    isOn: $currentLaunchFlags.noBootAnim)
                                 Toggle("No JNI (-nojni)", isOn: $currentLaunchFlags.noJni)
 
                                 Divider()
 
                                 // MARK: Snapshot
                                 Text("Snapshot").font(.subheadline).foregroundColor(.secondary)
-                                Toggle("No Snapshot Save (-no-snapshot-save)", isOn: $currentLaunchFlags.noSnapshotSave)
-                                Toggle("No Snapshot Load (-no-snapshot-load)", isOn: $currentLaunchFlags.noSnapshotLoad)
+                                Toggle(
+                                    "No Snapshot Save (-no-snapshot-save)",
+                                    isOn: $currentLaunchFlags.noSnapshotSave)
+                                Toggle(
+                                    "No Snapshot Load (-no-snapshot-load)",
+                                    isOn: $currentLaunchFlags.noSnapshotLoad)
                                 HStack(spacing: 8) {
                                     Text("Name:").frame(width: 90, alignment: .leading)
                                     TextField("snapshot name", text: $currentLaunchFlags.snapshot)
@@ -1438,8 +1410,10 @@ private struct AvdRowView: View {
                                 }
                                 HStack(spacing: 8) {
                                     Text("Proxy:").frame(width: 90, alignment: .leading)
-                                    TextField("http://proxy:8080", text: $currentLaunchFlags.httpProxy)
-                                        .textFieldStyle(.roundedBorder).controlSize(.small)
+                                    TextField(
+                                        "http://proxy:8080", text: $currentLaunchFlags.httpProxy
+                                    )
+                                    .textFieldStyle(.roundedBorder).controlSize(.small)
                                 }
                                 HStack(spacing: 8) {
                                     Text("DNS:").frame(width: 90, alignment: .leading)
@@ -1454,15 +1428,18 @@ private struct AvdRowView: View {
                                 HStack(spacing: 8) {
                                     Text("RAM (MB):").frame(width: 90, alignment: .leading)
                                     TextField("2048", text: $currentLaunchFlags.memoryMB)
-                                        .textFieldStyle(.roundedBorder).controlSize(.small).frame(width: 80)
+                                        .textFieldStyle(.roundedBorder).controlSize(.small).frame(
+                                            width: 80)
                                     Text("Cores:").frame(width: 40, alignment: .leading)
                                     TextField("4", text: $currentLaunchFlags.cores)
-                                        .textFieldStyle(.roundedBorder).controlSize(.small).frame(width: 50)
+                                        .textFieldStyle(.roundedBorder).controlSize(.small).frame(
+                                            width: 50)
                                 }
                                 HStack(spacing: 8) {
                                     Text("Port:").frame(width: 90, alignment: .leading)
                                     TextField("5554", text: $currentLaunchFlags.port)
-                                        .textFieldStyle(.roundedBorder).controlSize(.small).frame(width: 80)
+                                        .textFieldStyle(.roundedBorder).controlSize(.small).frame(
+                                            width: 80)
                                 }
 
                                 Divider()
@@ -1494,12 +1471,19 @@ private struct AvdRowView: View {
 
                                 // MARK: Audio
                                 Text("Audio").font(.subheadline).foregroundColor(.secondary)
-                                Toggle("Audio Input (-prop hw.audioInput=yes)", isOn: $currentLaunchFlags.audioInput)
-                                    .disabled(currentLaunchFlags.noAudio)
-                                Toggle("Audio Output (-prop hw.audioOutput=yes)", isOn: $currentLaunchFlags.audioOutput)
-                                    .disabled(currentLaunchFlags.noAudio)
+                                Toggle(
+                                    "Audio Input (-prop hw.audioInput=yes)",
+                                    isOn: $currentLaunchFlags.audioInput
+                                )
+                                .disabled(currentLaunchFlags.noAudio)
+                                Toggle(
+                                    "Audio Output (-prop hw.audioOutput=yes)",
+                                    isOn: $currentLaunchFlags.audioOutput
+                                )
+                                .disabled(currentLaunchFlags.noAudio)
                                 if currentLaunchFlags.noAudio {
-                                    Text("Disabled when No Audio is on").font(.caption).foregroundColor(.secondary)
+                                    Text("Disabled when No Audio is on").font(.caption)
+                                        .foregroundColor(.secondary)
                                 }
 
                                 Divider()
@@ -1513,8 +1497,10 @@ private struct AvdRowView: View {
                                 }
                                 HStack(spacing: 8) {
                                     Text("tcpdump:").frame(width: 90, alignment: .leading)
-                                    TextField("/path/to/capture.pcap", text: $currentLaunchFlags.tcpdump)
-                                        .textFieldStyle(.roundedBorder).controlSize(.small)
+                                    TextField(
+                                        "/path/to/capture.pcap", text: $currentLaunchFlags.tcpdump
+                                    )
+                                    .textFieldStyle(.roundedBorder).controlSize(.small)
                                 }
 
                                 HStack {
@@ -1693,14 +1679,18 @@ private struct SystemImageRowView: View {
             selectionControl
 
             // Icon
-            Image(systemName: downloadProgress != nil
-                ? "arrow.down.circle"
-                : (image.isDownloaded ? "internaldrive.fill" : image.osType.icon))
-                .font(.title3)
-                .foregroundColor(downloadProgress != nil
+            Image(
+                systemName: downloadProgress != nil
+                    ? "arrow.down.circle"
+                    : (image.isDownloaded ? "internaldrive.fill" : image.osType.icon)
+            )
+            .font(.title3)
+            .foregroundColor(
+                downloadProgress != nil
                     ? .blue
-                    : (image.isDownloaded ? .green : .accentColor))
-                .frame(width: 24)
+                    : (image.isDownloaded ? .green : .accentColor)
+            )
+            .frame(width: 24)
 
             // Info
             VStack(alignment: .leading, spacing: 3) {

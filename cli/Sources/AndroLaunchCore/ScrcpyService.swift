@@ -28,6 +28,23 @@ public final class ScrcpyService {
         return nil
     }
 
+    // MARK: - Helpers
+
+    /// Validate render-fit values. Only `contain`, `cover`, `fit-width`, `fit-height` are accepted.
+    /// Returns the value if valid, nil otherwise.
+    private func validRenderFit(_ value: String) -> String? {
+        let valid = ["contain", "cover", "fit-width", "fit-height"]
+        return valid.contains(value) ? value : nil
+    }
+
+    /// Validate hex color string. Accepts 3 or 6 hex digits, optionally prefixed with `#`.
+    /// Returns the value as-is if valid, nil otherwise. scrcpy handles the actual parsing.
+    private func validBackgroundColor(_ value: String) -> String? {
+        let pattern = try! NSRegularExpression(pattern: "^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+        let range = NSRange(location: 0, length: value.utf16.count)
+        return pattern.firstMatch(in: value, options: [], range: range) != nil ? value : nil
+    }
+
     // MARK: - Mirror Device
 
     /// Launch scrcpy to mirror a device screen
@@ -41,7 +58,12 @@ public final class ScrcpyService {
     ///   - bitRate: Video bitrate in Mbps
     ///   - orientation: Lock orientation (e.g. "0", "90", "180", "270")
     ///   - borderless: Remove window decorations
-    ///   - stayAwake: Keep device awake
+    ///   - stayAwake: Keep device awake (opt-in)
+    ///   - keepActive: Keep device active (default on, replaces --stay-awake as default)
+    ///   - backgroundColor: Window background color (3 or 6 digit hex, optional #)
+    ///   - renderFit: Window rendering fit mode (contain|cover|fit-width|fit-height)
+    ///   - lockAspectRatio: Lock window aspect ratio (set false to disable)
+    ///   - minSizeAlignment: Minimum size alignment
     public func mirrorDevice(
         deviceID: String,
         adbPath: String? = nil,
@@ -52,7 +74,13 @@ public final class ScrcpyService {
         bitRate: Int? = nil,
         orientation: String? = nil,
         borderless: Bool = false,
-        stayAwake: Bool = true
+        flexDisplay: Bool = false,
+        stayAwake: Bool = false,
+        keepActive: Bool = true,
+        backgroundColor: String? = nil,
+        renderFit: String? = nil,
+        lockAspectRatio: Bool = true,
+        minSizeAlignment: Int? = nil
     ) throws -> Process {
         guard let scrcpyPath = findScrcpyPath() else {
             throw ADBError.unknown("SCRCPY not found. Install with: brew install scrcpy")
@@ -76,7 +104,29 @@ public final class ScrcpyService {
             args.append("--stay-awake")
         }
 
-        if let maxSize = maxSize {
+        if keepActive {
+            args.append("--keep-active")
+        }
+
+        if let backgroundColor = backgroundColor.flatMap({ validBackgroundColor($0) }) {
+            args.append(contentsOf: ["--background-color", backgroundColor])
+        }
+
+        if let renderFit = renderFit.flatMap({ validRenderFit($0) }) {
+            args.append(contentsOf: ["--render-fit", renderFit])
+        }
+
+        if !lockAspectRatio {
+            args.append("--no-window-aspect-ratio-lock")
+        }
+
+        if let minSizeAlignment = minSizeAlignment {
+            args.append(contentsOf: ["--min-size-alignment", "\(minSizeAlignment)"])
+        }
+
+        if flexDisplay {
+            // Flex mode: no size constraint, let the window resize freely
+        } else if let maxSize = maxSize {
             args.append(contentsOf: ["-m", "\(maxSize)"])
         }
 
@@ -137,7 +187,9 @@ public final class ScrcpyService {
         size: Int? = nil,
         bitRate: Int? = nil,
         orientation: String? = nil,
-        aspectRatio: String? = nil
+        aspectRatio: String? = nil,
+        cameraTorch: Bool = false,
+        cameraZoom: Double? = nil
     ) throws -> Process {
         guard let scrcpyPath = findScrcpyPath() else {
             throw ADBError.unknown("SCRCPY not found. Install with: brew install scrcpy")
@@ -156,6 +208,15 @@ public final class ScrcpyService {
             "--video-source=camera",
             "--window-title", "AndroLaunch Camera - \(cleanDeviceID)",
         ]
+
+        if cameraTorch {
+            args.append("--camera-torch")
+            // --video-source=camera is already set above, per contract rule #3
+        }
+
+        if let cameraZoom = cameraZoom {
+            args.append(contentsOf: ["--camera-zoom", "\(cameraZoom)"])
+        }
 
         if let facing = facing {
             args.append(contentsOf: ["--camera-facing", facing])
@@ -216,6 +277,12 @@ public final class ScrcpyService {
         adbPath: String? = nil,
         audioEnabled: Bool = true,
         resolution: Int = 1024,
+        keepActive: Bool = true,
+        flexDisplay: Bool = false,
+        backgroundColor: String? = nil,
+        renderFit: String? = nil,
+        lockAspectRatio: Bool = true,
+        bitRate: Int? = nil,
         clipboardEnabled: Bool = true
     ) throws -> Process {
         guard let scrcpyPath = findScrcpyPath() else {
@@ -232,14 +299,43 @@ public final class ScrcpyService {
 
         var args = [
             "--serial", cleanDeviceID,
-            "--stay-awake",
             "--window-title", "AndroLaunch - \(packageID)",
             "--new-display",
-            "-m", "\(resolution)",
             "--start-app", packageID,
-            "--audio-bit-rate=10000",
             "--audio-output-buffer=10",
         ]
+
+        if flexDisplay {
+            args.append("--flex-display")
+        } else {
+            // Without flex, constrain to the requested resolution
+            args.append(contentsOf: ["-m", "\(resolution)"])
+        }
+
+        if keepActive {
+            args.append("--keep-active")
+        }
+
+        // Audio bit-rate: explicit param wins, then flexDisplay default, then legacy fallback
+        if let bitRate = bitRate {
+            args.append("--audio-bit-rate=\(bitRate)M")
+        } else if flexDisplay {
+            args.append("--audio-bit-rate=16M")
+        } else {
+            args.append("--audio-bit-rate=10000")
+        }
+
+        if let backgroundColor = backgroundColor.flatMap({ validBackgroundColor($0) }) {
+            args.append(contentsOf: ["--background-color", backgroundColor])
+        }
+
+        if let renderFit = renderFit.flatMap({ validRenderFit($0) }) {
+            args.append(contentsOf: ["--render-fit", renderFit])
+        }
+
+        if !lockAspectRatio {
+            args.append("--no-window-aspect-ratio-lock")
+        }
 
         if !audioEnabled {
             args.append("--no-audio")

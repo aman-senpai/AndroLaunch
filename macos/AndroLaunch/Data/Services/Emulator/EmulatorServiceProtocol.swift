@@ -25,7 +25,9 @@ protocol EmulatorServiceProtocol {
         avdPath: String?, sdkRoot: String?)
     func deleteAVD(toolsPath: String, name: String, avdPath: String?)
     func renameAVD(toolsPath: String, oldName: String, newName: String, avdPath: String?)
-    func startEmulator(toolsPath: String, avdName: String, avdPath: String?, emulatorPath: String?, launchFlags: LaunchFlags)
+    func startEmulator(
+        toolsPath: String, avdName: String, avdPath: String?, emulatorPath: String?,
+        launchFlags: LaunchFlags)
     func stopEmulator(toolsPath: String, avdName: String)
     func isEmulatorProcessRunning(avdName: String) -> Bool
 }
@@ -35,6 +37,8 @@ struct LaunchFlags: Codable, Equatable {
     var noAudio: Bool = true
     var noWindow: Bool = true
     var verbose: Bool = true
+    var noSkin: Bool = true
+    var qtHideWindow: Bool = false
 
     // Boot
     var wipeData: Bool = false
@@ -66,7 +70,7 @@ struct LaunchFlags: Codable, Equatable {
     var cameraFront: String = ""
 
     // Audio
-    var audioInput: Bool = false   // overrides hw.audioInput via -prop when enabled
+    var audioInput: Bool = false  // overrides hw.audioInput via -prop when enabled
     var audioOutput: Bool = false  // overrides hw.audioOutput via -prop when enabled
 
     // Extra
@@ -85,11 +89,11 @@ enum SystemImageType: String, CaseIterable, Codable {
 
     var icon: String {
         switch self {
-        case .phone:      return "iphone.gen3"
-        case .wearOS:     return "applewatch"
-        case .androidTV:  return "tv"
+        case .phone: return "iphone.gen3"
+        case .wearOS: return "applewatch"
+        case .androidTV: return "tv"
         case .automotive: return "car"
-        case .other:      return "questionmark.circle"
+        case .other: return "questionmark.circle"
         }
     }
 }
@@ -136,19 +140,21 @@ struct SystemImage: Identifiable, Codable, Hashable {
 
     private func formatVariant(_ v: String) -> String {
         switch v.lowercased() {
-        case "google_apis":              return "Google APIs"
-        case "google_apis_playstore":    return "Google Play"
-        case "android-wear":             return "Wear OS"
-        case "android-wear-cn":          return "Wear OS (China)"
-        case "android-tv":               return "Android TV"
-        case "google_apis_atd":          return "Automotive"
-        case "android-automotive":       return "Automotive"
-        case "google_apis_ps_uef":       return "Google Play (UEF)"
-        case "google_atd":               return "Google ATD"
-        case "aosp_atd":                 return "AOSP ATD"
-        case "default":                  return "AOSP"
+        case "google_apis": return "Google APIs"
+        case "google_apis_playstore": return "Google Play"
+        case "android-wear": return "Wear OS"
+        case "android-wear-cn": return "Wear OS (China)"
+        case "android-tv": return "Android TV"
+        case "google_apis_atd": return "Automotive"
+        case "android-automotive": return "Automotive"
+        case "google_apis_ps_uef": return "Google Play (UEF)"
+        case "google_atd": return "Google ATD"
+        case "aosp_atd": return "AOSP ATD"
+        case "default": return "AOSP"
         default:
-            if v.hasPrefix("aosp_") { return v.replacingOccurrences(of: "aosp_", with: "AOSP ").capitalized }
+            if v.hasPrefix("aosp_") {
+                return v.replacingOccurrences(of: "aosp_", with: "AOSP ").capitalized
+            }
             return v
         }
     }

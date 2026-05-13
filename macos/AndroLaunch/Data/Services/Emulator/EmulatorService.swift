@@ -29,17 +29,26 @@ final class EmulatorService: EmulatorServiceProtocol {
 
     // MARK: - List Available Images
     func listAvailableImages(toolsPath: String, sdkRoot: String? = nil) {
+        guard !toolsPath.isEmpty else {
+            imagesSubject.send([])
+            return
+        }
         let sdkManagerPath = (toolsPath as NSString).appendingPathComponent("sdkmanager")
         let resolvedSdkRoot = sdkRoot ?? getSDKRoot(from: toolsPath)
+
+        // Verify the executable exists before attempting to run it
+        guard FileManager.default.isExecutableFile(atPath: sdkManagerPath) else {
+            errorSubject.send(
+                "Android SDK sdkmanager not found at \(sdkManagerPath). Please check your Android SDK path in Preferences."
+            )
+            imagesSubject.send([])
+            return
+        }
 
         // Clean AppleDouble ghost files from system-images and platforms dirs
         for dirName in ["system-images", "platforms"] {
             cleanAppleDoubleFiles(in: (resolvedSdkRoot as NSString).appendingPathComponent(dirName))
         }
-
-        print(
-            "[EmulatorService] listAvailableImages: sdkManagerPath=\(sdkManagerPath), sdkRoot=\(resolvedSdkRoot)"
-        )
 
         executeCommand(
             executable: sdkManagerPath, arguments: ["--list", "--sdk_root=\(resolvedSdkRoot)"]
@@ -69,14 +78,25 @@ final class EmulatorService: EmulatorServiceProtocol {
 
     // MARK: - List AVDs
     func listAVDs(toolsPath: String, avdPath: String? = nil) {
+        guard !toolsPath.isEmpty else {
+            avdsSubject.send([])
+            return
+        }
         let avdManagerPath = (toolsPath as NSString).appendingPathComponent("avdmanager")
+
+        // Verify the executable exists before attempting to run it
+        guard FileManager.default.isExecutableFile(atPath: avdManagerPath) else {
+            errorSubject.send(
+                "Android SDK avdmanager not found at \(avdManagerPath). Please check your Android SDK path in Preferences."
+            )
+            avdsSubject.send([])
+            return
+        }
 
         // Clean AppleDouble ghost files from AVD home before avdmanager reads them
         if let avdHome = avdPath {
             cleanAppleDoubleFiles(in: avdHome)
         }
-
-        // print("[EmulatorService] listAVDs: avdManagerPath=\(avdManagerPath)")
 
         executeCommand(executable: avdManagerPath, arguments: ["list", "avd"], avdHome: avdPath) {
             [weak self] success, output, errorOutput in
@@ -551,12 +571,15 @@ final class EmulatorService: EmulatorServiceProtocol {
     // MARK: - Start Emulator
     func startEmulator(
         toolsPath: String, avdName: String, avdPath: String? = nil,
-        emulatorPath explicitEmulatorPath: String? = nil, launchFlags: LaunchFlags = LaunchFlags.default
+        emulatorPath explicitEmulatorPath: String? = nil,
+        launchFlags: LaunchFlags = LaunchFlags.default
     ) {
         let originalSdkRoot = getSDKRoot(from: toolsPath)
         let sdkRoot = findValidSDKRoot(primary: originalSdkRoot)
         let emulatorPath: String
-        if let explicit = explicitEmulatorPath, FileManager.default.isExecutableFile(atPath: explicit) {
+        if let explicit = explicitEmulatorPath,
+            FileManager.default.isExecutableFile(atPath: explicit)
+        {
             emulatorPath = explicit
         } else {
             emulatorPath = getEmulatorPath(sdkRoot: sdkRoot, fallbackRoot: originalSdkRoot)
@@ -639,6 +662,10 @@ final class EmulatorService: EmulatorServiceProtocol {
                 args.append(contentsOf: ["-prop", "hw.audioOutput=yes"])
             }
         }
+
+        // Display
+        if launchFlags.noSkin { args.append("-no-skin") }
+        if launchFlags.qtHideWindow { args.append("-qt-hide-window") }
 
         // Extra
         if !launchFlags.tcpdump.isEmpty {
@@ -968,7 +995,8 @@ final class EmulatorService: EmulatorServiceProtocol {
         task.executableURL = URL(fileURLWithPath: executable)
         task.arguments = arguments
 
-        let resolvedSdkRoot = sdkRoot ?? getSDKRoot(from: (executable as NSString).deletingLastPathComponent)
+        let resolvedSdkRoot =
+            sdkRoot ?? getSDKRoot(from: (executable as NSString).deletingLastPathComponent)
         var env = ProcessInfo.processInfo.environment
         env["ANDROID_SDK_ROOT"] = resolvedSdkRoot
         env["ANDROID_HOME"] = resolvedSdkRoot
@@ -1188,7 +1216,7 @@ final class EmulatorService: EmulatorServiceProtocol {
         }
 
         guard let contents = try? fm.contentsOfDirectory(atPath: nestedPath),
-              contents.contains(where: { $0 == "system.img" || $0 == "kernel-ranchu" })
+            contents.contains(where: { $0 == "system.img" || $0 == "kernel-ranchu" })
         else {
             return
         }
@@ -1248,7 +1276,8 @@ final class EmulatorService: EmulatorServiceProtocol {
 
             // Already a symlink pointing to the right place
             if let resolved = try? fm.destinationOfSymbolicLink(atPath: toolsDir),
-               resolved == actualDir {
+                resolved == actualDir
+            {
                 continue
             }
 

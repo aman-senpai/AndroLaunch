@@ -73,6 +73,9 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     func toggleBorderless(for deviceID: String)
     func isBorderlessEnabled(for deviceID: String) -> Bool
 
+    func toggleFlexDisplay(for deviceID: String)
+    func isFlexDisplayEnabled(for deviceID: String) -> Bool
+
     // Camera Preferences
     func setCameraFacing(for deviceID: String, facing: String)
     func getCameraFacing(for deviceID: String) -> String

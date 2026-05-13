@@ -277,6 +277,9 @@ struct Mirror: ParsableCommand {
     @Flag(name: .long, help: "Borderless window")
     var borderless = false
 
+    @Flag(name: .long, help: "Flex display (resize window freely)")
+    var flexDisplay = false
+
     @Option(name: .long, help: "Max resolution (e.g. 1024)")
     var maxSize: Int?
 
@@ -288,6 +291,24 @@ struct Mirror: ParsableCommand {
 
     @Option(name: .long, help: "Lock orientation (0, 90, 180, 270)")
     var orientation: String?
+
+    @Flag(name: .long, help: "Keep device awake (does not change global settings)")
+    var keepActive = true
+
+    @Flag(name: .long, help: "Stay awake (changes device settings)")
+    var stayAwake = false
+
+    @Option(name: .long, help: "Background color (hex, e.g. #234567)")
+    var backgroundColor: String?
+
+    @Option(name: .long, help: "Render fit mode: contain, cover, fit-width, fit-height")
+    var renderFit: String?
+
+    @Flag(name: .long, help: "Disable window aspect ratio lock")
+    var noAspectRatioLock = false
+
+    @Option(name: .long, help: "Minimum size alignment (1-64)")
+    var minSizeAlignment: Int?
 
     func run() throws {
         let adb = makeADBService()
@@ -304,7 +325,14 @@ struct Mirror: ParsableCommand {
             maxFPS: maxFPS,
             bitRate: bitRate,
             orientation: orientation,
-            borderless: borderless
+            borderless: borderless,
+            flexDisplay: flexDisplay,
+            stayAwake: stayAwake,
+            keepActive: keepActive,
+            backgroundColor: backgroundColor,
+            renderFit: renderFit,
+            lockAspectRatio: !noAspectRatioLock,
+            minSizeAlignment: minSizeAlignment
         )
 
         // Keep the CLI running while scrcpy is active
@@ -332,6 +360,12 @@ struct Camera: ParsableCommand {
     @Option(name: .long, help: "Aspect ratio (e.g. 4:3)")
     var aspectRatio: String?
 
+    @Flag(name: .long, help: "Enable camera torch at startup")
+    var cameraTorch = false
+
+    @Option(name: .long, help: "Camera zoom level (e.g. 1.5)")
+    var cameraZoom: Double?
+
     func run() throws {
         let adb = makeADBService()
         let id = resolveDeviceID(adb, deviceID)
@@ -344,7 +378,9 @@ struct Camera: ParsableCommand {
             facing: facing,
             fps: fps,
             size: size,
-            aspectRatio: aspectRatio
+            aspectRatio: aspectRatio,
+            cameraTorch: cameraTorch,
+            cameraZoom: cameraZoom
         )
 
         RunLoop.main.run()
@@ -366,8 +402,26 @@ struct ScrcpyApp: ParsableCommand {
     @Flag(name: .long, help: "Disable audio")
     var noAudio = false
 
+    @Flag(name: .long, help: "Enable flex display (resize with window)")
+    var flexDisplay = false
+
     @Option(name: .long, help: "Display resolution (default: 1024)")
     var resolution: Int = 1024
+
+    @Flag(name: .long, help: "Keep device awake (does not change global settings)")
+    var keepActive = true
+
+    @Option(name: .long, help: "Background color (hex, e.g. #234567)")
+    var backgroundColor: String?
+
+    @Option(name: .long, help: "Render fit mode: contain, cover, fit-width, fit-height")
+    var renderFit: String?
+
+    @Flag(name: .long, help: "Disable window aspect ratio lock")
+    var noAspectRatioLock = false
+
+    @Option(name: .long, help: "Video bitrate in Mbps")
+    var bitRate: Int?
 
     func run() throws {
         let adb = makeADBService()
@@ -380,7 +434,13 @@ struct ScrcpyApp: ParsableCommand {
             deviceID: id,
             adbPath: adb.adbPath,
             audioEnabled: !noAudio,
-            resolution: resolution
+            resolution: resolution,
+            keepActive: keepActive,
+            flexDisplay: flexDisplay,
+            backgroundColor: backgroundColor,
+            renderFit: renderFit,
+            lockAspectRatio: !noAspectRatioLock,
+            bitRate: bitRate
         )
 
         RunLoop.main.run()
@@ -987,10 +1047,17 @@ struct EmulatorStart: ParsableCommand {
     @Option(name: .long, help: "Path to Android SDK")
     var toolsPath: String?
 
+    @Flag(name: .long, help: "Start without device skin/bezel frame")
+    var noSkin: Bool = true
+
+    @Flag(name: .long, help: "Start without emulator window (decouples OS from graphical output)")
+    var qtHideWindow: Bool = false
+
     func run() throws {
         let path = requireToolsPath(toolsPath)
         let emulator = EmulatorService()
-        _ = try emulator.startEmulator(toolsPath: path, avdName: avdName)
+        _ = try emulator.startEmulator(
+            toolsPath: path, avdName: avdName, noSkin: noSkin, qtHideWindow: qtHideWindow)
         print("Starting emulator: \(avdName)... (Press Ctrl+C to stop)")
         RunLoop.main.run()
     }

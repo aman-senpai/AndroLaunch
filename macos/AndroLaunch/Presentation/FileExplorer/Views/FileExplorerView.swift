@@ -49,18 +49,6 @@ struct FileExplorerView: View {
                             .padding(.top, 8)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = viewModel.error {
-                    VStack(spacing: 16) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 48))
-                            .foregroundColor(.orange)
-                        Text(error)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                        Button("Retry") { viewModel.refresh() }
-                            .buttonStyle(.borderedProminent)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     fileTableView
                 }

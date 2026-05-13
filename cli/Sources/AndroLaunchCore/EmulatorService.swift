@@ -153,10 +153,18 @@ public final class EmulatorService {
 
     // MARK: - Start Emulator
 
-    public func startEmulator(toolsPath: String, avdName: String) throws -> Process {
+    public func startEmulator(
+        toolsPath: String, avdName: String, noSkin: Bool = true, qtHideWindow: Bool = false
+    ) throws
+        -> Process
+    {
         let emulatorPath = resolveEmulatorPath(toolsPath: toolsPath)
 
         var args = ["-avd", avdName]
+
+        // Display
+        if noSkin { args.append("-no-skin") }
+        if qtHideWindow { args.append("-qt-hide-window") }
 
         // Check for GPU mode
         let gpuMode = getGpuMode(avdName: avdName)

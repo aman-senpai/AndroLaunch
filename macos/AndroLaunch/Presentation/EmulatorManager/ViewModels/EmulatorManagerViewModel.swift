@@ -27,7 +27,6 @@ final class EmulatorManagerViewModel: ObservableObject {
     @Published var availableImages: [SystemImage] = []
     @Published var existingAVDs: [AVD] = []
     @Published var downloadProgress: [String: Double] = [:]
-    @Published var errorMessage: String?
     @Published var isLoadingImages: Bool = false
     @Published var isLoadingAVDs: Bool = false
     @Published var isCreatingAVD: Bool = false
@@ -175,7 +174,6 @@ final class EmulatorManagerViewModel: ObservableObject {
         repository.errorPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] error in
-                self?.errorMessage = error
                 self?.isLoadingImages = false
                 self?.isLoadingAVDs = false
                 self?.isCreatingAVD = false
@@ -184,7 +182,6 @@ final class EmulatorManagerViewModel: ObservableObject {
     }
 
     func refresh() {
-        errorMessage = nil
         isLoadingImages = true
         isLoadingAVDs = true
         repository.listAvailableImages()
@@ -334,7 +331,8 @@ final class EmulatorManagerViewModel: ObservableObject {
 
     var filteredImages: [SystemImage] {
         availableImages.filter { image in
-            let matchesSearch = imageSearchText.isEmpty
+            let matchesSearch =
+                imageSearchText.isEmpty
                 || image.displayName.localizedCaseInsensitiveContains(imageSearchText)
                 || image.id.localizedCaseInsensitiveContains(imageSearchText)
             let matchesOsType = enabledOsTypes.contains(image.osType)

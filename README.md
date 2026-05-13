@@ -28,6 +28,8 @@ AndroLaunch bundles `adb` directly — no manual Android SDK install needed. For
     ```
     Or click **Install with Homebrew** in-app when scrcpy features are used.
 
+    > **Note**: Requires scrcpy v4.0+ for all features.
+
 2.  **Launch**: Download AndroLaunch, move to Applications, and run. ADB is bundled inside the app.
 
 ### 💻 CLI Tool (New!)
@@ -91,8 +93,8 @@ androlaunch emulator-start MyAVD
 ```
 
 **All available commands:**
-| Command | Description |
-| :--- | :--- |
+| Command | Description | Flags |
+| :--- | :--- | :--- |
 | `devices` | List connected Android devices |
 | `device-info` | Show detailed device info |
 | `apps` | List installed apps |
@@ -100,9 +102,9 @@ androlaunch emulator-start MyAVD
 | `uninstall` | Uninstall an app |
 | `clear-data` | Clear app data |
 | `install` | Install an APK file |
-| `mirror` | Mirror device screen via Scrcpy |
-| `camera` | Mirror device camera via Scrcpy |
-| `scrcpy-app` | Launch app in a scrcpy window |
+| `mirror` | Mirror device screen via Scrcpy | `--borderless`, `--keep-active`, `--background-color`, `--render-fit`, `--no-aspect-ratio-lock`, `--min-size-alignment`, `--max-fps`, `--bit-rate`, `--orientation` |
+| `camera` | Mirror device camera via Scrcpy | `--facing`, `--fps`, `--size`, `--camera-torch`, `--camera-zoom`, `--aspect-ratio` |
+| `scrcpy-app` | Launch app in a scrcpy window | `--flex-display`, `--keep-active`, `--background-color`, `--render-fit`, `--no-aspect-ratio-lock`, `--bit-rate` |
 | `reboot` | Reboot device (normal/bootloader/recovery) |
 | `wifi` | Toggle Wi-Fi (on/off) |
 | `bluetooth` | Toggle Bluetooth (on/off) |
@@ -132,12 +134,29 @@ androlaunch emulator-start MyAVD
 | `emulator-start` | Start an emulator |
 | `emulator-stop` | Stop a running emulator |
 
+**Scrcpy v4.0 examples:**
+```bash
+# Mirror with dark gray background and aspect ratio lock
+androlaunch mirror --background-color=#234567
+
+# Mirror camera with torch and zoom
+androlaunch camera --camera-torch --camera-zoom=2.0
+
+# Launch app in a flex display window
+androlaunch scrcpy-app com.android.settings --flex-display --keep-active
+
+# Mirror with custom render fit
+androlaunch mirror --render-fit=cover --no-aspect-ratio-lock
+```
+
 ### Windows Installation
 
 1.  **Install scrcpy** (for screen mirroring): We recommend using **Scoop** or **Chocolatey**:
     - **Scoop**: `scoop install scrcpy`
     - **Chocolatey**: `choco install scrcpy`
     *Note: ADB is bundled with the app.*
+
+    > **Note**: Requires scrcpy v4.0+ for all features.
 2.  **Launch**: Download the Windows version (exe) and run it.
 
 ### Step 2: Configure Your Android Device
@@ -179,6 +198,13 @@ Mirror your Android screen to your Mac with advanced options:
   * **New! Borderless Mode**: For a cleaner, more integrated view.
   * **New! Camera Mirroring**: Preview your device's camera (front or back) in a separate window with custom FPS and resolution settings.
   * **New! Audio Toggle**: Choose to mirror the audio from your device to your Mac.
+  * **🔒 Aspect Ratio Lock**: Window automatically maintains device aspect ratio when resizing (disable with `--no-aspect-ratio-lock`).
+  * **🎨 Custom Background**: Set any background color with hex code (e.g., `--background-color=#234567`). Default is now dark gray instead of black.
+  * **🔋 Keep Active**: Prevent device sleep without changing global settings (`--keep-active`).
+  * **📐 Flex Display**: Resize virtual display dynamically with the window (`--flex-display` / `-x`).
+  * **📸 Camera Torch & Zoom**: Control camera flash (`--camera-torch`) and zoom level (`--camera-zoom=1.5`) for camera mirroring.
+  * **📏 Render Fit**: Choose how content fits the window: `contain`, `cover`, `fit-width`, `fit-height`.
+  * **🔌 Disconnected Indicator**: Shows a disconnect icon for 2 seconds before closing, so you know the connection dropped.
 
 ### 📋 Bi-directional Clipboard Sync
 

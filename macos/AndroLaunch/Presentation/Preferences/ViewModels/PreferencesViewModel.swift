@@ -5,20 +5,20 @@
 //  Created by Aman Raj on 21/4/25.
 //
 
-import Foundation
 import Combine
+import Foundation
 import SwiftUI
-
 
 // The repository instance must conform to DeviceRepositoryProtocol (which is ObservableObject)
 final class PreferencesViewModel: ObservableObject {
     @Published var adbStatus: String = "Checking..."
-    @Published var errorMessage: String?
-    
+
     var commandLineToolsPath: String {
         get { repository.commandLineToolsPath ?? "" }
         set { repository.setCommandLineToolsPath(newValue) }
     }
+
+    var adbPath: String? { repository.adbPath }
 
     internal let repository: any DeviceRepositoryProtocol
     private var cancellables = Set<AnyCancellable>()
@@ -34,10 +34,8 @@ final class PreferencesViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] (error: String?) in
                 self?.adbStatus = error == nil ? "Connected" : "Error"
-                self?.errorMessage = error
             }
             .store(in: &cancellables)
-
 
     }
 

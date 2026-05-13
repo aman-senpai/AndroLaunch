@@ -5,19 +5,18 @@
 //  Created by Aman Raj on 21/4/25.
 //
 
-
 import Combine
 import SwiftUI
 import UserNotifications
 
 final class MenuViewModel: ObservableObject {
     @Published var devices: [AndroidDevice] = []
-    @Published var deviceApps: [String: [AndroidApp]] = [:] // Apps per device ID
+    @Published var deviceApps: [String: [AndroidApp]] = [:]  // Apps per device ID
     @Published var error: String? = nil
     @Published var isLoading: Bool = false
     @Published var isLoadingApps: Bool = false
     @Published var currentDeviceID: String? = nil
-    
+
     internal let repository: any DeviceRepositoryProtocol
     internal let shellCommandManager = ShellCommandManager.shared
     private var cancellables = Set<AnyCancellable>()
@@ -31,7 +30,7 @@ final class MenuViewModel: ObservableObject {
         repository.devicesPublisher
             .receive(on: DispatchQueue.main)
             .assign(to: &$devices)
-        
+
         repository.appsPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] apps in
@@ -40,19 +39,19 @@ final class MenuViewModel: ObservableObject {
                 self.deviceApps[deviceID] = apps
             }
             .store(in: &cancellables)
-        
+
         repository.errorPublisher
             .receive(on: DispatchQueue.main)
             .assign(to: &$error)
-        
+
         repository.isLoadingPublisher
             .receive(on: DispatchQueue.main)
             .assign(to: &$isLoading)
-        
+
         repository.isLoadingAppsPublisher
             .receive(on: DispatchQueue.main)
             .assign(to: &$isLoadingApps)
-            
+
         // Observe shell command changes
         shellCommandManager.objectWillChange
             .receive(on: DispatchQueue.main)
@@ -71,144 +70,162 @@ final class MenuViewModel: ObservableObject {
         currentDeviceID = deviceID
         repository.forceRefreshApps(for: deviceID)
     }
-    func launchApp(packageID: String, deviceID: String, appName: String) { repository.launchApp(packageID: packageID, deviceID: deviceID, appName: appName) }
+    func launchApp(packageID: String, deviceID: String, appName: String) {
+        repository.launchApp(packageID: packageID, deviceID: deviceID, appName: appName)
+    }
     func mirrorDevice(deviceID: String) { repository.mirrorDevice(deviceID: deviceID) }
-    func launchCamera(deviceID: String, facing: CameraFacing) { repository.launchCamera(deviceID: deviceID, facing: facing) }
+    func launchCamera(deviceID: String, facing: CameraFacing) {
+        repository.launchCamera(deviceID: deviceID, facing: facing)
+    }
     func disconnectDevice(deviceID: String) { repository.disconnectDevice(deviceID: deviceID) }
-    func installAPK(deviceID: String, apkPath: String) { repository.installAPK(deviceID: deviceID, apkPath: apkPath) }
-    func uninstallApp(deviceID: String, packageID: String) { repository.uninstallApp(deviceID: deviceID, packageID: packageID) }
-    
+    func installAPK(deviceID: String, apkPath: String) {
+        repository.installAPK(deviceID: deviceID, apkPath: apkPath)
+    }
+    func uninstallApp(deviceID: String, packageID: String) {
+        repository.uninstallApp(deviceID: deviceID, packageID: packageID)
+    }
+
     func toggleAudio(for deviceID: String) {
         repository.toggleAudio(for: deviceID)
-        objectWillChange.send() // Notify UI of change
+        objectWillChange.send()  // Notify UI of change
     }
-    
+
     func isAudioEnabled(for deviceID: String) -> Bool {
         return repository.isAudioEnabled(for: deviceID)
     }
-    
+
     func toggleClipboard(for deviceID: String) {
         repository.toggleClipboard(for: deviceID)
         objectWillChange.send()
     }
-    
+
     func isClipboardEnabled(for deviceID: String) -> Bool {
         return repository.isClipboardEnabled(for: deviceID)
     }
-    
+
     func setResolution(for deviceID: String, resolution: Int) {
         repository.setResolution(for: deviceID, resolution: resolution)
         objectWillChange.send()
     }
-    
+
     func getResolution(for deviceID: String) -> Int {
         return repository.getResolution(for: deviceID)
     }
-    
+
     func setMaxSize(for deviceID: String, size: Int) {
         repository.setMaxSize(for: deviceID, size: size)
         objectWillChange.send()
     }
-    
+
     func getMaxSize(for deviceID: String) -> Int {
         return repository.getMaxSize(for: deviceID)
     }
-    
+
     // FPS
     func setMaxFPS(for deviceID: String, fps: Int) {
         repository.setMaxFPS(for: deviceID, fps: fps)
         objectWillChange.send()
     }
-    
+
     func getMaxFPS(for deviceID: String) -> Int {
         return repository.getMaxFPS(for: deviceID)
     }
-    
+
     // Bit Rate
     func setBitRate(for deviceID: String, bitRate: Int) {
         repository.setBitRate(for: deviceID, bitRate: bitRate)
         objectWillChange.send()
     }
-    
+
     func getBitRate(for deviceID: String) -> Int {
         return repository.getBitRate(for: deviceID)
     }
-    
+
     // Orientation
     func setOrientation(for deviceID: String, orientation: String) {
         repository.setOrientation(for: deviceID, orientation: orientation)
         objectWillChange.send()
     }
-    
+
     func getOrientation(for deviceID: String) -> String {
         return repository.getOrientation(for: deviceID)
     }
-    
+
     func isCaptureOrientationEnabled(for deviceID: String) -> Bool {
         return repository.isCaptureOrientationEnabled(for: deviceID)
     }
-    
+
     func toggleCaptureOrientation(for deviceID: String) {
         repository.toggleCaptureOrientation(for: deviceID)
         objectWillChange.send()
     }
-    
+
     // Borderless
     func toggleBorderless(for deviceID: String) {
         repository.toggleBorderless(for: deviceID)
         objectWillChange.send()
     }
-    
+
     func isBorderlessEnabled(for deviceID: String) -> Bool {
         return repository.isBorderlessEnabled(for: deviceID)
     }
-    
+
+    // Flex Display
+    func toggleFlexDisplay(for deviceID: String) {
+        repository.toggleFlexDisplay(for: deviceID)
+        objectWillChange.send()
+    }
+
+    func isFlexDisplayEnabled(for deviceID: String) -> Bool {
+        return repository.isFlexDisplayEnabled(for: deviceID)
+    }
+
     // MARK: - Camera
     func setCameraFacing(for deviceID: String, facing: String) {
         repository.setCameraFacing(for: deviceID, facing: facing)
         objectWillChange.send()
     }
-    
+
     func getCameraFacing(for deviceID: String) -> String {
         return repository.getCameraFacing(for: deviceID)
     }
-    
+
     func setCameraFPS(for deviceID: String, fps: Int) {
         repository.setCameraFPS(for: deviceID, fps: fps)
         objectWillChange.send()
     }
-    
+
     func getCameraFPS(for deviceID: String) -> Int {
         return repository.getCameraFPS(for: deviceID)
     }
-    
+
     func setCameraSize(for deviceID: String, size: Int) {
         repository.setCameraSize(for: deviceID, size: size)
         objectWillChange.send()
     }
-    
+
     func getCameraSize(for deviceID: String) -> Int {
         return repository.getCameraSize(for: deviceID)
     }
-    
+
     func setCameraAR(for deviceID: String, ar: String) {
         repository.setCameraAR(for: deviceID, ar: ar)
         objectWillChange.send()
     }
-    
+
     func getCameraAR(for deviceID: String) -> String {
         return repository.getCameraAR(for: deviceID)
     }
-    
+
     func mirrorCamera(deviceID: String) {
         repository.mirrorCamera(deviceID: deviceID)
     }
-    
+
     var adbPath: String? { repository.adbPath }
 
     // MARK: - Quick Actions
     @Published var quickActionsStates: [String: QuickActionsState] = [:]
-    
+
     func fetchQuickActionsState(for deviceID: String) {
         repository.fetchQuickActionsState(deviceID: deviceID) { [weak self] state in
             DispatchQueue.main.async {
@@ -216,11 +233,11 @@ final class MenuViewModel: ObservableObject {
             }
         }
     }
-    
+
     func reboot(deviceID: String, mode: RebootMode) {
         repository.reboot(deviceID: deviceID, mode: mode)
     }
-    
+
     func toggleWifi(for deviceID: String) {
         let currentState = quickActionsStates[deviceID]?.isWifiEnabled ?? false
         repository.toggleWiFi(deviceID: deviceID, enable: !currentState)
@@ -232,7 +249,7 @@ final class MenuViewModel: ObservableObject {
             self?.fetchQuickActionsState(for: deviceID)
         }
     }
-    
+
     func toggleBluetooth(for deviceID: String) {
         let currentState = quickActionsStates[deviceID]?.isBluetoothEnabled ?? false
         repository.toggleBluetooth(deviceID: deviceID, enable: !currentState)
@@ -244,7 +261,7 @@ final class MenuViewModel: ObservableObject {
             self?.fetchQuickActionsState(for: deviceID)
         }
     }
-    
+
     func toggleDarkMode(for deviceID: String) {
         let currentState = quickActionsStates[deviceID]?.isDarkModeEnabled ?? false
         repository.toggleDarkMode(deviceID: deviceID, enable: !currentState)
@@ -256,7 +273,7 @@ final class MenuViewModel: ObservableObject {
             self?.fetchQuickActionsState(for: deviceID)
         }
     }
-    
+
     func toggleAirplaneMode(for deviceID: String) {
         let currentState = quickActionsStates[deviceID]?.isAirplaneModeEnabled ?? false
         repository.toggleAirplaneMode(deviceID: deviceID, enable: !currentState)
@@ -268,7 +285,7 @@ final class MenuViewModel: ObservableObject {
             self?.fetchQuickActionsState(for: deviceID)
         }
     }
-    
+
     func toggleMobileData(for deviceID: String) {
         let currentState = quickActionsStates[deviceID]?.isMobileDataEnabled ?? false
         repository.toggleMobileData(deviceID: deviceID, enable: !currentState)
@@ -280,7 +297,7 @@ final class MenuViewModel: ObservableObject {
             self?.fetchQuickActionsState(for: deviceID)
         }
     }
-    
+
     func toggleLocation(for deviceID: String) {
         let currentState = quickActionsStates[deviceID]?.isLocationEnabled ?? false
         repository.toggleLocation(deviceID: deviceID, enable: !currentState)
@@ -292,7 +309,7 @@ final class MenuViewModel: ObservableObject {
             self?.fetchQuickActionsState(for: deviceID)
         }
     }
-    
+
     func toggleDoNotDisturb(for deviceID: String) {
         let currentState = quickActionsStates[deviceID]?.isDoNotDisturbEnabled ?? false
         repository.toggleDoNotDisturb(deviceID: deviceID, enable: !currentState)
@@ -304,7 +321,7 @@ final class MenuViewModel: ObservableObject {
             self?.fetchQuickActionsState(for: deviceID)
         }
     }
-    
+
     func toggleAutoRotate(for deviceID: String) {
         let currentState = quickActionsStates[deviceID]?.isAutoRotateEnabled ?? false
         repository.toggleAutoRotate(deviceID: deviceID, enable: !currentState)
@@ -316,7 +333,7 @@ final class MenuViewModel: ObservableObject {
             self?.fetchQuickActionsState(for: deviceID)
         }
     }
-    
+
     func toggleAdaptiveBrightness(for deviceID: String) {
         let currentState = quickActionsStates[deviceID]?.isAdaptiveBrightnessEnabled ?? false
         repository.toggleAdaptiveBrightness(deviceID: deviceID, enable: !currentState)
@@ -328,47 +345,47 @@ final class MenuViewModel: ObservableObject {
             self?.fetchQuickActionsState(for: deviceID)
         }
     }
-    
+
     // MARK: - Shell Commands
     // MARK: - Shell Commands
     func getGlobalShellCommands() -> [ShellCommand] {
         return shellCommandManager.getAllCommands()
     }
-    
+
     func saveShellCommand(_ command: ShellCommand) {
         shellCommandManager.saveCommand(command)
     }
-    
+
     func deleteShellCommand(id: UUID) {
         shellCommandManager.deleteCommand(id: id)
     }
-    
+
     func runBackgroundShellCommand(_ command: String, for deviceID: String) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            
+
             // Determine ADB path
             var adbDir = "$HOME/Library/Android/sdk/platform-tools"
             if let adbPath = self.adbPath {
                 let url = URL(fileURLWithPath: adbPath)
                 adbDir = url.deletingLastPathComponent().path
             }
-            
+
             // Construct command
             let fullCommand = "\(adbDir)/adb -s \(deviceID) shell \"\(command)\""
-            
+
             let process = Process()
             process.launchPath = "/bin/bash"
             process.arguments = ["-c", fullCommand]
-            
+
             let pipe = Pipe()
             process.standardOutput = pipe
             process.standardError = pipe
-            
+
             do {
                 try process.run()
                 process.waitUntilExit()
-                
+
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 if let output = String(data: data, encoding: .utf8) {
                     print("ADB Shell Output (\(deviceID)): \(output)")
@@ -379,7 +396,8 @@ final class MenuViewModel: ObservableObject {
             } catch {
                 print("Failed to run background shell command: \(error)")
                 DispatchQueue.main.async {
-                    self.sendNotification(title: "Command Failed (\(deviceID))", body: error.localizedDescription)
+                    self.sendNotification(
+                        title: "Command Failed (\(deviceID))", body: error.localizedDescription)
                 }
             }
         }
@@ -387,30 +405,30 @@ final class MenuViewModel: ObservableObject {
     func runHostShellCommand(_ command: String) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            
+
             // Determine ADB path for PATH environment
             var adbDir = "$HOME/Library/Android/sdk/platform-tools"
             if let adbPath = self.adbPath {
                 let url = URL(fileURLWithPath: adbPath)
                 adbDir = url.deletingLastPathComponent().path
             }
-            
+
             // Construct command with PATH setup
             // We export PATH first to ensure adb and other tools are available
             let fullCommand = "export PATH=$PATH:\(adbDir) && \(command)"
-            
+
             let process = Process()
             process.launchPath = "/bin/bash"
             process.arguments = ["-c", fullCommand]
-            
+
             let pipe = Pipe()
             process.standardOutput = pipe
             process.standardError = pipe
-            
+
             do {
                 try process.run()
                 process.waitUntilExit()
-                
+
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 if let output = String(data: data, encoding: .utf8) {
                     print("Host Command Output: \(output)")
@@ -421,38 +439,41 @@ final class MenuViewModel: ObservableObject {
             } catch {
                 print("Failed to run host command: \(error)")
                 DispatchQueue.main.async {
-                    self.sendNotification(title: "Host Command Failed", body: error.localizedDescription)
+                    self.sendNotification(
+                        title: "Host Command Failed", body: error.localizedDescription)
                 }
             }
         }
     }
-    
+
     func sendNotification(title: String, body: String) {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) {
+            granted, _ in
             guard granted else { return }
-            
+
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
             content.sound = .default
-            
-            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+
+            let request = UNNotificationRequest(
+                identifier: UUID().uuidString, content: content, trigger: nil)
             UNUserNotificationCenter.current().add(request)
         }
     }
-    
+
     // MARK: - Import / Export
-    
+
     func exportCommands() {
         let commands = getGlobalShellCommands()
         guard !commands.isEmpty else { return }
-        
+
         let savePanel = NSSavePanel()
         savePanel.title = "Export Shell Commands"
         savePanel.nameFieldStringValue = "androlaunch_commands.json"
         savePanel.allowedContentTypes = [.json]
         savePanel.canCreateDirectories = true
-        
+
         savePanel.begin { response in
             if response == .OK, let url = savePanel.url {
                 do {
@@ -466,28 +487,28 @@ final class MenuViewModel: ObservableObject {
             }
         }
     }
-    
+
     func importCommands() {
         let openPanel = NSOpenPanel()
         openPanel.title = "Import Shell Commands"
         openPanel.allowedContentTypes = [.json]
         openPanel.allowsMultipleSelection = false
         openPanel.canChooseDirectories = false
-        
+
         openPanel.begin { [weak self] response in
             if response == .OK, let url = openPanel.url {
                 do {
                     let data = try Data(contentsOf: url)
                     let commands = try JSONDecoder().decode([ShellCommand].self, from: data)
-                    
+
                     // Import commands (Append/Merge)
                     for command in commands {
-                         // We generate a new ID to avoid conflict if importing same file?
-                         // Or keep ID to update?
-                         // User requested simple import. Let's keep ID to allow updating existing,
-                         // or we can generate new IDs to allow duplicates.
-                         // Given the user might edit json, let's keep it simple: Just save.
-                         // If ID exists it updates, if not it acts as new.
+                        // We generate a new ID to avoid conflict if importing same file?
+                        // Or keep ID to update?
+                        // User requested simple import. Let's keep ID to allow updating existing,
+                        // or we can generate new IDs to allow duplicates.
+                        // Given the user might edit json, let's keep it simple: Just save.
+                        // If ID exists it updates, if not it acts as new.
                         self?.saveShellCommand(command)
                     }
                 } catch {
