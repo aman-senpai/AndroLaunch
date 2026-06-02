@@ -28,6 +28,19 @@ struct AndroidFile: Identifiable, Hashable {
         return formatter.string(fromByteCount: size)
     }
     
+    var fileIcon: String {
+        switch extensionName {
+        case "jpg", "jpeg", "png", "gif", "webp": return "photo"
+        case "mp4", "mkv", "mov": return "video"
+        case "mp3", "wav", "m4a": return "music.note"
+        case "apk": return "app.badge"
+        case "zip", "rar", "7z": return "doc.zipper"
+        case "txt", "md": return "doc.text"
+        case "pdf": return "doc.richtext"
+        default: return "doc"
+        }
+    }
+    
     init(name: String, path: String, size: Int64, modificationDate: String?, isDirectory: Bool, permissions: String) {
         self.name = name
         self.path = path
