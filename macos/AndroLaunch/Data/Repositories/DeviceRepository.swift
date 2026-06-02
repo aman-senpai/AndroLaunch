@@ -16,6 +16,7 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     @Published var error: String? = nil  // Changed to String? as per your code
     @Published var isLoading: Bool = false
     @Published var isLoadingApps: Bool = false
+    @Published var previousDevices: [PreviousDevice] = []
 
     public var errorPublisher: AnyPublisher<String?, Never> { $error.eraseToAnyPublisher() }
     public var devicesPublisher: AnyPublisher<[AndroidDevice], Never> {
@@ -25,6 +26,9 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     public var isLoadingPublisher: AnyPublisher<Bool, Never> { $isLoading.eraseToAnyPublisher() }
     public var isLoadingAppsPublisher: AnyPublisher<Bool, Never> {
         $isLoadingApps.eraseToAnyPublisher()
+    }
+    public var previousDevicesPublisher: AnyPublisher<[PreviousDevice], Never> {
+        $previousDevices.eraseToAnyPublisher()
     }
 
     public var imagesPublisher: AnyPublisher<[SystemImage], Never> {
@@ -145,6 +149,84 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
         }
     }
 
+    // MARK: - Previous Wireless Devices
+
+    private let previousDevicesKey = "previous_wireless_devices"
+    private var lastKnownConnectedWireless: [String: AndroidDevice] = [:]  // serial → device
+
+    private func loadPreviousDevices() {
+        guard let data = UserDefaults.standard.data(forKey: previousDevicesKey),
+            let decoded = try? JSONDecoder().decode([PreviousDevice].self, from: data)
+        else { return }
+        previousDevices = decoded
+    }
+
+    private func savePreviousDevices() {
+        if let data = try? JSONEncoder().encode(previousDevices) {
+            UserDefaults.standard.set(data, forKey: previousDevicesKey)
+        }
+    }
+
+    private func syncPreviousDevices(liveDevices: [AndroidDevice]) {
+        let liveSerials = Set(liveDevices.map(\.serialNumber).compactMap { $0 })
+
+        // Remove from previous if now connected
+        let beforeCount = previousDevices.count
+        previousDevices.removeAll { liveSerials.contains($0.serialNumber) }
+
+        // Detect wireless devices that went offline (were connected, now gone)
+        for (serial, prevDevice) in lastKnownConnectedWireless {
+            if !liveSerials.contains(serial),
+                prevDevice.id.contains(":") || prevDevice.id.contains("_tcp")
+                    || prevDevice.id.contains("_udp")
+            {
+                let entry = PreviousDevice(
+                    serialNumber: serial,
+                    name: prevDevice.name,
+                    model: prevDevice.model,
+                    lastKnownHost: prevDevice.id,
+                    lastConnectedDate: Date()
+                )
+                previousDevices.removeAll { $0.serialNumber == serial }
+                previousDevices.insert(entry, at: 0)
+            }
+        }
+
+        // Update tracking of connected wireless devices
+        lastKnownConnectedWireless.removeAll()
+        for device in liveDevices {
+            if let serial = device.serialNumber,
+                device.id.contains(":") || device.id.contains("_tcp")
+                    || device.id.contains("_udp")
+            {
+                lastKnownConnectedWireless[serial] = device
+            }
+        }
+
+        if previousDevices.count != beforeCount {
+            savePreviousDevices()
+        }
+    }
+
+    func removePreviousDevice(serialNumber: String) {
+        previousDevices.removeAll { $0.serialNumber == serialNumber }
+        savePreviousDevices()
+    }
+
+    func connectToPreviousDevice(_ device: PreviousDevice) {
+        let hostPort = device.lastKnownHost
+
+        adbService.connectToHost(hostPort) { [weak self] success in
+            DispatchQueue.main.async {
+                if success {
+                    self?.refreshDevices()
+                } else {
+                    self?.error = "Failed to connect to \(device.name)"
+                }
+            }
+        }
+    }
+
     // Dependencies (assuming these protocols are defined elsewhere, e.g., in a Service layer)
     private let adbService: ADBServiceProtocol  // Assuming ADBServiceProtocol is defined elsewhere
     private let scrcpyService: ScrcpyServiceProtocol  // Assuming ScrcpyServiceProtocol is defined elsewhere
@@ -173,6 +255,7 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
         self.adbService = adbService
         self.scrcpyService = scrcpyService
         self.emulatorService = emulatorService
+        loadPreviousDevices()
         setupBindings()
     }
 
@@ -196,6 +279,9 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
 
                 self.devices = updatedDevices
                 self.isLoading = false
+
+                // Sync previous devices: remove ones that are now connected
+                self.syncPreviousDevices(liveDevices: updatedDevices)
 
                 // Update the deviceID to serial number map
                 self.deviceIDToSerialNumberMap = updatedDevices.compactMap { device in
@@ -604,14 +690,25 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     }
 
     func disconnectDevice(deviceID: String) {
-        // Clear app cache for this device's serial number when disconnecting
+        // Save wireless device to previous devices before disconnecting
         if let device = devices.first(where: { $0.id == deviceID }),
-            let serialNumber = device.serialNumber
+            let serialNumber = device.serialNumber,
+            deviceID.contains(":") || deviceID.contains("_tcp")
+                || deviceID.contains("_udp")
         {
+            let entry = PreviousDevice(
+                serialNumber: serialNumber,
+                name: device.name,
+                model: device.model,
+                lastKnownHost: deviceID,
+                lastConnectedDate: Date()
+            )
+            // Update or insert
+            previousDevices.removeAll { $0.serialNumber == serialNumber }
+            previousDevices.insert(entry, at: 0)
+            savePreviousDevices()
+
             appCache.removeValue(forKey: serialNumber)
-        } else {
-            self.error =
-                "Cannot clear app cache by serial for device \(deviceID) during disconnect: no serial number or device not found."  // Corrected
         }
         adbService.disconnectDevice(deviceID: deviceID)
     }

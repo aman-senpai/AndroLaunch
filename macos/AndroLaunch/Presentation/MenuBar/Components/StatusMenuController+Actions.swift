@@ -410,6 +410,42 @@ extension StatusMenuController {
         pairingWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
+
+    // MARK: - Previous Device Actions
+
+    func configurePreviousDeviceSubmenu(_ submenu: NSMenu, previousDevice: PreviousDevice) {
+        let isConnecting = viewModel.connectingDeviceID == previousDevice.serialNumber
+
+        let connectTitle = isConnecting ? "Connecting..." : "Connect"
+        let connectItem = NSMenuItem(title: connectTitle, action: #selector(connectPreviousDevice(_:)), keyEquivalent: "")
+        connectItem.target = self
+        connectItem.isEnabled = !isConnecting
+        connectItem.representedObject = previousDevice
+        connectItem.image = NSImage(systemSymbolName: isConnecting ? "arrow.triangle.2.circlepath" : "link", accessibilityDescription: "Connect")
+        connectItem.image?.size = NSSize(width: 16, height: 16)
+        submenu.addItem(connectItem)
+
+        submenu.addItem(NSMenuItem.separator())
+
+        let removeItem = NSMenuItem(title: "Remove", action: #selector(removePreviousDevice(_:)), keyEquivalent: "")
+        removeItem.target = self
+        removeItem.representedObject = previousDevice
+        removeItem.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Remove")
+        removeItem.image?.size = NSSize(width: 16, height: 16)
+        submenu.addItem(removeItem)
+    }
+
+    @objc func connectPreviousDevice(_ sender: NSMenuItem) {
+        guard let prevDevice = sender.representedObject as? PreviousDevice else { return }
+        viewModel.connectToPreviousDevice(prevDevice)
+        if let menu = statusItem.menu { menu.cancelTracking() }
+    }
+
+    @objc func removePreviousDevice(_ sender: NSMenuItem) {
+        guard let prevDevice = sender.representedObject as? PreviousDevice else { return }
+        viewModel.removePreviousDevice(serialNumber: prevDevice.serialNumber)
+        rebuildMenu()
+    }
     
     @objc func toggleAudio(_ sender: NSMenuItem) {
         guard let deviceID = sender.representedObject as? String else { return }

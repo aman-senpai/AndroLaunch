@@ -16,6 +16,8 @@ final class MenuViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var isLoadingApps: Bool = false
     @Published var currentDeviceID: String? = nil
+    @Published var previousDevices: [PreviousDevice] = []
+    @Published var connectingDeviceID: String? = nil
 
     internal let repository: any DeviceRepositoryProtocol
     internal let shellCommandManager = ShellCommandManager.shared
@@ -29,7 +31,16 @@ final class MenuViewModel: ObservableObject {
     private func setupObservers() {
         repository.devicesPublisher
             .receive(on: DispatchQueue.main)
-            .assign(to: &$devices)
+            .sink { [weak self] devices in
+                self?.devices = devices
+                // Clear connecting state if the device is now connected
+                if let connectingID = self?.connectingDeviceID,
+                    devices.contains(where: { $0.serialNumber == connectingID })
+                {
+                    self?.connectingDeviceID = nil
+                }
+            }
+            .store(in: &cancellables)
 
         repository.appsPublisher
             .receive(on: DispatchQueue.main)
@@ -51,6 +62,10 @@ final class MenuViewModel: ObservableObject {
         repository.isLoadingAppsPublisher
             .receive(on: DispatchQueue.main)
             .assign(to: &$isLoadingApps)
+
+        repository.previousDevicesPublisher
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$previousDevices)
 
         // Observe shell command changes
         shellCommandManager.objectWillChange
@@ -78,6 +93,21 @@ final class MenuViewModel: ObservableObject {
         repository.launchCamera(deviceID: deviceID, facing: facing)
     }
     func disconnectDevice(deviceID: String) { repository.disconnectDevice(deviceID: deviceID) }
+
+    func connectToPreviousDevice(_ device: PreviousDevice) {
+        connectingDeviceID = device.serialNumber
+        repository.connectToPreviousDevice(device)
+        // Clear connecting state after a timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            if self?.connectingDeviceID == device.serialNumber {
+                self?.connectingDeviceID = nil
+            }
+        }
+    }
+
+    func removePreviousDevice(serialNumber: String) {
+        repository.removePreviousDevice(serialNumber: serialNumber)
+    }
     func installAPK(deviceID: String, apkPath: String) {
         repository.installAPK(deviceID: deviceID, apkPath: apkPath)
     }

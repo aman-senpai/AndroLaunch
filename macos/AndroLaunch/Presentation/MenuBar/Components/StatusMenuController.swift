@@ -100,6 +100,16 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
                 self?.updateAllQuickActionsSubmenus()
             }
             .store(in: &cancellables)
+
+        viewModel.$previousDevices
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.updatePreviousDevicesSection() }
+            .store(in: &cancellables)
+
+        viewModel.$connectingDeviceID
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.updateConnectingState() }
+            .store(in: &cancellables)
     }
     
     private func updateMenu() {
@@ -109,7 +119,12 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
             return
         }
         
-        let deviceItems = menu.items.filter { $0.representedObject is String }
+        let deviceItems = menu.items.filter {
+            if let id = $0.representedObject as? String {
+                return !id.hasPrefix("previous_")
+            }
+            return false
+        }
         let currentDeviceIDs = Set(viewModel.devices.map { $0.id })
         let menuDeviceIDs = Set(deviceItems.compactMap { $0.representedObject as? String })
         
@@ -134,8 +149,99 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
             }
         }
     }
-    
-    private func rebuildMenu() {
+
+    /// Update only the previous device items' connecting state without rebuilding the menu.
+    private func updateConnectingState() {
+        guard let menu = statusItem.menu else { return }
+        for item in menu.items {
+            guard let id = item.representedObject as? String,
+                id.hasPrefix("previous_")
+            else { continue }
+            let serial = String(id.dropFirst("previous_".count))
+            if let prevDevice = viewModel.previousDevices.first(where: { $0.serialNumber == serial }),
+                let submenu = item.submenu
+            {
+                configurePreviousDeviceSubmenu(submenu, previousDevice: prevDevice)
+            }
+        }
+    }
+
+    /// Rebuild only the "Previous Devices" section without touching connected device items.
+    private func updatePreviousDevicesSection() {
+        guard let menu = statusItem.menu else { return }
+
+        // Remove all previous device items (identified by "previous_" prefix or the header)
+        var toRemove: [NSMenuItem] = []
+        var foundPreviousSection = false
+        for item in menu.items {
+            if item.title == "Previous Devices" && !item.isEnabled {
+                foundPreviousSection = true
+                toRemove.append(item)
+                continue
+            }
+            if foundPreviousSection {
+                if let id = item.representedObject as? String, id.hasPrefix("previous_") {
+                    toRemove.append(item)
+                } else if item.isSeparatorItem {
+                    // Stop at the next separator (before Emulator Manager)
+                    break
+                }
+            }
+        }
+        for item in toRemove {
+            menu.removeItem(item)
+        }
+
+        // Find the insertion point: after the last connected device item,
+        // which is right before the separator before "Emulator Manager".
+        var insertIndex = menu.items.count
+        for (i, item) in menu.items.enumerated().reversed() {
+            if item.title == "Emulator Manager" || item.title == "Previous Devices" {
+                insertIndex = i
+                break
+            }
+        }
+
+        // Insert previous devices section
+        guard !viewModel.previousDevices.isEmpty else { return }
+
+        let separator = NSMenuItem.separator()
+        let header = NSMenuItem(title: "Previous Devices", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        header.attributedTitle = NSAttributedString(
+            string: "Previous Devices",
+            attributes: [
+                .font: NSFont.menuFont(ofSize: 11),
+                .foregroundColor: NSColor.secondaryLabelColor,
+            ]
+        )
+
+        menu.insertItem(separator, at: insertIndex)
+        menu.insertItem(header, at: insertIndex + 1)
+
+        var offset = 2
+        for prevDevice in viewModel.previousDevices {
+            let isConnecting = viewModel.connectingDeviceID == prevDevice.serialNumber
+            let prevItem = NSMenuItem(
+                title: prevDevice.name,
+                action: nil,
+                keyEquivalent: ""
+            )
+            prevItem.representedObject = "previous_\(prevDevice.serialNumber)"
+            prevItem.image = NSImage(
+                systemSymbolName: isConnecting ? "arrow.triangle.2.circlepath" : "clock.arrow.circlepath",
+                accessibilityDescription: "Previous Device")
+            prevItem.image?.size = NSSize(width: 16, height: 16)
+
+            let submenu = NSMenu()
+            configurePreviousDeviceSubmenu(submenu, previousDevice: prevDevice)
+            prevItem.submenu = submenu
+            menu.insertItem(prevItem, at: insertIndex + offset)
+            offset += 1
+        }
+    }
+
+    func rebuildMenu() {
         let menu = NSMenu()
         menu.delegate = self
         
@@ -186,6 +292,42 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
                 self.configureDeviceSubmenu(submenu, for: device)
                 deviceItem.submenu = submenu
                 menu.addItem(deviceItem)
+            }
+        }
+
+        // Previous Devices Section
+        if !viewModel.previousDevices.isEmpty {
+            menu.addItem(NSMenuItem.separator())
+
+            let prevHeader = NSMenuItem(title: "Previous Devices", action: nil, keyEquivalent: "")
+            prevHeader.isEnabled = false
+            prevHeader.attributedTitle = NSAttributedString(
+                string: "Previous Devices",
+                attributes: [
+                    .font: NSFont.menuFont(ofSize: 11),
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                ]
+            )
+            menu.addItem(prevHeader)
+
+            for prevDevice in viewModel.previousDevices {
+                let isConnecting = viewModel.connectingDeviceID == prevDevice.serialNumber
+
+                let prevItem = NSMenuItem(
+                    title: prevDevice.name,
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                prevItem.representedObject = "previous_\(prevDevice.serialNumber)"
+                prevItem.image = NSImage(
+                    systemSymbolName: isConnecting ? "arrow.triangle.2.circlepath" : "clock.arrow.circlepath",
+                    accessibilityDescription: "Previous Device")
+                prevItem.image?.size = NSSize(width: 16, height: 16)
+
+                let submenu = NSMenu()
+                configurePreviousDeviceSubmenu(submenu, previousDevice: prevDevice)
+                prevItem.submenu = submenu
+                menu.addItem(prevItem)
             }
         }
         

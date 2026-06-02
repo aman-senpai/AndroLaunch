@@ -19,6 +19,11 @@ protocol DeviceRepositoryProtocol: ObservableObject {
     var avdsPublisher: AnyPublisher<[AVD], Never> { get }
     var downloadProgressPublisher: AnyPublisher<(String, Double), Never> { get }
 
+    // Previous (stored) wireless devices
+    var previousDevicesPublisher: AnyPublisher<[PreviousDevice], Never> { get }
+    func removePreviousDevice(serialNumber: String)
+    func connectToPreviousDevice(_ device: PreviousDevice)
+
     var devices: [AndroidDevice] { get }
     var apps: [AndroidApp] { get }
     var error: String? { get }

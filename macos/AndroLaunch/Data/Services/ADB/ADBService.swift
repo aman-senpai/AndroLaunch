@@ -38,6 +38,9 @@ final class ADBService: ADBServiceProtocol {
     private var clipboardTimer: Timer?
     private var lastClipboardContent: String?
 
+    // Store last published device list so disconnect can find all connection paths
+    private var lastPublishedDevices: [AndroidDevice] = []
+
     // MARK: - Executable Path Discovery
 
     // Common system paths for ADB
@@ -187,6 +190,7 @@ final class ADBService: ADBServiceProtocol {
                     let devices = self.parseDevices(from: output ?? "")
 
                     DispatchQueue.main.async {
+                        self.lastPublishedDevices = devices
                         self.devices.send(devices)
                     }
                 }
@@ -204,17 +208,23 @@ final class ADBService: ADBServiceProtocol {
             "connecting", "recovery", "sideload", "bootloader", "host", "rescue",
         ]
 
-        var devices = [AndroidDevice]()
-        var seenDeviceNames = Set<String>()
+        struct ParsedEntry {
+            let deviceID: String
+            let modelName: String
+            let rawModel: String?
+        }
 
+        var allEntries = [ParsedEntry]()
+
+        // --- Pass 1: Parse all lines (no ADB calls yet) ---
         output.enumerateLines { line, _ in
             guard
                 !line.lowercased().contains("list of devices attached")
                     && !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             else { return }
 
-            // Find the device state keyword — serial can contain spaces (mDNS/bonjour)
-            guard let (deviceID, state, details) = Self.splitDeviceLine(line, states: states) else {
+            guard let (deviceID, state, details) = Self.splitDeviceLine(line, states: states)
+            else {
                 print("[ADBService] Line did not match device pattern: \(line)")
                 return
             }
@@ -223,36 +233,7 @@ final class ADBService: ADBServiceProtocol {
             if cleanDeviceID.contains(".:") {
                 cleanDeviceID = cleanDeviceID.replacingOccurrences(of: ".:", with: ":")
             }
-            // Strip mDNS/bonjour suffix: "adb-XXX (N)._adb-tls-connect._tcp" -> "adb-XXX"
-            let mdnsPattern = #"\s+\d+\._adb-tls-connect\._tcp$"#
-            if let mdnsRegex = try? NSRegularExpression(pattern: mdnsPattern),
-                mdnsRegex.firstMatch(
-                    in: cleanDeviceID,
-                    range: NSRange(cleanDeviceID.startIndex..., in: cleanDeviceID)) != nil
-            {
-                cleanDeviceID = mdnsRegex.stringByReplacingMatches(
-                    in: cleanDeviceID,
-                    range: NSRange(cleanDeviceID.startIndex..., in: cleanDeviceID), withTemplate: ""
-                )
-            }
 
-            // Fetch serial number for this device
-            var serialNumber: String?
-            do {
-                let serialOutput = try self.executeADBCommandSync(arguments: [
-                    "-s", cleanDeviceID, "shell", "getprop", "ro.serialno",
-                ])
-                serialNumber = serialOutput.trimmingCharacters(in: .whitespacesAndNewlines)
-                if serialNumber?.isEmpty == true {
-                    serialNumber = nil
-                }
-            } catch {
-                self.error.send(
-                    "Failed to get serial number for \(cleanDeviceID): \(error.localizedDescription)"
-                )
-            }
-
-            let deviceState = state
             var modelName = "Android Device"
             var rawModel: String?
 
@@ -267,32 +248,55 @@ final class ADBService: ADBServiceProtocol {
                 }
             }
 
-            // Only add devices that are successfully connected
-            if deviceState == "device" {
-                // Check for duplicate names before adding
-                if !seenDeviceNames.contains(modelName) {
-                    let newDevice = AndroidDevice(
-                        id: cleanDeviceID,
-                        name: modelName,
-                        model: rawModel,
-                        isConnected: true,
-                        serialNumber: serialNumber,
-                        androidVersion: self.fetchAndroidVersion(deviceID: cleanDeviceID),
-                        apiLevel: self.fetchAPILevel(deviceID: cleanDeviceID),
-                        batteryLevel: self.fetchBatteryLevel(deviceID: cleanDeviceID),
-                        isCharging: self.fetchIsCharging(deviceID: cleanDeviceID)
-                    )
-                    devices.append(newDevice)
-                    seenDeviceNames.insert(modelName)  // Add name to seen set
-                } else {
-                    self.error.send(
-                        "Skipping duplicate device name: \(modelName) (ID: \(cleanDeviceID))")
-                }
+            if state == "device" {
+                allEntries.append(
+                    ParsedEntry(deviceID: cleanDeviceID, modelName: modelName, rawModel: rawModel))
             } else {
-                // self.error.send("Found device in state \(deviceState): \(cleanDeviceID)")
-                print("Found device in state \(deviceState): \(cleanDeviceID)")
+                print("Found device in state \(state): \(cleanDeviceID)")
             }
         }
+
+        // --- Pass 2: Deduplicate by serial number, prefer IP-based connections ---
+        // Sort: IP-based IDs first (shorter, more reliable), mDNS last
+        let sortedEntries = allEntries.sorted { lhs, rhs in
+            let lhsIsMDNS =
+                lhs.deviceID.contains("_tcp") || lhs.deviceID.contains("_udp")
+            let rhsIsMDNS =
+                rhs.deviceID.contains("_tcp") || rhs.deviceID.contains("_udp")
+            if lhsIsMDNS != rhsIsMDNS { return !lhsIsMDNS }
+            return false
+        }
+
+        var seenSerials = Set<String>()
+        var devices = [AndroidDevice]()
+
+        // Only fetch properties for the winning entry per serial
+        for entry in sortedEntries {
+            let props = fetchDeviceProperties(deviceID: entry.deviceID)
+
+            let dedupKey = props.serialNumber ?? entry.modelName
+            if seenSerials.contains(dedupKey) {
+                continue
+            }
+            seenSerials.insert(dedupKey)
+
+            let newDevice = AndroidDevice(
+                id: entry.deviceID,
+                name: entry.modelName,
+                model: entry.rawModel,
+                isConnected: true,
+                serialNumber: props.serialNumber,
+                androidVersion: props.androidVersion,
+                apiLevel: props.apiLevel,
+                batteryLevel: props.batteryLevel,
+                isCharging: props.isCharging
+            )
+            devices.append(newDevice)
+        }
+
+        // No need to disconnect redundant entries — both point to the same physical
+        // device and disconnecting one can destabilize the other. Since all ADB
+        // commands use `-s <deviceID>`, duplicates don't cause ambiguity errors.
 
         return devices
     }
@@ -528,71 +532,65 @@ final class ADBService: ADBServiceProtocol {
         return String(data: outputData, encoding: .utf8) ?? ""
     }
 
-    private func fetchAndroidVersion(deviceID: String) -> String? {
-        do {
-            let output = try executeADBCommandSync(arguments: [
-                "-s", deviceID, "shell", "getprop", "ro.build.version.release",
-            ])
-            return output.trimmingCharacters(in: .whitespacesAndNewlines)
-        } catch {
-            return nil
-        }
+    /// Fetch serial, android version, API level, battery level, and charging status
+    /// in a single ADB shell call to avoid spawning multiple processes.
+    private struct DeviceProperties {
+        var serialNumber: String?
+        var androidVersion: String?
+        var apiLevel: String?
+        var batteryLevel: Int?
+        var isCharging: Bool?
     }
 
-    private func fetchAPILevel(deviceID: String) -> String? {
+    private func fetchDeviceProperties(deviceID: String) -> DeviceProperties {
+        var props = DeviceProperties()
         do {
+            let cmd =
+                "getprop ro.serialno; getprop ro.build.version.release; getprop ro.build.version.sdk; dumpsys battery"
             let output = try executeADBCommandSync(arguments: [
-                "-s", deviceID, "shell", "getprop", "ro.build.version.sdk",
-            ])
-            return output.trimmingCharacters(in: .whitespacesAndNewlines)
-        } catch {
-            return nil
-        }
-    }
-
-    private func fetchBatteryLevel(deviceID: String) -> Int? {
-        do {
-            let output = try executeADBCommandSync(arguments: [
-                "-s", deviceID, "shell", "dumpsys", "battery",
+                "-s", deviceID, "shell", cmd,
             ])
             let lines = output.components(separatedBy: .newlines)
-            for line in lines {
-                if line.contains("level") {
-                    let components = line.components(separatedBy: ":")
-                    if components.count == 2 {
-                        return Int(components[1].trimmingCharacters(in: .whitespacesAndNewlines))
+
+            // Line 0: serial number
+            if lines.indices.contains(0) {
+                let s = lines[0].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !s.isEmpty { props.serialNumber = s }
+            }
+            // Line 1: android version
+            if lines.indices.contains(1) {
+                let v = lines[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !v.isEmpty { props.androidVersion = v }
+            }
+            // Line 2: API level
+            if lines.indices.contains(2) {
+                let a = lines[2].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !a.isEmpty { props.apiLevel = a }
+            }
+            // Lines 3+: dumpsys battery output
+            for line in lines.dropFirst(3) {
+                if line.contains("level:") {
+                    let parts = line.components(separatedBy: ":")
+                    if parts.count == 2 {
+                        props.batteryLevel = Int(parts[1].trimmingCharacters(in: .whitespacesAndNewlines))
                     }
                 }
-            }
-            return nil
-        } catch {
-            return nil
-        }
-    }
-
-    private func fetchIsCharging(deviceID: String) -> Bool? {
-        do {
-            let output = try executeADBCommandSync(arguments: [
-                "-s", deviceID, "shell", "dumpsys", "battery",
-            ])
-            let lines = output.components(separatedBy: .newlines)
-            for line in lines {
-                if line.contains("AC powered") || line.contains("USB powered")
+                if line.contains("AC powered")
+                    || line.contains("USB powered")
                     || line.contains("Wireless powered")
                 {
-                    let components = line.components(separatedBy: ":")
-                    if components.count == 2 {
-                        let value = components[1].trimmingCharacters(in: .whitespacesAndNewlines)
-                        if value == "true" {
-                            return true
-                        }
+                    let parts = line.components(separatedBy: ":")
+                    if parts.count == 2,
+                        parts[1].trimmingCharacters(in: .whitespacesAndNewlines) == "true"
+                    {
+                        props.isCharging = true
                     }
                 }
             }
-            return false
         } catch {
-            return nil
+            print("[ADBService] fetchDeviceProperties error for \(deviceID): \(error)")
         }
+        return props
     }
 
     // MARK: - App Launching & Mirroring (using SCRCPY)
@@ -1397,14 +1395,33 @@ final class ADBService: ADBServiceProtocol {
             return
         }
 
-        executeADBCommand(arguments: ["disconnect", deviceID]) {
-            [weak self] success, output, errorOutput in
-            guard let self else { return }
+        // Find all device IDs sharing the same serial number (e.g. IP + mDNS paths)
+        let serial = lastPublishedDevices.first(where: { $0.id == deviceID })?.serialNumber
+        let idsToDisconnect: [String]
+        if let serial {
+            idsToDisconnect = lastPublishedDevices
+                .filter { $0.serialNumber == serial }
+                .map { $0.id }
+        } else {
+            idsToDisconnect = [deviceID]
+        }
+
+        let group = DispatchGroup()
+        for id in idsToDisconnect {
+            group.enter()
+            executeADBCommand(arguments: ["disconnect", id]) { _, _, _ in group.leave() }
+        }
+        group.notify(queue: .main) { [weak self] in
+            self?.listDevices()
+        }
+    }
+
+    func connectToHost(_ hostPort: String, completion: @escaping (Bool) -> Void) {
+        executeADBCommand(arguments: ["connect", hostPort]) { success, output, errorOutput in
             if success {
                 self.listDevices()
-            } else {
-                self.error.send(errorOutput ?? "Failed to disconnect device")
             }
+            completion(success)
         }
     }
 
