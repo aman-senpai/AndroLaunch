@@ -28,6 +28,7 @@ protocol ADBServiceProtocol {
     var adbPath: String? { get }
 
     // Methods to be implemented by conforming types
+    func detectADBPath() -> String?
     func findADB()
     func listDevices()
     func startADBDaemon()

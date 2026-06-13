@@ -138,14 +138,22 @@ final class ADBService: ADBServiceProtocol {
     }
 
     // MARK: - ADB Path Discovery
-    func findADB() {
+
+    func detectADBPath() -> String? {
         for path in systemADBPaths {
             if FileManager.default.isExecutableFile(atPath: path) {
-                currentADBPath = path
-                error.send(nil)
-                startADBDaemon()
-                return
+                return path
             }
+        }
+        return nil
+    }
+
+    func findADB() {
+        if let path = detectADBPath() {
+            currentADBPath = path
+            error.send(nil)
+            startADBDaemon()
+            return
         }
         let notFoundError = "ADB not found. Install Android Platform Tools."
         error.send(notFoundError)

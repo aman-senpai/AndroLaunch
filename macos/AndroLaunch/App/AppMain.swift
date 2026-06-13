@@ -12,7 +12,6 @@ struct AndroLaunch: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate: AppDelegate
 
     var body: some Scene {
-        // Main window group - required even for menu bar apps
         WindowGroup(id: "main") {
             EmptyView()
                 .frame(width: 0, height: 0)
@@ -21,7 +20,6 @@ struct AndroLaunch: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 0, height: 0)
 
-        // Settings scene
         Settings {
             PreferencesView()
                 .environmentObject(DependencyContainer.shared.preferencesViewModel)

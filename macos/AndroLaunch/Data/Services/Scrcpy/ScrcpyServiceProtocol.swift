@@ -9,7 +9,10 @@ import Combine
 import Foundation
 
 protocol ScrcpyServiceProtocol {
+    var scrcpyPath: String? { get }
     var error: PassthroughSubject<String?, Never> { get }
+
+    func detectScrcpyPath() -> String?
 
     func mirrorDevice(
         deviceID: String,

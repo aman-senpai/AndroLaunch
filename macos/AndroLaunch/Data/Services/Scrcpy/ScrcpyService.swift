@@ -9,7 +9,7 @@ import Combine
 import Foundation
 
 final class ScrcpyService: ScrcpyServiceProtocol {
-    private var scrcpyPath: String?
+    private(set) var scrcpyPath: String?
     private var runningProcesses: [String: Process] = [:]
     private let processLock = NSLock()
     let error = PassthroughSubject<String?, Never>()
@@ -22,10 +22,10 @@ final class ScrcpyService: ScrcpyServiceProtocol {
     ]
 
     init() {
-        scrcpyPath = findScrcpyPath()
+        scrcpyPath = detectScrcpyPath()
     }
 
-    private func findScrcpyPath() -> String? {
+    func detectScrcpyPath() -> String? {
         for path in scrcpyPaths {
             if FileManager.default.isExecutableFile(atPath: path) {
                 return path

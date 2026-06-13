@@ -14,10 +14,12 @@ protocol DependencyContainerProtocol {
     var scrcpyService: any ScrcpyServiceProtocol { get }
     var emulatorService: any EmulatorServiceProtocol { get }
     var deviceRepository: any DeviceRepositoryProtocol { get }
+    var homebrewService: any HomebrewServiceProtocol { get }
 
     var menuViewModel: MenuViewModel { get }
     var preferencesViewModel: PreferencesViewModel { get }
     var emulatorManagerViewModel: EmulatorManagerViewModel { get }
+    var onboardingViewModel: OnboardingViewModel { get }
 }
 
 final class DependencyContainer: DependencyContainerProtocol {
@@ -30,10 +32,12 @@ final class DependencyContainer: DependencyContainerProtocol {
     private let scrcpyServiceInstance: any ScrcpyServiceProtocol
     private let emulatorServiceInstance: any EmulatorServiceProtocol
     private let deviceRepositoryInstance: any DeviceRepositoryProtocol
+    private let homebrewServiceInstance: any HomebrewServiceProtocol
 
     private let menuViewModelInstance: MenuViewModel
     private let preferencesViewModelInstance: PreferencesViewModel
     private let emulatorManagerViewModelInstance: EmulatorManagerViewModel
+    private let onboardingViewModelInstance: OnboardingViewModel
 
     // MARK: - Initialization
     private init() {
@@ -44,7 +48,8 @@ final class DependencyContainer: DependencyContainerProtocol {
         self.adbPairingServiceInstance = ADBPairingService(commandExecutor: commandExecutor, adbService: adbServiceInstance)
         self.scrcpyServiceInstance = ScrcpyService()
         self.emulatorServiceInstance = EmulatorService()
-        
+        self.homebrewServiceInstance = HomebrewService()
+
         self.deviceRepositoryInstance = DeviceRepository(
             adbService: adbServiceInstance,
             scrcpyService: scrcpyServiceInstance,
@@ -59,6 +64,11 @@ final class DependencyContainer: DependencyContainerProtocol {
         self.emulatorManagerViewModelInstance = EmulatorManagerViewModel(
             repository: deviceRepositoryInstance
         )
+        self.onboardingViewModelInstance = OnboardingViewModel(
+            adbService: adbServiceInstance,
+            scrcpyService: scrcpyServiceInstance,
+            homebrewService: homebrewServiceInstance
+        )
     }
 
     // MARK: - Public Properties
@@ -67,8 +77,10 @@ final class DependencyContainer: DependencyContainerProtocol {
     var scrcpyService: any ScrcpyServiceProtocol { scrcpyServiceInstance }
     var emulatorService: any EmulatorServiceProtocol { emulatorServiceInstance }
     var deviceRepository: any DeviceRepositoryProtocol { deviceRepositoryInstance }
+    var homebrewService: any HomebrewServiceProtocol { homebrewServiceInstance }
 
     var menuViewModel: MenuViewModel { menuViewModelInstance }
     var preferencesViewModel: PreferencesViewModel { preferencesViewModelInstance }
     var emulatorManagerViewModel: EmulatorManagerViewModel { emulatorManagerViewModelInstance }
+    var onboardingViewModel: OnboardingViewModel { onboardingViewModelInstance }
 }
