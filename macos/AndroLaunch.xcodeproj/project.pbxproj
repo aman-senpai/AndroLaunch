@@ -67,7 +67,6 @@
 			buildPhases = (
 				31A780342DB522BD00C8039D /* Sources */,
 				31A780352DB522BD00C8039D /* Frameworks */,
-				A1B2C3D4E5F6A7B8C9D0E001 /* Bundle ADB */,
 				31A780362DB522BD00C8039D /* Resources */,
 			);
 			buildRules = (
@@ -130,23 +129,6 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-/* Begin PBXShellScriptBuildPhase section */
-		A1B2C3D4E5F6A7B8C9D0E001 /* Bundle ADB */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Bundle ADB";
-			outputPaths = (
-				"$(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/adb",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "#!/bin/bash\n# Bundle ADB binary into app Resources\nset -e\n\nDEST=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources\"\nmkdir -p \"$DEST\"\n\n# Don't rebundle if already present and fresh enough (same day)\nif [ -x \"$DEST/adb\" ]; then\n    echo \"ADB already bundled at $DEST/adb\"\n    exit 0\nfi\n\n# Find system ADB\nfor candidate in /opt/homebrew/bin/adb /usr/local/bin/adb; do\n    if [ -x \"$candidate\" ]; then\n        REAL=\"$candidate\"\n        # Resolve symlink\n        if [ -L \"$candidate\" ]; then\n            REAL=\"$(readlink \"$candidate\")\"\n            # Handle relative symlinks in homebrew cellar\n            [[ \"$REAL\" != /* ]] && REAL=\"$(dirname \"$candidate\")/$REAL\"\n        fi\n        if [ -f \"$REAL\" ] && [ -x \"$REAL\" ]; then\n            cp \"$REAL\" \"$DEST/adb\"\n            chmod +x \"$DEST/adb\"\n            echo \"Bundled ADB from $REAL\"\n            exit 0\n        fi\n    fi\ndone\n\necho \"error: ADB not found. Install: brew install android-platform-tools\"\nexit 1\n";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		31A780342DB522BD00C8039D /* Sources */ = {

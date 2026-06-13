@@ -18,11 +18,16 @@
 
 ## 🛠️ Setup: Get Started in Minutes
 
-AndroLaunch bundles `adb` directly — no manual Android SDK install needed. For screen mirroring features, `scrcpy` is required.
+AndroLaunch requires `adb` to communicate with Android devices. For screen mirroring features, `scrcpy` is also required.
 
 ### macOS Installation
 
-1.  **Install scrcpy** (for screen mirroring): Open Terminal and run:
+1.  **Install ADB** (required): Open Terminal and run:
+    ```bash
+    brew install android-platform-tools
+    ```
+
+2.  **Install scrcpy** (for screen mirroring): Open Terminal and run:
     ```bash
     brew install scrcpy
     ```
@@ -30,17 +35,21 @@ AndroLaunch bundles `adb` directly — no manual Android SDK install needed. For
 
     > **Note**: Requires scrcpy v4.0+ for all features.
 
-2.  **Launch**: Download AndroLaunch, move to Applications, and run. ADB is bundled inside the app.
+3.  **Launch**: Download AndroLaunch, move to Applications, and run.
 
 ### Windows Installation
 
-1.  **Install scrcpy** (for screen mirroring): We recommend using **Scoop** or **Chocolatey**:
+1.  **Install ADB** (required): We recommend using **Scoop** or **Chocolatey**:
+    - **Scoop**: `scoop install adb`
+    - **Chocolatey**: `choco install adb`
+
+2.  **Install scrcpy** (for screen mirroring): We recommend using **Scoop** or **Chocolatey**:
     - **Scoop**: `scoop install scrcpy`
     - **Chocolatey**: `choco install scrcpy`
-    *Note: ADB is bundled with the app.*
 
     > **Note**: Requires scrcpy v4.0+ for all features.
-2.  **Launch**: Download the Windows version (exe) and run it.
+
+3.  **Launch**: Download the Windows version (exe) and run it.
 
 ### Step 2: Configure Your Android Device
 
@@ -59,7 +68,7 @@ Manage your device's core functions directly from your Mac menu bar:
 
 ### 🔌 Seamless Connectivity
 
-  * **Automatic Setup**: AndroLaunch automatically finds your installed ADB and manages the ADB daemon.
+  * **Automatic Setup**: AndroLaunch automatically discovers ADB from common install locations (Homebrew, Android Studio) and manages the ADB daemon.
   * **New! Wireless Pairing**: Connect your Android device wirelessly to your Mac using a simple **QR Code scan**—no cables required after the initial setup.
   * **New! ADB Shell**: Open a dedicated terminal for the selected device to execute custom ADB commands directly.
 
