@@ -10,7 +10,7 @@
 
 | Category                 | Features                                                                                        | New in Latest Release                                                                      |
 | :----------------------- | :---------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------- |
-| **Setup & Connectivity** | Automatic device detection, ADB status monitoring.                                              | **Wireless Pairing via QR Code**, dedicated ADB Shell terminal.                            |
+| **Setup & Connectivity** | First-launch onboarding wizard, automatic device detection, ADB status monitoring.             | **Onboarding Wizard**, **Wireless Pairing via QR Code**, dedicated ADB Shell terminal.      |
 | **Quick Controls**       | Toggle Wi-Fi, Bluetooth, Mobile Data, Location, DND, Auto-Rotate. Adjust volume and brightness. | **Uninstall Apps**, **Clear App Data**, install APKs from file.                            |
 | **App & System**         | List and launch installed apps, system reboot (normal, bootloader, recovery).                   | Improved app search and native menu integration.                                           |
 | **Screen Mirroring**     | Full device screen mirroring with custom resolution.                                            | **Flex Display**, **Camera Torch & Zoom**, **Aspect Ratio Lock**, **Custom Background**, **Keep Active**, **Render Fit**. |
@@ -22,20 +22,21 @@ AndroLaunch requires `adb` to communicate with Android devices. For screen mirro
 
 ### macOS Installation
 
-1.  **Install ADB** (required): Open Terminal and run:
-    ```bash
-    brew install android-platform-tools
-    ```
+1.  **Launch**: Download AndroLaunch, move to Applications, and run.
 
-2.  **Install scrcpy** (for screen mirroring): Open Terminal and run:
-    ```bash
-    brew install scrcpy
-    ```
-    Or click **Install with Homebrew** in-app when scrcpy features are used.
+2.  **Onboarding Wizard**: On first launch, AndroLaunch guides you through dependency setup with an interactive onboarding window:
+    - Automatically detects existing ADB and scrcpy installations
+    - Offers one-click **Install with Homebrew** for missing dependencies
+    - Shows real-time installation progress
+    - Lets you skip and configure later via Settings
 
     > **Note**: Requires scrcpy v4.0+ for all features.
 
-3.  **Launch**: Download AndroLaunch, move to Applications, and run.
+3.  **Manual CLI Install** (optional): Prefer the terminal?
+    ```bash
+    brew install android-platform-tools
+    brew install scrcpy
+    ```
 
 ### Windows Installation
 
