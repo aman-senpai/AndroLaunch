@@ -22,7 +22,18 @@ AndroLaunch requires `adb` to communicate with Android devices. For screen mirro
 
 ### macOS Installation
 
-1.  **Launch**: Download AndroLaunch, move to Applications, and run.
+**Option A — Homebrew (recommended)**
+
+```bash
+brew tap aman-senpai/tap
+brew install --cask androlaunch
+```
+
+This installs AndroLaunch.app to `/Applications`. Dependencies (`adb` and `scrcpy`) are installed automatically if missing.
+
+**Option B — Manual download**
+
+1.  **Launch**: Download AndroLaunch from [Releases](https://github.com/aman-senpai/AndroLaunch/releases), move to Applications, and run.
 
 2.  **Onboarding Wizard**: On first launch, AndroLaunch guides you through dependency setup with an interactive onboarding window:
     - Automatically detects existing ADB and scrcpy installations
