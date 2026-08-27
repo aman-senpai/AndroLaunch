@@ -640,19 +640,18 @@ ColumnLayout {
                         font: Tokens.font.body.small
                         elide: Text.ElideRight
                     }
-
                     IconButton {
-                        icon: "play_arrow"
-                        type: IconButton.Text
+                        icon: "screen_share"
+                        type: IconButton.Filled
                         padding: 2
-                        onClicked: AndroLaunch.launchApp(appItem.modelData.packageName)
+                        onClicked: AndroLaunch.startAppMirroring(appItem.modelData.packageName)
                     }
 
                     IconButton {
-                        icon: "screen_share"
+                        icon: "phone_android"
                         type: IconButton.Text
                         padding: 2
-                        onClicked: AndroLaunch.startAppMirroring(appItem.modelData.packageName)
+                        onClicked: AndroLaunch.launchApp(appItem.modelData.packageName)
                     }
 
                     IconButton {

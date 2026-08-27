@@ -134,17 +134,17 @@ PageBase {
 
                     // Action buttons
                     IconButton {
-                        icon: "launch"
-                        type: IconButton.Text
+                        icon: "screen_share"
+                        type: IconButton.Filled
                         padding: Tokens.padding.extraSmall
-                        onClicked: AndroLaunch.launchApp(appDelegate.modelData.packageName)
+                        onClicked: AndroLaunch.startAppMirroring(appDelegate.modelData.packageName)
                     }
 
                     IconButton {
-                        icon: "screen_share"
+                        icon: "phone_android"
                         type: IconButton.Text
                         padding: Tokens.padding.extraSmall
-                        onClicked: AndroLaunch.startAppMirroring(appDelegate.modelData.packageName)
+                        onClicked: AndroLaunch.launchApp(appDelegate.modelData.packageName)
                     }
 
                     IconButton {

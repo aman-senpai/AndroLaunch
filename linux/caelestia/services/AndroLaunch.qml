@@ -1164,11 +1164,13 @@ Singleton {
         function camera(): void {
             root.startCameraMirroring();
         }
-
         function launchApp(pkg: string): void {
-            root.launchApp(pkg);
+            root.startAppMirroring(pkg);
         }
 
+        function launchOnDevice(pkg: string): void {
+            root.launchApp(pkg);
+        }
         function reboot(mode: string): void {
             root.reboot(mode);
         }
