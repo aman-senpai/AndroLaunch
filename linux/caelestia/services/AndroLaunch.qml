@@ -323,7 +323,7 @@ Singleton {
             echo "DND:$(cmd settings get global zen_mode 2>/dev/null || settings get global zen_mode 2>/dev/null)";
             echo "ROT:$(settings get system accelerometer_rotation 2>/dev/null)";
             echo "BRI:$(settings get system screen_brightness 2>/dev/null)";
-        `;
+            echo "VOL:$(cmd media_session volume --stream 3 --get 2>/dev/null)";
 
         runAdb(["shell", cmd], (success, output) => {
             if (!success || !output) return;
@@ -342,7 +342,7 @@ Singleton {
             let dnd = false;
             let rot = false;
             let bri = 128;
-
+            let vol = -1;
             for (const line of lines) {
                 const l = line.trim();
                 if (l.startsWith("VER:")) ver = l.slice(4).trim();
@@ -361,7 +361,17 @@ Singleton {
                 else if (l.startsWith("DND:")) dnd = parseInt(l.replace("DND:zen_mode =", "").replace("DND:", "").trim(), 10) > 0;
                 else if (l.startsWith("ROT:")) rot = l.includes("1");
                 else if (l.startsWith("BRI:")) bri = parseInt(l.slice(4).trim(), 10) || 128;
-            }
+                else if (l.startsWith("VOL:") || l.includes("volume is")) {
+                    const match = l.match(/volume is (\d+) in range \[(\d+)\.\.(\d+)\]/i);
+                    if (match) {
+                        const cur = parseInt(match[1], 10);
+                        const min = parseInt(match[2], 10);
+                        const max = parseInt(match[3], 10);
+                        if (max > min) {
+                            vol = Math.round(((cur - min) / (max - min)) * 100);
+                        }
+                    }
+                }
 
             // Update device in list only if properties changed
             const currentList = [...root.devices];
@@ -378,7 +388,8 @@ Singleton {
                                   prevQA.location !== loc ||
                                   prevQA.dnd !== dnd ||
                                   prevQA.autoRotate !== rot ||
-                                  Math.abs((prevQA.brightness ?? 128) - bri) > 1;
+                                  Math.abs((prevQA.brightness ?? 128) - bri) > 1 ||
+                                  (vol >= 0 && Math.abs((prevQA.volume ?? 50) - vol) > 1);
 
                 const infoChanged = prev.androidVersion !== (ver || prev.androidVersion) ||
                                     prev.batteryLevel !== (batt >= 0 ? batt : prev.batteryLevel) ||
@@ -401,7 +412,7 @@ Singleton {
                             dnd: dnd,
                             autoRotate: rot,
                             brightness: bri,
-                            volume: prevQA.volume ?? 50
+                            volume: vol >= 0 ? vol : (prevQA.volume ?? 50)
                         }
                     });
                     currentList[idx] = updated;
@@ -502,14 +513,14 @@ Singleton {
     }
 
     function setVolume(val: int, stream = 3, deviceId = ""): void {
-        // Stream 3 is music/media
-        runAdb(["shell", `cmd media_session volume --stream ${stream} --set ${val}`], (success) => {
+        const clamped = Math.max(0, Math.min(100, val));
+        const targetIndex = Math.round((clamped / 100) * 150);
+        runAdb(["shell", `cmd media_session volume --stream ${stream} --set ${targetIndex}`], (success) => {
             if (success) {
-                updateQuickActionLocal("volume", val, deviceId);
+                updateQuickActionLocal("volume", clamped, deviceId);
             }
         }, deviceId);
     }
-
     function setRingerMode(mode: string, deviceId = ""): void {
         // mode: normal, vibrate, silent
         runAdb(["shell", `cmd media_session set_volume_mode ${mode}`], (success) => {

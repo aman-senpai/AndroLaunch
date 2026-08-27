@@ -17,8 +17,8 @@ ColumnLayout {
 
     required property PopoutState popouts
 
-    width: 360
-    spacing: Tokens.spacing.small
+    width: 420
+    spacing: Tokens.spacing.medium
 
     readonly property bool available: AndroLaunch.available
     readonly property var dev: AndroLaunch.activeDevice
@@ -36,7 +36,7 @@ ColumnLayout {
         signal clicked
 
         Layout.fillWidth: true
-        implicitHeight: 32
+        implicitHeight: 34
         radius: Tokens.rounding.small
         color: root.currentTab === tabId ? Colours.palette.m3primary : Colours.tPalette.m3surfaceContainer
 
@@ -49,8 +49,7 @@ ColumnLayout {
 
         RowLayout {
             anchors.centerIn: parent
-            spacing: 2
-
+            spacing: 4
             MaterialIcon {
                 text: tabBtn.iconName
                 color: root.currentTab === tabBtn.tabId ? Colours.palette.m3onPrimary : Colours.palette.m3onSurfaceVariant
@@ -346,8 +345,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         visible: root.available
-        spacing: 2
-
+        spacing: Tokens.spacing.extraSmall
         TabButton {
             tabId: "main"
             iconName: "tune"
@@ -495,9 +493,8 @@ ColumnLayout {
                 StyledSlider {
                     Layout.fillWidth: true
                     value: (root.qa?.volume ?? 50) / 100
-                    onInteraction: val => AndroLaunch.setVolume(Math.round(val * 15), 3)
+                    onInteraction: val => AndroLaunch.setVolume(Math.round(val * 100))
                 }
-            }
         }
 
         // Power & Reboot Row

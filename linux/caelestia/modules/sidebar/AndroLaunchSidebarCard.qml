@@ -252,7 +252,7 @@ StyledRect {
                 StyledSlider {
                     Layout.fillWidth: true
                     value: (root.qa?.volume ?? 50) / 100
-                    onInteraction: val => AndroLaunch.setVolume(Math.round(val * 15), 3)
+                    onInteraction: val => AndroLaunch.setVolume(Math.round(val * 100))
                 }
             }
         }

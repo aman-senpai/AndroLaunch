@@ -317,7 +317,7 @@ PageBase {
             label: qsTr("Media Volume")
             valueLabel: `${root.qa?.volume ?? 50}%`
             value: (root.qa?.volume ?? 50) / 100
-            onMoved: val => AndroLaunch.setVolume(Math.round(val * 15), 3)
+            onMoved: val => AndroLaunch.setVolume(Math.round(val * 100))
         }
 
         // Bi-directional Clipboard Sync
