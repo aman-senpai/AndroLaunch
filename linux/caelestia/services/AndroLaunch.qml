@@ -221,20 +221,22 @@ Singleton {
                 const isWireless = serial.includes(":");
                 const isEmulator = serial.startsWith("emulator-");
 
+                const existing = root.devices ? root.devices.find(d => d.id === serial) : null;
+
                 list.push({
                     id: serial,
                     serialNumber: serial,
                     name: deviceName,
-                    model: model || product || (isEmulator ? "Android Emulator" : "Android Device"),
+                    model: model || product || (existing?.model ?? (isEmulator ? "Android Emulator" : "Android Device")),
                     status: status,
                     isConnected: isConnected,
                     isWireless: isWireless,
                     isEmulator: isEmulator,
-                    androidVersion: "",
-                    apiLevel: "",
-                    batteryLevel: -1,
-                    isCharging: false,
-                    quickActions: {
+                    androidVersion: existing?.androidVersion ?? "",
+                    apiLevel: existing?.apiLevel ?? "",
+                    batteryLevel: existing?.batteryLevel ?? -1,
+                    isCharging: existing?.isCharging ?? false,
+                    quickActions: existing?.quickActions ?? {
                         wifi: false,
                         bluetooth: false,
                         darkMode: false,
@@ -250,7 +252,15 @@ Singleton {
             }
         }
 
-        root.devices = list;
+        // Only update if list membership or connection states changed
+        const hasChanges = !root.devices || root.devices.length !== list.length || list.some((d, idx) => {
+            const cur = root.devices[idx];
+            return !cur || cur.id !== d.id || cur.status !== d.status;
+        });
+
+        if (hasChanges) {
+            root.devices = list;
+        }
 
         // Update previous devices list
         for (const dev of list) {
@@ -278,7 +288,7 @@ Singleton {
                 const firstConnected = list.find(d => d.isConnected);
                 activeDeviceId = firstConnected ? firstConnected.id : list[0].id;
             }
-            // Fetch detailed info for all connected devices
+            // Fetch detailed info for connected devices
             for (const dev of list) {
                 if (dev.isConnected) {
                     fetchDeviceInfo(dev.id);
@@ -353,30 +363,50 @@ Singleton {
                 else if (l.startsWith("BRI:")) bri = parseInt(l.slice(4).trim(), 10) || 128;
             }
 
-            // Update device in list
+            // Update device in list only if properties changed
             const currentList = [...root.devices];
             const idx = currentList.findIndex(d => d.id === deviceId);
             if (idx !== -1) {
-                const updated = Object.assign({}, currentList[idx], {
-                    androidVersion: ver || currentList[idx].androidVersion,
-                    apiLevel: sdk || currentList[idx].apiLevel,
-                    batteryLevel: batt >= 0 ? batt : currentList[idx].batteryLevel,
-                    isCharging: charging,
-                    quickActions: {
-                        wifi: wifi,
-                        bluetooth: bt,
-                        darkMode: dark,
-                        airplaneMode: air,
-                        mobileData: data,
-                        location: loc,
-                        dnd: dnd,
-                        autoRotate: rot,
-                        brightness: bri,
-                        volume: currentList[idx].quickActions?.volume ?? 50
-                    }
-                });
-                currentList[idx] = updated;
-                root.devices = currentList;
+                const prev = currentList[idx];
+                const prevQA = prev.quickActions || {};
+
+                const qaChanged = prevQA.wifi !== wifi ||
+                                  prevQA.bluetooth !== bt ||
+                                  prevQA.darkMode !== dark ||
+                                  prevQA.airplaneMode !== air ||
+                                  prevQA.mobileData !== data ||
+                                  prevQA.location !== loc ||
+                                  prevQA.dnd !== dnd ||
+                                  prevQA.autoRotate !== rot ||
+                                  Math.abs((prevQA.brightness ?? 128) - bri) > 1;
+
+                const infoChanged = prev.androidVersion !== (ver || prev.androidVersion) ||
+                                    prev.batteryLevel !== (batt >= 0 ? batt : prev.batteryLevel) ||
+                                    prev.isCharging !== charging ||
+                                    qaChanged;
+
+                if (infoChanged) {
+                    const updated = Object.assign({}, prev, {
+                        androidVersion: ver || prev.androidVersion,
+                        apiLevel: sdk || prev.apiLevel,
+                        batteryLevel: batt >= 0 ? batt : prev.batteryLevel,
+                        isCharging: charging,
+                        quickActions: {
+                            wifi: wifi,
+                            bluetooth: bt,
+                            darkMode: dark,
+                            airplaneMode: air,
+                            mobileData: data,
+                            location: loc,
+                            dnd: dnd,
+                            autoRotate: rot,
+                            brightness: bri,
+                            volume: prevQA.volume ?? 50
+                        }
+                    });
+                    currentList[idx] = updated;
+                    root.devices = currentList;
+                }
             }
         }, deviceId);
     }
