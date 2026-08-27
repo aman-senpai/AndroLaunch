@@ -481,3 +481,37 @@ function generate(text) {
     }
     return { size: count, matrix: matrix };
 }
+
+function toSVG(text, margin, dark, light) {
+    if (!text || text.length === 0)
+        return "";
+    margin = (margin === undefined) ? 4 : margin;
+    dark = dark || "#000000";
+    light = light || "#ffffff";
+
+    try {
+        const qr = generate(text);
+        const size = qr.size;
+        const matrix = qr.matrix;
+        const total = size + margin * 2;
+
+        let path = "";
+        for (let r = 0; r < size; r++) {
+            for (let c = 0; c < size; c++) {
+                if (matrix[r][c] === 1) {
+                    path += `M${c + margin},${r + margin}h1v1h-1z `;
+                }
+            }
+        }
+
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${total}" width="100%" height="100%" shape-rendering="crispEdges">` +
+                    `<rect width="${total}" height="${total}" fill="${light}"/>` +
+                    `<path d="${path}" fill="${dark}"/>` +
+                    `</svg>`;
+
+        return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+    } catch (e) {
+        console.warn("QR toSVG error:", e);
+        return "";
+    }
+}

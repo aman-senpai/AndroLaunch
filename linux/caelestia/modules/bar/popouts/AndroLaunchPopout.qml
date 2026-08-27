@@ -898,22 +898,21 @@ ColumnLayout {
                 // QR Frame
                 StyledRect {
                     Layout.alignment: Qt.AlignHCenter
-                    implicitWidth: 160
-                    implicitHeight: 160
+                    implicitWidth: 180
+                    implicitHeight: 180
                     radius: Tokens.rounding.small
                     color: "#ffffff"
 
                     QRCodeView {
                         anchors.centerIn: parent
-                        width: 144
-                        height: 144
+                        width: 160
+                        height: 160
                         text: AndroLaunch.qrString
                         darkColor: "#000000"
                         lightColor: "#ffffff"
-                        quietZone: 1
+                        quietZone: 4
                     }
                 }
-
                 // Code & Regenerate
                 RowLayout {
                     Layout.alignment: Qt.AlignHCenter

@@ -1060,6 +1060,7 @@ Singleton {
     // Initialization & Polling
     Component.onCompleted: {
         checkPaths();
+        startQRPairing();
     }
 
     Timer {
