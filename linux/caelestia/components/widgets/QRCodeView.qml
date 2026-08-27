@@ -5,12 +5,10 @@ import Caelestia.Config
 import "../../utils/QRCode.js" as QR
 
 Item {
-    id: root
-
     property string text: ""
     property color darkColor: "#000000"
     property color lightColor: "#ffffff"
-    property int quietZone: 2
+    property int quietZone: 4
 
     implicitWidth: 200
     implicitHeight: 200

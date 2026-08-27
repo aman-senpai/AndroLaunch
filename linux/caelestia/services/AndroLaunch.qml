@@ -772,19 +772,33 @@ Singleton {
     function checkMdnsPairing(): void {
         if (!isQRPairingActive || !pairingPassword) return;
 
-        // Run adb mdns services or check for pairing endpoints
-        runAdb(["mdns", "services"], (success, output) => {
+        // Use avahi-browse (Linux mDNS) with fallback to adb mdns
+        runCommand(["sh", "-c", "avahi-browse -rpt -t _adb-tls-pairing._tcp 2>/dev/null || adb mdns services 2>/dev/null || true"], (success, output) => {
             if (!success || !output) return;
             const lines = output.split("\n");
             for (const line of lines) {
-                if (line.includes("_adb-tls-pairing._tcp")) {
+                if (line.startsWith("=") && line.includes("_adb-tls-pairing._tcp")) {
+                    const fields = line.split(";");
+                    if (fields.length >= 9) {
+                        const ip = fields[7];
+                        const port = fields[8];
+                        if (ip && port && !ip.includes(":")) {
+                            qrPairingStatus = qsTr("Found device (%1:%2)! Pairing...").arg(ip).arg(port);
+                            pairWireless(ip, port, pairingPassword);
+                            stopQRPairing();
+                            Qt.callLater(() => autoConnectAfterPair(ip), 2500);
+                            break;
+                        }
+                    }
+                } else if (line.includes("_adb-tls-pairing._tcp")) {
                     const parts = line.trim().split(/\s+/);
                     const endpoint = parts.find(p => p.includes(":") && !p.includes("_"));
                     if (endpoint) {
-                        qrPairingStatus = qsTr("Found device, completing pairing...");
                         const [ip, port] = endpoint.split(":");
+                        qrPairingStatus = qsTr("Found device (%1:%2)! Pairing...").arg(ip).arg(port);
                         pairWireless(ip, port, pairingPassword);
                         stopQRPairing();
+                        Qt.callLater(() => autoConnectAfterPair(ip), 2500);
                         break;
                     }
                 }
@@ -792,6 +806,24 @@ Singleton {
         });
     }
 
+    function autoConnectAfterPair(ip: string): void {
+        runCommand(["sh", "-c", `avahi-browse -rpt -t _adb-tls-connect._tcp 2>/dev/null | grep "${ip}" || true`], (success, output) => {
+            let connectPort = "5555";
+            if (success && output) {
+                const lines = output.split("\n");
+                for (const line of lines) {
+                    if (line.startsWith("=") && line.includes(ip)) {
+                        const fields = line.split(";");
+                        if (fields.length >= 9) {
+                            connectPort = fields[8] || "5555";
+                            break;
+                        }
+                    }
+                }
+            }
+            connectWireless(ip, connectPort);
+        });
+    }
     Timer {
         id: qrPairTimer
         interval: 2000
