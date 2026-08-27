@@ -596,16 +596,19 @@ Singleton {
         const opts = Object.assign({}, scrcpyConfig, customOpts);
         let args = [
             "-s", targetId,
+            "--new-display",
             "--start-app=" + packageName,
             "--window-title", "AndroLaunch - " + packageName
         ];
 
         if (opts.maxFps > 0) args.push("--max-fps", "" + opts.maxFps);
+        if (opts.bitRate > 0) args.push("-b", opts.bitRate + "M");
         if (!opts.audioEnabled) args.push("--no-audio");
         if (opts.keepActive) args.push("--stay-awake");
+        if (opts.borderless) args.push("--window-borderless");
 
         const bin = scrcpyPath && scrcpyPath.length > 0 ? scrcpyPath : "scrcpy";
-        Toaster.toast(qsTr("Launching App"), qsTr("Opening %1 in Scrcpy...").arg(packageName), "apps");
+        Toaster.toast(qsTr("Launching App"), qsTr("Opening %1 in new window...").arg(packageName), "apps");
         Quickshell.execDetached([bin, ...args]);
     }
 

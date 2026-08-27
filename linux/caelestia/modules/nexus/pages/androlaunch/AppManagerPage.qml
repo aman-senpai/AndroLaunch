@@ -88,8 +88,11 @@ PageBase {
                 radius: Tokens.rounding.extraSmall
                 color: Colours.tPalette.m3surfaceContainer
 
+                StateLayer {
+                    onClicked: AndroLaunch.startAppMirroring(appDelegate.modelData.packageName)
+                }
+
                 RowLayout {
-                    id: appRowLayout
 
                     anchors.fill: parent
                     anchors.margins: Tokens.padding.medium

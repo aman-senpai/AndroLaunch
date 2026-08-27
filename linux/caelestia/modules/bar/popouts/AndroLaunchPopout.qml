@@ -620,8 +620,11 @@ ColumnLayout {
                 radius: Tokens.rounding.extraSmall
                 color: Colours.tPalette.m3surfaceContainer
 
+                StateLayer {
+                    onClicked: AndroLaunch.startAppMirroring(appItem.modelData.packageName)
+                }
+
                 RowLayout {
-                    anchors.fill: parent
                     anchors.margins: 4
                     spacing: Tokens.spacing.small
 
