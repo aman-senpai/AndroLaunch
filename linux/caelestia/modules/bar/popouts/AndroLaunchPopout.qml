@@ -688,39 +688,38 @@ ColumnLayout {
             spacing: 2
 
             ConfigPill {
-                text: "Flex"
-                selected: AndroLaunch.scrcpyConfig.flexDisplay
+                text: "Original"
+                selected: !AndroLaunch.scrcpyConfig.newDisplay && AndroLaunch.scrcpyConfig.maxSize === 0
                 onClicked: {
-                    const conf = Object.assign({}, AndroLaunch.scrcpyConfig, { flexDisplay: true, maxSize: 0 });
+                    const conf = Object.assign({}, AndroLaunch.scrcpyConfig, { newDisplay: false, flexDisplay: false, maxSize: 0 });
                     AndroLaunch.scrcpyConfig = conf;
                 }
             }
             ConfigPill {
                 text: "1080p"
-                selected: !AndroLaunch.scrcpyConfig.flexDisplay && AndroLaunch.scrcpyConfig.maxSize === 1080
+                selected: !AndroLaunch.scrcpyConfig.newDisplay && AndroLaunch.scrcpyConfig.maxSize === 1080
                 onClicked: {
-                    const conf = Object.assign({}, AndroLaunch.scrcpyConfig, { flexDisplay: false, maxSize: 1080 });
+                    const conf = Object.assign({}, AndroLaunch.scrcpyConfig, { newDisplay: false, flexDisplay: false, maxSize: 1080 });
                     AndroLaunch.scrcpyConfig = conf;
                 }
             }
             ConfigPill {
                 text: "720p"
-                selected: !AndroLaunch.scrcpyConfig.flexDisplay && AndroLaunch.scrcpyConfig.maxSize === 720
+                selected: !AndroLaunch.scrcpyConfig.newDisplay && AndroLaunch.scrcpyConfig.maxSize === 720
                 onClicked: {
-                    const conf = Object.assign({}, AndroLaunch.scrcpyConfig, { flexDisplay: false, maxSize: 720 });
+                    const conf = Object.assign({}, AndroLaunch.scrcpyConfig, { newDisplay: false, flexDisplay: false, maxSize: 720 });
                     AndroLaunch.scrcpyConfig = conf;
                 }
             }
             ConfigPill {
-                text: "4K"
-                selected: !AndroLaunch.scrcpyConfig.flexDisplay && AndroLaunch.scrcpyConfig.maxSize === 3840
+                text: "Virtual Flex"
+                selected: AndroLaunch.scrcpyConfig.newDisplay && AndroLaunch.scrcpyConfig.flexDisplay
                 onClicked: {
-                    const conf = Object.assign({}, AndroLaunch.scrcpyConfig, { flexDisplay: false, maxSize: 3840 });
+                    const conf = Object.assign({}, AndroLaunch.scrcpyConfig, { newDisplay: true, flexDisplay: true, maxSize: 0 });
                     AndroLaunch.scrcpyConfig = conf;
                 }
             }
         }
-
         StyledText {
             Layout.topMargin: Tokens.spacing.extraSmall
             text: qsTr("Frame Rate Limit")

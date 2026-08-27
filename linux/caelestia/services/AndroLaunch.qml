@@ -68,7 +68,8 @@ Singleton {
 
     // Default Scrcpy Settings
     property var scrcpyConfig: ({
-        flexDisplay: true,
+        newDisplay: false,
+        flexDisplay: false,
         audioEnabled: true,
         keepActive: true,
         lockAspectRatio: true,
@@ -76,8 +77,6 @@ Singleton {
         maxFps: 60,
         bitRate: 8,
         maxSize: 0,
-        renderFit: "contain",
-        backgroundColor: "#1e1e2e",
         cameraFacing: "back",
         cameraTorch: false,
         cameraZoom: 1.0
@@ -536,12 +535,13 @@ Singleton {
         const opts = Object.assign({}, scrcpyConfig, customOpts);
         let args = ["-s", targetId, "--window-title", "AndroLaunch - " + targetId];
 
-        if (opts.flexDisplay) {
-            args.push("--flex-display");
+        if (opts.newDisplay) {
+            args.push("--new-display");
+            if (opts.flexDisplay)
+                args.push("--flex-display");
         } else if (opts.maxSize > 0) {
             args.push("-m", "" + opts.maxSize);
         }
-
         if (opts.maxFps > 0)
             args.push("--max-fps", "" + opts.maxFps);
         if (opts.bitRate > 0)
