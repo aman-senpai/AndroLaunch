@@ -70,7 +70,7 @@ Singleton {
     property var scrcpyConfig: ({
         newDisplay: false,
         flexDisplay: false,
-        audioEnabled: true,
+        audioEnabled: false,
         keepActive: true,
         lockAspectRatio: true,
         borderless: false,
@@ -596,10 +596,15 @@ Singleton {
         const opts = Object.assign({}, scrcpyConfig, customOpts);
         let args = [
             "-s", targetId,
-            "--new-display",
             "--start-app=" + packageName,
             "--window-title", "AndroLaunch - " + packageName
         ];
+
+        if (opts.newDisplay) {
+            args.push("--new-display");
+            if (opts.flexDisplay)
+                args.push("--flex-display");
+        }
 
         if (opts.maxFps > 0) args.push("--max-fps", "" + opts.maxFps);
         if (opts.bitRate > 0) args.push("-b", opts.bitRate + "M");
@@ -608,7 +613,7 @@ Singleton {
         if (opts.borderless) args.push("--window-borderless");
 
         const bin = scrcpyPath && scrcpyPath.length > 0 ? scrcpyPath : "scrcpy";
-        Toaster.toast(qsTr("Launching App"), qsTr("Opening %1 in new window...").arg(packageName), "apps");
+        Toaster.toast(qsTr("Launching App"), qsTr("Opening %1 in Scrcpy...").arg(packageName), "apps");
         Quickshell.execDetached([bin, ...args]);
     }
 
@@ -618,41 +623,83 @@ Singleton {
         if (!targetId) return;
 
         loadingApps = true;
-        runAdb(["shell", "pm", "list", "packages", "-f", "-3"], (success, output) => {
-            loadingApps = false;
-            if (!success || !output) {
-                root.apps = [];
-                return;
-            }
+        const bin = scrcpyPath && scrcpyPath.length > 0 ? scrcpyPath : "scrcpy";
+        runCommand([bin, "-s", targetId, "--list-apps"], (scrcpySuccess, scrcpyOutput) => {
+            if (scrcpySuccess && scrcpyOutput && scrcpyOutput.includes("List of apps:")) {
+                loadingApps = false;
+                const lines = scrcpyOutput.split("\n");
+                const result = [];
+                let startParsing = false;
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (trimmed.includes("List of apps:")) {
+                        startParsing = true;
+                        continue;
+                    }
+                    if (!startParsing) continue;
 
-            const lines = output.split("\n");
-            const result = [];
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed.startsWith("package:")) continue;
-
-                const clean = trimmed.slice(8);
-                const eqIdx = clean.lastIndexOf("=");
-                if (eqIdx !== -1) {
-                    const apkPath = clean.slice(0, eqIdx);
-                    const pkg = clean.slice(eqIdx + 1);
-                    const lastSlash = apkPath.lastIndexOf("/");
-                    const apkName = lastSlash !== -1 ? apkPath.slice(lastSlash + 1) : apkPath;
-                    const displayName = apkName.replace(/\.apk$/i, "").replace(/[-_]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-
-                    result.push({
-                        id: pkg,
-                        name: displayName || pkg,
-                        packageName: pkg,
-                        apkPath: apkPath,
-                        icon: "android"
+                    const match = trimmed.match(/^([\*\-])\s+(.+?)\s+([a-zA-Z0-9_\.]+)$/);
+                    if (match) {
+                        const isSystem = match[1] === "*";
+                        const appName = match[2].trim();
+                        const pkg = match[3].trim();
+                        result.push({
+                            id: pkg,
+                            name: appName,
+                            packageName: pkg,
+                            isSystem: isSystem,
+                            icon: "android"
+                        });
+                    }
+                }
+                if (result.length > 0) {
+                    result.sort((a, b) => {
+                        if (a.isSystem !== b.isSystem)
+                            return a.isSystem ? 1 : -1;
+                        return a.name.localeCompare(b.name);
                     });
+                    root.apps = result;
+                    return;
                 }
             }
 
-            result.sort((a, b) => a.name.localeCompare(b.name));
-            root.apps = result;
-        }, targetId);
+            // Fallback to pm list packages
+            runAdb(["shell", "pm", "list", "packages", "-f", "-3"], (pmSuccess, pmOutput) => {
+                loadingApps = false;
+                if (!pmSuccess || !pmOutput) {
+                    root.apps = [];
+                    return;
+                }
+
+                const lines = pmOutput.split("\n");
+                const result = [];
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (!trimmed.startsWith("package:")) continue;
+
+                    const clean = trimmed.slice(8);
+                    const eqIdx = clean.lastIndexOf("=");
+                    if (eqIdx !== -1) {
+                        const apkPath = clean.slice(0, eqIdx);
+                        const pkg = clean.slice(eqIdx + 1);
+                        const lastSlash = apkPath.lastIndexOf("/");
+                        const apkName = lastSlash !== -1 ? apkPath.slice(lastSlash + 1) : apkPath;
+                        const displayName = apkName.replace(/\.apk$/i, "").replace(/[-_]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+
+                        result.push({
+                            id: pkg,
+                            name: displayName || pkg,
+                            packageName: pkg,
+                            isSystem: false,
+                            icon: "android"
+                        });
+                    }
+                }
+
+                result.sort((a, b) => a.name.localeCompare(b.name));
+                root.apps = result;
+            }, targetId);
+        });
     }
 
     function launchApp(packageName: string, deviceId = ""): void {
