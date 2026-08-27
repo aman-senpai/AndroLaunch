@@ -508,16 +508,17 @@ Singleton {
     function setVolume(val: int, stream = 3, deviceId = ""): void {
         const clamped = Math.max(0, Math.min(100, val));
         const targetIndex = Math.round((clamped / 100) * 150);
-        runAdb(["shell", "cmd media_session volume --stream " + stream + " --set " + targetIndex], (success) => {
-            if (success) {
-                updateQuickActionLocal("volume", clamped, deviceId);
+        updateQuickActionLocal("volume", clamped, deviceId);
+        runAdb(["shell", "cmd", "media_session", "volume", "--stream", "" + stream, "--set", "" + targetIndex], (success) => {
+            if (!success) {
+                runAdb(["shell", "media", "volume", "--stream", "" + stream, "--set", "" + targetIndex]);
             }
         }, deviceId);
     }
 
     function setRingerMode(mode: string, deviceId = ""): void {
         // mode: normal, vibrate, silent
-        runAdb(["shell", "cmd media_session set_volume_mode " + mode], (success) => {
+        runAdb(["shell", "cmd", "media_session", "set_volume_mode", mode], (success) => {
             if (success) {
                 Toaster.toast(qsTr("Ringer: %1").arg(mode), qsTr("Android ringer mode updated"), "notifications");
             }
@@ -526,11 +527,6 @@ Singleton {
 
     // Screen & Camera Mirroring (Scrcpy)
     function startMirroring(customOpts = {}, deviceId = ""): void {
-        if (!scrcpyAvailable) {
-            Toaster.toast(qsTr("Scrcpy Not Found"), qsTr("Please install scrcpy to enable screen mirroring"), "warning", Toast.Type.Warning);
-            return;
-        }
-
         const targetId = deviceId || (activeDevice ? activeDevice.id : "");
         if (!targetId) {
             Toaster.toast(qsTr("No Device"), qsTr("Connect an Android device to mirror"), "smartphone", Toast.Type.Warning);
@@ -538,10 +534,10 @@ Singleton {
         }
 
         const opts = Object.assign({}, scrcpyConfig, customOpts);
-        let args = ["--serial", targetId, "--window-title", "AndroLaunch - " + targetId];
+        let args = ["-s", targetId, "--window-title", "AndroLaunch - " + targetId];
 
         if (opts.flexDisplay) {
-            // Flex mode allows free resizing
+            args.push("--flex-display");
         } else if (opts.maxSize > 0) {
             args.push("-m", "" + opts.maxSize);
         }
@@ -549,38 +545,31 @@ Singleton {
         if (opts.maxFps > 0)
             args.push("--max-fps", "" + opts.maxFps);
         if (opts.bitRate > 0)
-            args.push("--bit-rate", opts.bitRate + "M");
+            args.push("-b", opts.bitRate + "M");
+        if (!opts.audioEnabled)
             args.push("--no-audio");
         if (opts.keepActive)
-            args.push("--keep-active");
+            args.push("--stay-awake");
         if (opts.borderless)
             args.push("--window-borderless");
         if (!opts.lockAspectRatio)
             args.push("--no-window-aspect-ratio-lock");
-        if (opts.renderFit)
-            args.push("--render-fit", opts.renderFit);
-        if (opts.backgroundColor)
-            args.push("--background-color", opts.backgroundColor);
 
+        const bin = scrcpyPath && scrcpyPath.length > 0 ? scrcpyPath : "scrcpy";
         Toaster.toast(qsTr("Starting Mirror"), qsTr("Launching Scrcpy for %1...").arg(targetId), "screen_share");
-        Quickshell.execDetached([scrcpyPath, ...args]);
+        Quickshell.execDetached([bin, ...args]);
 
         const mirrors = Object.assign({}, activeMirrors, { [targetId]: { isScreen: true } });
         activeMirrors = mirrors;
     }
 
     function startCameraMirroring(customOpts = {}, deviceId = ""): void {
-        if (!scrcpyAvailable) {
-            Toaster.toast(qsTr("Scrcpy Not Found"), qsTr("Please install scrcpy to enable camera mirroring"), "warning", Toast.Type.Warning);
-            return;
-        }
-
         const targetId = deviceId || (activeDevice ? activeDevice.id : "");
         if (!targetId) return;
 
         const opts = Object.assign({}, scrcpyConfig, customOpts);
         let args = [
-            "--serial", targetId,
+            "-s", targetId,
             "--video-source=camera",
             "--window-title", "AndroLaunch Camera - " + targetId,
             "--camera-facing=" + (opts.cameraFacing || "back")
@@ -593,32 +582,31 @@ Singleton {
         if (opts.maxFps > 0)
             args.push("--max-fps", "" + opts.maxFps);
         if (opts.bitRate > 0)
-            args.push("--bit-rate", opts.bitRate + "M");
+            args.push("-b", opts.bitRate + "M");
+
+        const bin = scrcpyPath && scrcpyPath.length > 0 ? scrcpyPath : "scrcpy";
         Toaster.toast(qsTr("Camera Mirror"), qsTr("Opening camera stream for %1...").arg(targetId), "videocam");
-        Quickshell.execDetached([scrcpyPath, ...args]);
+        Quickshell.execDetached([bin, ...args]);
     }
 
     function startAppMirroring(packageName: string, customOpts = {}, deviceId = ""): void {
-        if (!scrcpyAvailable) {
-            launchApp(packageName, deviceId);
-            return;
-        }
-
         const targetId = deviceId || (activeDevice ? activeDevice.id : "");
         if (!targetId) return;
 
         const opts = Object.assign({}, scrcpyConfig, customOpts);
         let args = [
-            "--serial", targetId,
+            "-s", targetId,
             "--start-app=" + packageName,
             "--window-title", "AndroLaunch - " + packageName
         ];
 
         if (opts.maxFps > 0) args.push("--max-fps", "" + opts.maxFps);
-        if (opts.keepActive) args.push("--keep-active");
+        if (!opts.audioEnabled) args.push("--no-audio");
+        if (opts.keepActive) args.push("--stay-awake");
 
+        const bin = scrcpyPath && scrcpyPath.length > 0 ? scrcpyPath : "scrcpy";
         Toaster.toast(qsTr("Launching App"), qsTr("Opening %1 in Scrcpy...").arg(packageName), "apps");
-        Quickshell.execDetached([scrcpyPath, ...args]);
+        Quickshell.execDetached([bin, ...args]);
     }
 
     // App Management
