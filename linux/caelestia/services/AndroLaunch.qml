@@ -18,7 +18,7 @@ Singleton {
     readonly property bool scrcpyAvailable: scrcpyPath.length > 0
     property bool daemonRunning: false
     property bool scanning: false
-    property list<var> previousDevices: []
+    property var previousDevices: []
     property string connectingDeviceId: ""
 
     // QR Code Pairing State (macOS ADBPairingService match)
@@ -26,11 +26,14 @@ Singleton {
     property string pairingPassword: ""
     property bool isQRPairingActive: false
     property string qrPairingStatus: ""
+
+    // Device list and active device
+    property var devices: []
     property string activeDeviceId: ""
     readonly property var activeDevice: {
         if (!devices || devices.length === 0)
             return null;
-        if (activeDeviceId.length > 0) {
+        if (activeDeviceId && activeDeviceId.length > 0) {
             const found = devices.find(d => d.id === activeDeviceId);
             if (found)
                 return found;
@@ -43,19 +46,18 @@ Singleton {
     property var activeMirrors: ({}) // map: deviceId -> { isScreen: bool, isCamera: bool, app: string }
 
     // Apps list for active device
-    property list<var> apps: []
+    property var apps: []
     property bool loadingApps: false
 
     // Files explorer state
-    property list<var> files: []
+    property var files: []
     property string currentPath: "/sdcard"
     property bool loadingFiles: false
 
     // AVD / Emulators
-    property list<var> avds: []
+    property var avds: []
     property bool loadingAvds: false
 
-    // Custom shell commands
     property list<var> customCommands: [
         { id: "1", name: "Take Screenshot", command: "screencap -p /sdcard/screenshot.png && echo 'Saved to /sdcard/screenshot.png'", isBackground: false },
         { id: "2", name: "Show IP Address", command: "ip addr show wlan0 | grep 'inet ' | awk '{print $2}'", isBackground: false },
@@ -173,7 +175,7 @@ Singleton {
 
     // Scan devices
     function scanDevices(): void {
-        if (!available || scanning)
+        if (!adbPath || scanning)
             return;
 
         scanning = true;
@@ -1020,7 +1022,7 @@ Singleton {
             for (const line of lines) {
                 const name = line.trim();
                 if (!name) continue;
-                const isRunning = root.devices.some(d => d.isEmulator && d.name.includes(name));
+                const isRunning = root.devices && root.devices.some(d => d.isEmulator && d.name.includes(name));
                 result.push({
                     name: name,
                     isRunning: isRunning
@@ -1029,7 +1031,6 @@ Singleton {
             root.avds = result;
         });
     }
-
     function startAvd(name: string): void {
         Toaster.toast(qsTr("Starting Emulator"), qsTr("Launching %1...").arg(name), "phone_android");
         Quickshell.execDetached(["emulator", "-avd", name]);
@@ -1044,10 +1045,15 @@ Singleton {
 
     Timer {
         id: pollTimer
-        interval: 5000
-        running: root.available
+        interval: 3000
+        running: true
         repeat: true
-        onTriggered: root.scanDevices()
+        onTriggered: {
+            if (root.adbPath.length > 0)
+                root.scanDevices();
+            else
+                root.checkPaths();
+        }
     }
 
     // IPC Handler for CLI
