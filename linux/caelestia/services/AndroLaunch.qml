@@ -309,22 +309,7 @@ Singleton {
 
     // Fetch device info (battery, version, quick toggles)
     function fetchDeviceInfo(deviceId: string): void {
-        const cmd = `
-            echo "MODEL:$(getprop ro.product.model)";
-            echo "VER:$(getprop ro.build.version.release)";
-            echo "SDK:$(getprop ro.build.version.sdk)";
-            dumpsys battery | grep -E "level:|powered:";
-            echo "WIFI:$(settings get global wifi_on 2>/dev/null)";
-            echo "BT:$(settings get global bluetooth_on 2>/dev/null)";
-            echo "DARK:$(cmd uimode night 2>/dev/null)";
-            echo "AIR:$(settings get global airplane_mode_on 2>/dev/null)";
-            echo "DATA:$(settings get global mobile_data 2>/dev/null)";
-            echo "LOC:$(settings get secure location_mode 2>/dev/null)";
-            echo "DND:$(cmd settings get global zen_mode 2>/dev/null || settings get global zen_mode 2>/dev/null)";
-            echo "ROT:$(settings get system accelerometer_rotation 2>/dev/null)";
-            echo "BRI:$(settings get system screen_brightness 2>/dev/null)";
-            echo "VOL:$(cmd media_session volume --stream 3 --get 2>/dev/null)";
-
+        const cmd = "echo \"MODEL:$(getprop ro.product.model)\"; echo \"VER:$(getprop ro.build.version.release)\"; echo \"SDK:$(getprop ro.build.version.sdk)\"; dumpsys battery | grep -E \"level:|powered:\"; echo \"WIFI:$(settings get global wifi_on 2>/dev/null)\"; echo \"BT:$(settings get global bluetooth_on 2>/dev/null)\"; echo \"DARK:$(cmd uimode night 2>/dev/null)\"; echo \"AIR:$(settings get global airplane_mode_on 2>/dev/null)\"; echo \"DATA:$(settings get global mobile_data 2>/dev/null)\"; echo \"LOC:$(settings get secure location_mode 2>/dev/null)\"; echo \"DND:$(cmd settings get global zen_mode 2>/dev/null || settings get global zen_mode 2>/dev/null)\"; echo \"ROT:$(settings get system accelerometer_rotation 2>/dev/null)\"; echo \"BRI:$(settings get system screen_brightness 2>/dev/null)\"; echo \"VOL:$(cmd media_session volume --stream 3 --get 2>/dev/null)\";";
         runAdb(["shell", cmd], (success, output) => {
             if (!success || !output) return;
 
@@ -372,7 +357,7 @@ Singleton {
                         }
                     }
                 }
-
+            }
             // Update device in list only if properties changed
             const currentList = [...root.devices];
             const idx = currentList.findIndex(d => d.id === deviceId);
@@ -455,7 +440,7 @@ Singleton {
 
     function toggleAirplaneMode(enable: bool, deviceId = ""): void {
         const val = enable ? "1" : "0";
-        runAdb(["shell", `settings put global airplane_mode_on ${val} && am broadcast -a android.intent.action.AIRPLANE_MODE`], (success) => {
+        runAdb(["shell", "settings put global airplane_mode_on " + val + " && am broadcast -a android.intent.action.AIRPLANE_MODE"], (success) => {
             if (success) {
                 updateQuickActionLocal("airplaneMode", enable, deviceId);
                 Toaster.toast(qsTr("Airplane Mode %1").arg(enable ? qsTr("Enabled") : qsTr("Disabled")), qsTr("Android airplane mode updated"), "airplanemode_active");
@@ -465,7 +450,7 @@ Singleton {
 
     function toggleMobileData(enable: bool, deviceId = ""): void {
         const val = enable ? "1" : "0";
-        runAdb(["shell", `settings put global mobile_data ${val} && svc data ${enable ? "enable" : "disable"}`], (success) => {
+        runAdb(["shell", "settings put global mobile_data " + val + " && svc data " + (enable ? "enable" : "disable")], (success) => {
             if (success) {
                 updateQuickActionLocal("mobileData", enable, deviceId);
                 Toaster.toast(qsTr("Mobile Data %1").arg(enable ? qsTr("Enabled") : qsTr("Disabled")), qsTr("Android mobile data updated"), "signal_cellular_alt");
@@ -475,7 +460,7 @@ Singleton {
 
     function toggleLocation(enable: bool, deviceId = ""): void {
         const val = enable ? "3" : "0";
-        runAdb(["shell", `settings put secure location_mode ${val}`], (success) => {
+        runAdb(["shell", "settings put secure location_mode " + val], (success) => {
             if (success) {
                 updateQuickActionLocal("location", enable, deviceId);
                 Toaster.toast(qsTr("Location %1").arg(enable ? qsTr("Enabled") : qsTr("Disabled")), qsTr("Android location status updated"), "location_on");
@@ -485,7 +470,7 @@ Singleton {
 
     function toggleDnd(enable: bool, deviceId = ""): void {
         const val = enable ? "1" : "0";
-        runAdb(["shell", `cmd settings put global zen_mode ${val} || settings put global zen_mode ${val}`], (success) => {
+        runAdb(["shell", "cmd settings put global zen_mode " + val + " || settings put global zen_mode " + val], (success) => {
             if (success) {
                 updateQuickActionLocal("dnd", enable, deviceId);
                 Toaster.toast(qsTr("DND %1").arg(enable ? qsTr("Enabled") : qsTr("Disabled")), qsTr("Do Not Disturb mode updated"), "do_not_disturb_on");
@@ -495,7 +480,7 @@ Singleton {
 
     function toggleAutoRotate(enable: bool, deviceId = ""): void {
         const val = enable ? "1" : "0";
-        runAdb(["shell", `settings put system accelerometer_rotation ${val}`], (success) => {
+        runAdb(["shell", "settings put system accelerometer_rotation " + val], (success) => {
             if (success) {
                 updateQuickActionLocal("autoRotate", enable, deviceId);
                 Toaster.toast(qsTr("Auto Rotate %1").arg(enable ? qsTr("Enabled") : qsTr("Disabled")), qsTr("Screen auto-rotation updated"), "screen_rotation");
@@ -505,7 +490,7 @@ Singleton {
 
     function setBrightness(val: int, deviceId = ""): void {
         const clamped = Math.max(0, Math.min(255, val));
-        runAdb(["shell", `settings put system screen_brightness ${clamped}`], (success) => {
+        runAdb(["shell", "settings put system screen_brightness " + clamped], (success) => {
             if (success) {
                 updateQuickActionLocal("brightness", clamped, deviceId);
             }
@@ -515,43 +500,20 @@ Singleton {
     function setVolume(val: int, stream = 3, deviceId = ""): void {
         const clamped = Math.max(0, Math.min(100, val));
         const targetIndex = Math.round((clamped / 100) * 150);
-        runAdb(["shell", `cmd media_session volume --stream ${stream} --set ${targetIndex}`], (success) => {
+        runAdb(["shell", "cmd media_session volume --stream " + stream + " --set " + targetIndex], (success) => {
             if (success) {
                 updateQuickActionLocal("volume", clamped, deviceId);
             }
         }, deviceId);
     }
+
     function setRingerMode(mode: string, deviceId = ""): void {
         // mode: normal, vibrate, silent
-        runAdb(["shell", `cmd media_session set_volume_mode ${mode}`], (success) => {
+        runAdb(["shell", "cmd media_session set_volume_mode " + mode], (success) => {
             if (success) {
                 Toaster.toast(qsTr("Ringer: %1").arg(mode), qsTr("Android ringer mode updated"), "notifications");
             }
         }, deviceId);
-    }
-
-    function reboot(mode = "normal", deviceId = ""): void {
-        let args = ["reboot"];
-        if (mode === "bootloader") args.push("bootloader");
-        else if (mode === "recovery") args.push("recovery");
-
-        Toaster.toast(qsTr("Rebooting Device"), qsTr("Sending %1 reboot command...").arg(mode), "restart_alt");
-        runAdb(args, (success) => {
-            if (success) {
-                scanDevices();
-            }
-        }, deviceId);
-    }
-
-    function updateQuickActionLocal(key: string, value: var, deviceId: string): void {
-        const targetId = deviceId || (activeDevice ? activeDevice.id : "");
-        const currentList = [...root.devices];
-        const idx = currentList.findIndex(d => d.id === targetId);
-        if (idx !== -1) {
-            const qa = Object.assign({}, currentList[idx].quickActions, { [key]: value });
-            currentList[idx] = Object.assign({}, currentList[idx], { quickActions: qa });
-            root.devices = currentList;
-        }
     }
 
     // Screen & Camera Mirroring (Scrcpy)
@@ -568,19 +530,18 @@ Singleton {
         }
 
         const opts = Object.assign({}, scrcpyConfig, customOpts);
-        let args = ["--serial", targetId, "--window-title", `AndroLaunch - ${targetId}`];
+        let args = ["--serial", targetId, "--window-title", "AndroLaunch - " + targetId];
 
         if (opts.flexDisplay) {
             // Flex mode allows free resizing
         } else if (opts.maxSize > 0) {
-            args.push("-m", `${opts.maxSize}`);
+            args.push("-m", "" + opts.maxSize);
         }
 
         if (opts.maxFps > 0)
-            args.push("--max-fps", `${opts.maxFps}`);
+            args.push("--max-fps", "" + opts.maxFps);
         if (opts.bitRate > 0)
-            args.push("--bit-rate", `${opts.bitRate}M`);
-        if (!opts.audioEnabled)
+            args.push("--bit-rate", opts.bitRate + "M");
             args.push("--no-audio");
         if (opts.keepActive)
             args.push("--keep-active");
@@ -613,19 +574,18 @@ Singleton {
         let args = [
             "--serial", targetId,
             "--video-source=camera",
-            "--window-title", `AndroLaunch Camera - ${targetId}`,
-            `--camera-facing=${opts.cameraFacing || "back"}`
+            "--window-title", "AndroLaunch Camera - " + targetId,
+            "--camera-facing=" + (opts.cameraFacing || "back")
         ];
 
         if (opts.cameraTorch)
             args.push("--camera-torch");
         if (opts.cameraZoom && opts.cameraZoom !== 1.0)
-            args.push("--camera-zoom", `${opts.cameraZoom}`);
+            args.push("--camera-zoom", "" + opts.cameraZoom);
         if (opts.maxFps > 0)
-            args.push("--max-fps", `${opts.maxFps}`);
+            args.push("--max-fps", "" + opts.maxFps);
         if (opts.bitRate > 0)
-            args.push("--bit-rate", `${opts.bitRate}M`);
-
+            args.push("--bit-rate", opts.bitRate + "M");
         Toaster.toast(qsTr("Camera Mirror"), qsTr("Opening camera stream for %1...").arg(targetId), "videocam");
         Quickshell.execDetached([scrcpyPath, ...args]);
     }
@@ -642,12 +602,11 @@ Singleton {
         const opts = Object.assign({}, scrcpyConfig, customOpts);
         let args = [
             "--serial", targetId,
-            `--start-app=${packageName}`,
-            "--window-title", `AndroLaunch - ${packageName}`
+            "--start-app=" + packageName,
+            "--window-title", "AndroLaunch - " + packageName
         ];
 
-        if (opts.maxFps > 0) args.push("--max-fps", `${opts.maxFps}`);
-        if (!opts.audioEnabled) args.push("--no-audio");
+        if (opts.maxFps > 0) args.push("--max-fps", "" + opts.maxFps);
         if (opts.keepActive) args.push("--keep-active");
 
         Toaster.toast(qsTr("Launching App"), qsTr("Opening %1 in Scrcpy...").arg(packageName), "apps");
@@ -703,7 +662,7 @@ Singleton {
                 Toaster.toast(qsTr("App Launched"), qsTr("Launched %1 on device").arg(packageName), "launch");
             } else {
                 // Fallback to am start
-                runAdb(["shell", `monkey -p ${packageName} 1 || am start -n $(pm dump ${packageName} | grep -A 1 'android.intent.action.MAIN:' | grep -m 1 '    ' | awk '{print $1}')`], () => {});
+                runAdb(["shell", "monkey -p " + packageName + " 1 || am start -n $(pm dump " + packageName + " | grep -A 1 'android.intent.action.MAIN:' | grep -m 1 '    ' | awk '{print $1}')"], () => {});
             }
         }, deviceId);
     }
@@ -745,7 +704,7 @@ Singleton {
     // Wireless ADB & Pairing
     function connectWireless(ip: string, port = "5555"): void {
         if (!ip) return;
-        const target = port ? `${ip}:${port}` : ip;
+        const target = port ? (ip + ":" + port) : ip;
         Toaster.toast(qsTr("Connecting"), qsTr("Connecting to %1...").arg(target), "wifi");
         runAdb(["connect", target], (success, out, err) => {
             if (success && out.includes("connected")) {
@@ -762,7 +721,7 @@ Singleton {
             Toaster.toast(qsTr("Missing Info"), qsTr("IP, port and 6-digit code are required"), "warning", Toast.Type.Warning);
             return;
         }
-        const target = `${ip}:${port}`;
+        const target = ip + ":" + port;
         Toaster.toast(qsTr("Pairing Device"), qsTr("Pairing with %1...").arg(target), "sync");
         runAdb(["pair", target, code], (success, out, err) => {
             if (success && out.includes("Successfully paired")) {
@@ -779,7 +738,7 @@ Singleton {
         stopQRPairing();
         const code = String(Math.floor(100000 + Math.random() * 900000));
         pairingPassword = code;
-        qrString = `WIFI:T:ADB;S:ADBQR-connectPhoneOverWifi;P:${code};;`;
+        qrString = "WIFI:T:ADB;S:ADBQR-connectPhoneOverWifi;P:" + code + ";;";
         isQRPairingActive = true;
         qrPairingStatus = qsTr("Waiting for device to scan QR code...");
         qrPairTimer.restart();
@@ -829,8 +788,7 @@ Singleton {
     }
 
     function autoConnectAfterPair(ip: string): void {
-        runCommand(["sh", "-c", `avahi-browse -rpt -t _adb-tls-connect._tcp 2>/dev/null | grep "${ip}" || true`], (success, output) => {
-            let connectPort = "5555";
+        runCommand(["sh", "-c", "avahi-browse -rpt -t _adb-tls-connect._tcp 2>/dev/null | grep \"" + ip + "\" || true"], (success, output) => {
             if (success && output) {
                 const lines = output.split("\n");
                 for (const line of lines) {
@@ -902,7 +860,7 @@ Singleton {
 
                     if (name === "." || name === "..") continue;
 
-                    const fullPath = path.endsWith("/") ? `${path}${name}` : `${path}/${name}`;
+                    const fullPath = path.endsWith("/") ? (path + name) : (path + "/" + name);
                     result.push({
                         name: name,
                         path: fullPath,
@@ -978,7 +936,7 @@ Singleton {
     // Terminal & Shell Execution
     function openTerminal(deviceId = ""): void {
         const targetId = deviceId || (activeDevice ? activeDevice.id : "");
-        const termCmd = [...GlobalConfig.general.apps.terminal, `${Quickshell.shellDir}/assets/wrap_term_launch.sh`, adbPath];
+        const termCmd = [...GlobalConfig.general.apps.terminal, Quickshell.shellDir + "/assets/wrap_term_launch.sh", adbPath];
         if (targetId) termCmd.push("-s", targetId);
         termCmd.push("shell");
 
@@ -988,7 +946,7 @@ Singleton {
 
     function openLogcat(deviceId = ""): void {
         const targetId = deviceId || (activeDevice ? activeDevice.id : "");
-        const termCmd = [...GlobalConfig.general.apps.terminal, `${Quickshell.shellDir}/assets/wrap_term_launch.sh`, adbPath];
+        const termCmd = [...GlobalConfig.general.apps.terminal, Quickshell.shellDir + "/assets/wrap_term_launch.sh", adbPath];
         if (targetId) termCmd.push("-s", targetId);
         termCmd.push("logcat", "-v", "color");
 
@@ -1017,7 +975,7 @@ Singleton {
 
     function addCustomCommand(name: string, cmd: string, isBg = false): void {
         const list = [...customCommands, {
-            id: `${Date.now()}`,
+            id: String(Date.now()),
             name: name,
             command: cmd,
             isBackground: isBg
@@ -1034,7 +992,7 @@ Singleton {
         if (!text) return;
         // Escape quotes
         const escaped = text.replace(/'/g, "'\\''");
-        runAdb(["shell", `am broadcast -a ch.pete.adbclipboard.set -e text '${escaped}' || input text '${escaped}'`], (success) => {
+        runAdb(["shell", "am broadcast -a ch.pete.adbclipboard.set -e text '" + escaped + "' || input text '" + escaped + "'"], (success) => {
             if (success) {
                 Toaster.toast(qsTr("Clipboard Synced"), qsTr("Sent text to Android clipboard"), "content_paste", Toast.Type.Success);
             }

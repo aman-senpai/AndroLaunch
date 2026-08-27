@@ -495,8 +495,8 @@ ColumnLayout {
                     value: (root.qa?.volume ?? 50) / 100
                     onInteraction: val => AndroLaunch.setVolume(Math.round(val * 100))
                 }
+            }
         }
-
         // Power & Reboot Row
         RowLayout {
             Layout.fillWidth: true
