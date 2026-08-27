@@ -252,6 +252,15 @@ Singleton {
             }
         }
 
+        // Check for offline wireless devices and auto-heal
+        for (const dev of list) {
+            if (dev.isWireless && dev.status === "offline") {
+                runAdb(["disconnect", dev.id], () => {
+                    root.autoDiscoverAndConnect();
+                });
+            }
+        }
+
         // Only update if list membership or connection states changed
         const hasChanges = !root.devices || root.devices.length !== list.length || list.some((d, idx) => {
             const cur = root.devices[idx];
@@ -261,7 +270,6 @@ Singleton {
         if (hasChanges) {
             root.devices = list;
         }
-
         // Update previous devices list
         for (const dev of list) {
             if (dev.isConnected && !dev.isEmulator) {
@@ -804,6 +812,34 @@ Singleton {
             connectWireless(ip, connectPort);
         });
     }
+
+    function autoDiscoverAndConnect(): void {
+        runCommand(["sh", "-c", "avahi-browse -rpt -t _adb-tls-connect._tcp 2>/dev/null || true"], (success, output) => {
+            if (!success || !output) return;
+            const lines = output.split("\n");
+            for (const line of lines) {
+                if (line.startsWith("=") && line.includes("_adb-tls-connect._tcp")) {
+                    const fields = line.split(";");
+                    if (fields.length >= 9) {
+                        const ip = fields[7];
+                        const port = fields[8];
+                        if (ip && port && !ip.includes(":")) {
+                            const fullEndpoint = ip + ":" + port;
+                            const alreadyConnected = root.devices && root.devices.some(d => d.id === fullEndpoint && d.isConnected);
+                            if (!alreadyConnected) {
+                                runAdb(["connect", fullEndpoint], (connSuccess, connOut) => {
+                                    if (connSuccess && connOut.includes("connected")) {
+                                        scanDevices();
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     Timer {
         id: qrPairTimer
         interval: 2000
@@ -811,7 +847,6 @@ Singleton {
         repeat: true
         onTriggered: root.checkMdnsPairing()
     }
-
     function enableTcpip(port = "5555", deviceId = ""): void {
         runAdb(["tcpip", port], (success, out, err) => {
             if (success) {
@@ -1030,6 +1065,7 @@ Singleton {
             root.avds = result;
         });
     }
+
     function startAvd(name: string): void {
         Toaster.toast(qsTr("Starting Emulator"), qsTr("Launching %1...").arg(name), "phone_android");
         Quickshell.execDetached(["emulator", "-avd", name]);
@@ -1048,10 +1084,14 @@ Singleton {
         running: true
         repeat: true
         onTriggered: {
-            if (root.adbPath.length > 0)
+            if (root.adbPath.length > 0) {
                 root.scanDevices();
-            else
+                if (!root.hasConnectedDevice) {
+                    root.autoDiscoverAndConnect();
+                }
+            } else {
                 root.checkPaths();
+            }
         }
     }
 
