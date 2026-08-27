@@ -420,7 +420,6 @@ Singleton {
         runAdb(["shell", "svc", "wifi", state], (success) => {
             if (success) {
                 updateQuickActionLocal("wifi", enable, deviceId);
-                Toaster.toast(qsTr("Wi-Fi %1").arg(enable ? qsTr("Enabled") : qsTr("Disabled")), qsTr("Android Wi-Fi status updated"), "wifi");
             }
         }, deviceId);
     }
@@ -430,7 +429,6 @@ Singleton {
         runAdb(["shell", "svc", "bluetooth", state], (success) => {
             if (success) {
                 updateQuickActionLocal("bluetooth", enable, deviceId);
-                Toaster.toast(qsTr("Bluetooth %1").arg(enable ? qsTr("Enabled") : qsTr("Disabled")), qsTr("Android Bluetooth status updated"), "bluetooth");
             }
         }, deviceId);
     }
@@ -440,7 +438,6 @@ Singleton {
         runAdb(["shell", "cmd", "uimode", "night", state], (success) => {
             if (success) {
                 updateQuickActionLocal("darkMode", enable, deviceId);
-                Toaster.toast(qsTr("Dark Mode %1").arg(enable ? qsTr("Enabled") : qsTr("Disabled")), qsTr("Android UI theme updated"), "dark_mode");
             }
         }, deviceId);
     }
@@ -450,7 +447,6 @@ Singleton {
         runAdb(["shell", "settings put global airplane_mode_on " + val + " && am broadcast -a android.intent.action.AIRPLANE_MODE"], (success) => {
             if (success) {
                 updateQuickActionLocal("airplaneMode", enable, deviceId);
-                Toaster.toast(qsTr("Airplane Mode %1").arg(enable ? qsTr("Enabled") : qsTr("Disabled")), qsTr("Android airplane mode updated"), "airplanemode_active");
             }
         }, deviceId);
     }
@@ -460,7 +456,6 @@ Singleton {
         runAdb(["shell", "settings put global mobile_data " + val + " && svc data " + (enable ? "enable" : "disable")], (success) => {
             if (success) {
                 updateQuickActionLocal("mobileData", enable, deviceId);
-                Toaster.toast(qsTr("Mobile Data %1").arg(enable ? qsTr("Enabled") : qsTr("Disabled")), qsTr("Android mobile data updated"), "signal_cellular_alt");
             }
         }, deviceId);
     }
@@ -470,7 +465,6 @@ Singleton {
         runAdb(["shell", "settings put secure location_mode " + val], (success) => {
             if (success) {
                 updateQuickActionLocal("location", enable, deviceId);
-                Toaster.toast(qsTr("Location %1").arg(enable ? qsTr("Enabled") : qsTr("Disabled")), qsTr("Android location status updated"), "location_on");
             }
         }, deviceId);
     }
@@ -480,7 +474,6 @@ Singleton {
         runAdb(["shell", "cmd settings put global zen_mode " + val + " || settings put global zen_mode " + val], (success) => {
             if (success) {
                 updateQuickActionLocal("dnd", enable, deviceId);
-                Toaster.toast(qsTr("DND %1").arg(enable ? qsTr("Enabled") : qsTr("Disabled")), qsTr("Do Not Disturb mode updated"), "do_not_disturb_on");
             }
         }, deviceId);
     }
@@ -490,7 +483,6 @@ Singleton {
         runAdb(["shell", "settings put system accelerometer_rotation " + val], (success) => {
             if (success) {
                 updateQuickActionLocal("autoRotate", enable, deviceId);
-                Toaster.toast(qsTr("Auto Rotate %1").arg(enable ? qsTr("Enabled") : qsTr("Disabled")), qsTr("Screen auto-rotation updated"), "screen_rotation");
             }
         }, deviceId);
     }
@@ -519,7 +511,7 @@ Singleton {
         // mode: normal, vibrate, silent
         runAdb(["shell", "cmd", "media_session", "set_volume_mode", mode], (success) => {
             if (success) {
-                Toaster.toast(qsTr("Ringer: %1").arg(mode), qsTr("Android ringer mode updated"), "notifications");
+                updateQuickActionLocal("ringerMode", mode, deviceId);
             }
         }, deviceId);
     }
@@ -556,7 +548,6 @@ Singleton {
             args.push("--no-window-aspect-ratio-lock");
 
         const bin = scrcpyPath && scrcpyPath.length > 0 ? scrcpyPath : "scrcpy";
-        Toaster.toast(qsTr("Starting Mirror"), qsTr("Launching Scrcpy for %1...").arg(targetId), "screen_share");
         Quickshell.execDetached([bin, ...args]);
 
         const mirrors = Object.assign({}, activeMirrors, { [targetId]: { isScreen: true } });
@@ -585,7 +576,6 @@ Singleton {
             args.push("-b", opts.bitRate + "M");
 
         const bin = scrcpyPath && scrcpyPath.length > 0 ? scrcpyPath : "scrcpy";
-        Toaster.toast(qsTr("Camera Mirror"), qsTr("Opening camera stream for %1...").arg(targetId), "videocam");
         Quickshell.execDetached([bin, ...args]);
     }
 
@@ -613,7 +603,6 @@ Singleton {
         if (opts.borderless) args.push("--window-borderless");
 
         const bin = scrcpyPath && scrcpyPath.length > 0 ? scrcpyPath : "scrcpy";
-        Toaster.toast(qsTr("Launching App"), qsTr("Opening %1 in Scrcpy...").arg(packageName), "apps");
         Quickshell.execDetached([bin, ...args]);
     }
 
@@ -704,9 +693,7 @@ Singleton {
 
     function launchApp(packageName: string, deviceId = ""): void {
         runAdb(["shell", "monkey", "-p", packageName, "-c", "android.intent.category.LAUNCHER", "1"], (success) => {
-            if (success) {
-                Toaster.toast(qsTr("App Launched"), qsTr("Launched %1 on device").arg(packageName), "launch");
-            } else {
+            if (!success) {
                 // Fallback to am start
                 runAdb(["shell", "monkey -p " + packageName + " 1 || am start -n $(pm dump " + packageName + " | grep -A 1 'android.intent.action.MAIN:' | grep -m 1 '    ' | awk '{print $1}')"], () => {});
             }
@@ -751,10 +738,8 @@ Singleton {
     function connectWireless(ip: string, port = "5555"): void {
         if (!ip) return;
         const target = port ? (ip + ":" + port) : ip;
-        Toaster.toast(qsTr("Connecting"), qsTr("Connecting to %1...").arg(target), "wifi");
         runAdb(["connect", target], (success, out, err) => {
             if (success && out.includes("connected")) {
-                Toaster.toast(qsTr("Connected"), qsTr("Connected to %1 wirelessly").arg(target), "check_circle", Toast.Type.Success);
                 scanDevices();
             } else {
                 Toaster.toast(qsTr("Connection Failed"), out || err || qsTr("Failed to connect"), "error", Toast.Type.Error);
