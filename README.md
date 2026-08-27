@@ -1,10 +1,10 @@
-# AndroLaunch - Your Android Device Management Hub for macOS & Windows
+# AndroLaunch - Your Android Device Management Hub for macOS, Windows & Linux
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/1da15d00-ab8a-4afb-8d26-fd23ae3a3cda" alt="AndroLaunch" width="150">
 </p>
 
-**AndroLaunch** is a professional and powerful cross-platform application (macOS & Windows) designed to give you effortless control over your Android devices using the power of ADB (Android Debug Bridge) and Scrcpy. Manage quick settings, launch apps, install APKs, and even mirror your device screen—all from one convenient spot.
+**AndroLaunch** is a professional and powerful cross-platform application (macOS, Windows & Linux) designed to give you effortless control over your Android devices using the power of ADB (Android Debug Bridge) and Scrcpy. Manage quick settings, launch apps, install APKs, and even mirror your device screen—all from one convenient spot.
 
 ## 🚀 Key Features at a Glance
 
@@ -63,6 +63,25 @@ This installs AndroLaunch.app to `/Applications`. Dependencies (`adb` and `scrcp
 
 3.  **Launch**: Download the Windows version (exe) and run it.
 
+### Linux Installation (Caelestia Desktop Shell)
+
+1. **Install Dependencies**:
+   - **Fedora**: `sudo dnf install android-tools scrcpy`
+   - **Arch Linux**: `sudo pacman -S android-tools scrcpy`
+   - **Ubuntu/Debian**: `sudo apt install android-tools-adb scrcpy`
+
+2. **Install Widget**:
+   ```bash
+   cd linux
+   chmod +x install.sh
+   ./install.sh
+   ```
+
+3. **Features on Linux**:
+   - Native Taskbar Icon & Popout in [Caelestia Shell](https://github.com/caelestia-dots/shell)
+   - Full device control in Nexus Control Center
+   - Wireless Pairing via QR Code
+   - CLI / IPC support (`caelestia shell androlaunch <command>`)
 ### Step 2: Configure Your Android Device
 
 -----
