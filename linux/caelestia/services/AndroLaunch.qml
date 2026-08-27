@@ -89,36 +89,39 @@ Singleton {
     }
 
     // Command runner component
-    component ADBProcess: Process {
-        id: proc
+    Component {
+        id: adbProcessComponent
 
-        property var callback: null
-        property list<string> cmdArgs: []
+        Process {
+            id: proc
 
-        environment: ({
-            LANG: "C.UTF-8",
-            LC_ALL: "C.UTF-8"
-        })
+            property var callback: null
 
-        stdout: StdioCollector {
-            id: outCollector
-        }
+            environment: ({
+                LANG: "C.UTF-8",
+                LC_ALL: "C.UTF-8"
+            })
 
-        stderr: StdioCollector {
-            id: errCollector
-        }
-
-        onExited: code => { // qmllint disable signal-handler-parameters
-            const outText = (outCollector && outCollector.text) ? outCollector.text.trim() : "";
-            const errText = (errCollector && errCollector.text) ? errCollector.text.trim() : "";
-            if (proc.callback) {
-                try {
-                    proc.callback(code === 0, outText, errText);
-                } catch (e) {
-                    console.warn(lc, "Error in ADBProcess callback:", e);
-                }
+            stdout: StdioCollector {
+                id: outCollector
             }
-            proc.destroy();
+
+            stderr: StdioCollector {
+                id: errCollector
+            }
+
+            onExited: code => { // qmllint disable signal-handler-parameters
+                const outText = (outCollector && outCollector.text) ? outCollector.text.trim() : "";
+                const errText = (errCollector && errCollector.text) ? errCollector.text.trim() : "";
+                if (proc.callback) {
+                    try {
+                        proc.callback(code === 0, outText, errText);
+                    } catch (e) {
+                        console.warn(lc, "Error in ADBProcess callback:", e);
+                    }
+                }
+                proc.destroy();
+            }
         }
     }
 
@@ -135,10 +138,7 @@ Singleton {
         }
         fullArgs.push(...args);
 
-        const proc = Qt.createQmlObject('import Quickshell.Io; Process { }', root);
-        const comp = Qt.createComponent("ADBProcess");
-        // Create ADBProcess dynamically
-        const adbObj = comp.createObject(root, {
+        const obj = adbProcessComponent.createObject(root, {
             command: fullArgs,
             callback: callback,
             running: true
@@ -146,8 +146,7 @@ Singleton {
     }
 
     function runCommand(cmd: list<string>, callback = null): void {
-        const comp = Qt.createComponent("ADBProcess");
-        const obj = comp.createObject(root, {
+        const obj = adbProcessComponent.createObject(root, {
             command: cmd,
             callback: callback,
             running: true
@@ -156,40 +155,20 @@ Singleton {
 
     // Path Discovery
     function checkPaths(): void {
-        const checkProc = Qt.createQmlObject(`
-            import Quickshell.Io;
-            Process {
-                command: ["sh", "-c", "which adb 2>/dev/null || find /usr /opt /home/$USER/Android /home/$USER/.local -name 'adb' -type f -executable 2>/dev/null | head -n 1"]
-                stdout: StdioCollector {}
-            }
-        `, root);
-
-        checkProc.onExited.connect(() => {
-            const path = checkProc.stdout.text.trim().split("\n")[0];
+        runCommand(["sh", "-c", "which adb 2>/dev/null || find /usr /opt /home/$USER/Android /home/$USER/.local -name 'adb' -type f -executable 2>/dev/null | head -n 1"], (success, out) => {
+            const path = out ? out.trim().split("\n")[0] : "";
             if (path && path.length > 0) {
                 root.adbPath = path;
                 root.scanDevices();
             } else {
                 root.adbPath = "";
             }
-            checkProc.destroy();
         });
-        checkProc.running = true;
 
-        const checkScrcpy = Qt.createQmlObject(`
-            import Quickshell.Io;
-            Process {
-                command: ["sh", "-c", "which scrcpy 2>/dev/null || find /usr /opt /home/$USER/.local -name 'scrcpy' -type f -executable 2>/dev/null | head -n 1"]
-                stdout: StdioCollector {}
-            }
-        `, root);
-
-        checkScrcpy.onExited.connect(() => {
-            const scPath = checkScrcpy.stdout.text.trim().split("\n")[0];
+        runCommand(["sh", "-c", "which scrcpy 2>/dev/null || find /usr /opt /home/$USER/.local -name 'scrcpy' -type f -executable 2>/dev/null | head -n 1"], (success, out) => {
+            const scPath = out ? out.trim().split("\n")[0] : "";
             root.scrcpyPath = scPath && scPath.length > 0 ? scPath : "";
-            checkScrcpy.destroy();
         });
-        checkScrcpy.running = true;
     }
 
     // Scan devices
