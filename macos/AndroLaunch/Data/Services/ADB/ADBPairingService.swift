@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import Network
 import Combine
 
 protocol ADBPairingServiceProtocol {
@@ -23,16 +22,16 @@ final class ADBPairingService: NSObject, ADBPairingServiceProtocol, NetServiceBr
     private let adbService: ADBServiceProtocol
     
     // Networking
-    private var pairingBrowser: NWBrowser?
+    private var pairingBrowser: NetServiceBrowser?
     private var connectBrowser: NetServiceBrowser?
     private var resolvingServices: [NetService] = []
-    private var activePairingConnections: [NWConnection] = []
     
     // State
     private var password: String = ""
+    private var isPairingAttemptInFlight = false
     
     // Deduplication
-    private var processedPairingEndpoints = Set<NWEndpoint>()
+    private var processedPairingEndpoints = Set<String>()
     private var processedConnectHosts = Set<String>()
     
     let pairingStatus = PassthroughSubject<String, Never>()
@@ -70,11 +69,8 @@ final class ADBPairingService: NSObject, ADBPairingServiceProtocol, NetServiceBr
     func stopPairing() {
         print("ADBPairingService: stopPairing() called.")
         
-        pairingBrowser?.cancel()
+        pairingBrowser?.stop()
         pairingBrowser = nil
-        
-        activePairingConnections.forEach { $0.cancel() }
-        activePairingConnections.removeAll()
         
         connectBrowser?.stop()
         connectBrowser = nil
@@ -83,6 +79,7 @@ final class ADBPairingService: NSObject, ADBPairingServiceProtocol, NetServiceBr
         
         processedPairingEndpoints.removeAll()
         processedConnectHosts.removeAll()
+        isPairingAttemptInFlight = false
         
         cancellables.removeAll()
         
@@ -93,120 +90,72 @@ final class ADBPairingService: NSObject, ADBPairingServiceProtocol, NetServiceBr
     // MARK: - Pairing Discovery
     
     private func startPairingDiscovery() {
-        let parameters = NWParameters()
-        parameters.includePeerToPeer = true
-        
-        let descriptor = NWBrowser.Descriptor.bonjour(type: "_adb-tls-pairing._tcp", domain: "local.")
-        let browser = NWBrowser(for: descriptor, using: parameters)
-        
-        browser.stateUpdateHandler = { [weak self] state in
-            switch state {
-            case .failed(let error):
-                print("ADBPairingService: Browser failed: \(error). Restarting...")
-                self?.restartPairingDiscovery()
-            default: break
-            }
-        }
-        
-        browser.browseResultsChangedHandler = { [weak self] results, changes in
-            guard let self = self else { return }
-            for change in changes {
-                if case .added(let result) = change {
-                    self.handleNewPairingResult(result)
-                } else if case .removed(let result) = change {
-                    self.processedPairingEndpoints.remove(result.endpoint)
-                }
-            }
-        }
-        
+        let browser = NetServiceBrowser()
+        browser.delegate = self
+        browser.includesPeerToPeer = true
+        browser.searchForServices(ofType: "_adb-tls-pairing._tcp", inDomain: "local.")
         self.pairingBrowser = browser
-        browser.start(queue: .main)
     }
     
     private func restartPairingDiscovery() {
-        pairingBrowser?.cancel()
+        pairingBrowser?.stop()
         pairingBrowser = nil
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            self?.startPairingDiscovery()
+            guard let self = self, self.isPairing.value else { return }
+            self.startPairingDiscovery()
         }
     }
     
-    private func handleNewPairingResult(_ result: NWBrowser.Result) {
-        guard !processedPairingEndpoints.contains(result.endpoint) else { return }
-        processedPairingEndpoints.insert(result.endpoint)
-        
-        if case let .service(name, _, _, _) = result.endpoint {
-            pairingStatus.send("Device found. Resolving IP for \(name)...")
-            resolvePairingEndpoint(result.endpoint)
-        }
-    }
-    
-    private func resolvePairingEndpoint(_ endpoint: NWEndpoint) {
-        let params = NWParameters.tcp
-        if let ipOptions = params.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options {
-            ipOptions.version = .v4
+    /// Resolved `_adb-tls-pairing._tcp` service -> `adb pair`.
+    ///
+    /// The IP must come from the Bonjour resolution itself. Connecting to the pairing
+    /// port to read it back (as this used to do) races with the actual `adb pair`
+    /// handshake against the phone's pairing server and can stall indefinitely: a
+    /// `NWConnection` that never reaches `.ready` or `.failed` left the UI stuck on
+    /// "Resolving IP" forever, because every other state was ignored.
+    private func handleResolvedPairingService(_ service: NetService) {
+        guard let ip = Self.preferredIPv4Address(of: service),
+              service.port > 0, service.port <= Int(UInt16.max) else {
+            return
         }
         
-        let connection = NWConnection(to: endpoint, using: params)
-        activePairingConnections.append(connection)
+        let endpoint = "\(ip):\(service.port)"
+        guard !processedPairingEndpoints.contains(endpoint), !isPairingAttemptInFlight else { return }
+        processedPairingEndpoints.insert(endpoint)
         
-        connection.stateUpdateHandler = { [weak self] state in
-            guard let self = self else { return }
-            switch state {
-            case .ready:
-                if let inner = connection.currentPath?.remoteEndpoint,
-                   case .hostPort(let host, let port) = inner,
-                   case .ipv4(let ipv4) = host {
-                    
-                    var ipString = "\(ipv4)"
-                    if let idx = ipString.firstIndex(of: "%") { ipString = String(ipString[..<idx]) }
-                    
-                    self.pairDevice(ip: ipString, port: port.rawValue, originEndpoint: endpoint)
-                    connection.cancel()
-                    self.cleanupConnection(connection)
-                } else {
-                    connection.cancel()
-                    self.cleanupConnection(connection)
-                    self.processedPairingEndpoints.remove(endpoint) // Retry
-                }
-            case .failed:
-                connection.cancel()
-                self.cleanupConnection(connection)
-                self.processedPairingEndpoints.remove(endpoint) // Retry
-            default: break
-            }
-        }
-        connection.start(queue: .main)
+        pairingStatus.send("Pairing with \(endpoint)...")
+        pairDevice(ip: ip, port: UInt16(service.port), endpoint: endpoint)
     }
     
-    private func cleanupConnection(_ connection: NWConnection) {
-        if let idx = activePairingConnections.firstIndex(where: { $0 === connection }) {
-            activePairingConnections.remove(at: idx)
+    private func pairDevice(ip: String, port: UInt16, endpoint: String) {
+        guard let adbPath = adbService.adbPath else {
+            pairingStatus.send("ADB not found. Cannot pair.")
+            return
         }
-    }
-    
-    private func pairDevice(ip: String, port: UInt16, originEndpoint: NWEndpoint) {
-        guard let adbPath = adbService.adbPath else { return }
+        isPairingAttemptInFlight = true
         let command = "\(adbPath) pair \"\(ip):\(port)\" \(self.password)"
         
         commandExecutor.execute(command)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completion in
-                if case .failure = completion {
-                    self?.pairingStatus.send("Pairing error. Retrying...")
-                    self?.processedPairingEndpoints.remove(originEndpoint)
-                    self?.restartPairingDiscovery()
+                guard let self = self else { return }
+                self.isPairingAttemptInFlight = false
+                if case .failure(let error) = completion {
+                    self.pairingStatus.send("Pairing error: \(Self.message(for: error)) Retrying...")
+                    self.processedPairingEndpoints.remove(endpoint)
+                    self.restartPairingDiscovery()
                 }
             } receiveValue: { [weak self] output in
+                guard let self = self else { return }
                 if output.contains("Successfully paired to") || output.contains("already paired") {
-                    self?.pairingStatus.send("Paired with \(ip). Connecting...")
-                    self?.pairingBrowser?.cancel() // Stop pairing scan
-                    self?.pairingBrowser = nil
-                    self?.startConnectDiscovery() // Start connect scan
+                    self.pairingStatus.send("Paired with \(ip). Connecting...")
+                    self.pairingBrowser?.stop() // Stop pairing scan
+                    self.pairingBrowser = nil
+                    self.startConnectDiscovery() // Start connect scan
                 } else {
-                    self?.pairingStatus.send("Pairing rejected. Retrying...")
-                    self?.processedPairingEndpoints.remove(originEndpoint)
-                    self?.restartPairingDiscovery()
+                    self.pairingStatus.send("Pairing rejected. Retrying...")
+                    self.processedPairingEndpoints.remove(endpoint)
+                    self.restartPairingDiscovery()
                 }
             }
             .store(in: &cancellables)
@@ -224,12 +173,35 @@ final class ADBPairingService: NSObject, ADBPairingServiceProtocol, NetServiceBr
     }
     
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
+        if service.type.hasPrefix("_adb-tls-pairing") {
+            pairingStatus.send("Device found. Resolving IP for \(service.name)...")
+        }
         service.delegate = self
         resolvingServices.append(service)
         service.resolve(withTimeout: 10.0)
     }
     
+    func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
+        guard browser === pairingBrowser else { return }
+        let code = errorDict[NetService.errorCode]?.intValue ?? -1
+        pairingStatus.send("Network discovery failed (code \(code)). Retrying...")
+        restartPairingDiscovery()
+    }
+    
     func netServiceDidResolveAddress(_ sender: NetService) {
+        if sender.type.hasPrefix("_adb-tls-pairing") {
+            handleResolvedPairingService(sender)
+        } else {
+            handleResolvedConnectService(sender)
+        }
+        if let idx = resolvingServices.firstIndex(of: sender) { resolvingServices.remove(at: idx) }
+    }
+    
+    func netService(_ sender: NetService, didNotResolve errorDict: [String : NSNumber]) {
+        if let idx = resolvingServices.firstIndex(of: sender) { resolvingServices.remove(at: idx) }
+    }
+    
+    private func handleResolvedConnectService(_ sender: NetService) {
         if let host = sender.hostName, sender.port != -1 {
             var cleanHost = host
             if cleanHost.hasSuffix(".") { cleanHost = String(cleanHost.dropLast()) }
@@ -240,11 +212,6 @@ final class ADBPairingService: NSObject, ADBPairingServiceProtocol, NetServiceBr
                 connectDevice(ip: cleanHost, port: UInt16(sender.port))
             }
         }
-        if let idx = resolvingServices.firstIndex(of: sender) { resolvingServices.remove(at: idx) }
-    }
-    
-    func netService(_ sender: NetService, didNotResolve errorDict: [String : NSNumber]) {
-        if let idx = resolvingServices.firstIndex(of: sender) { resolvingServices.remove(at: idx) }
     }
     
     private func connectDevice(ip: String, port: UInt16) {
@@ -267,5 +234,45 @@ final class ADBPairingService: NSObject, ADBPairingServiceProtocol, NetServiceBr
                 }
             }
             .store(in: &cancellables)
+    }
+    
+    // MARK: - Helpers
+    
+    private static func message(for error: Error) -> String {
+        if let adbError = error as? ADBError, case .commandFailed(let detail) = adbError {
+            return detail
+        }
+        return error.localizedDescription
+    }
+    
+    /// Prefers a routable IPv4 address; link-local (169.254.x.x) ones are only a last
+    /// resort because they come from a peer-to-peer (AWDL) interface the phone cannot
+    /// be reached on.
+    private static func preferredIPv4Address(of service: NetService) -> String? {
+        guard let addresses = service.addresses else { return nil }
+        var fallback: String?
+        for address in addresses {
+            guard let ip = ipv4String(from: address) else { continue }
+            if ip.hasPrefix("169.254.") {
+                if fallback == nil { fallback = ip }
+                continue
+            }
+            return ip
+        }
+        return fallback
+    }
+    
+    private static func ipv4String(from address: Data) -> String? {
+        return address.withUnsafeBytes { raw -> String? in
+            guard let base = raw.baseAddress else { return nil }
+            let sa = base.assumingMemoryBound(to: sockaddr.self)
+            guard sa.pointee.sa_family == sa_family_t(AF_INET) else { return nil }
+            var addr = base.assumingMemoryBound(to: sockaddr_in.self).pointee.sin_addr
+            var buffer = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+            guard inet_ntop(AF_INET, &addr, &buffer, socklen_t(INET_ADDRSTRLEN)) != nil else {
+                return nil
+            }
+            return String(cString: buffer)
+        }
     }
 }
