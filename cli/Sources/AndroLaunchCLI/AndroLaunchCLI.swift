@@ -428,7 +428,17 @@ struct ScrcpyApp: ParsableCommand {
         let id = resolveDeviceID(adb, deviceID)
         let scrcpy = ScrcpyService()
 
-        print("Launching \(packageID) in scrcpy window... (Press Ctrl+C to stop)")
+        // Android 12-13: scrcpy's virtual display crashes SystemUI and locks the device, so
+        // mirror the main display with the app in the foreground instead.
+        let useVirtualDisplay = !VirtualDisplaySupport.isUnsafe(
+            apiLevel: adb.fetchAPILevel(deviceID: id))
+        if useVirtualDisplay {
+            print("Launching \(packageID) in scrcpy window... (Press Ctrl+C to stop)")
+        } else {
+            print(
+                "Android 12-13 detected: opening \(packageID) on the mirrored screen instead of "
+                    + "a virtual display... (Press Ctrl+C to stop)")
+        }
         _ = try scrcpy.launchApp(
             packageID: packageID,
             deviceID: id,
@@ -437,6 +447,7 @@ struct ScrcpyApp: ParsableCommand {
             resolution: resolution,
             keepActive: keepActive,
             flexDisplay: flexDisplay,
+            useVirtualDisplay: useVirtualDisplay,
             backgroundColor: backgroundColor,
             renderFit: renderFit,
             lockAspectRatio: !noAspectRatioLock,

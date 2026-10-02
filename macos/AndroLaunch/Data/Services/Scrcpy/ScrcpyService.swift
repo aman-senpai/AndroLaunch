@@ -148,6 +148,7 @@ final class ScrcpyService: ScrcpyServiceProtocol {
         resolution: Int,
         keepActive: Bool,
         flexDisplay: Bool,
+        useVirtualDisplay: Bool,
         backgroundColor: String?,
         renderFit: String?,
         lockAspectRatio: Bool,
@@ -163,13 +164,20 @@ final class ScrcpyService: ScrcpyServiceProtocol {
         args.append(deviceID)
         args.append("--window-title")
         args.append("AndroLaunch - \(packageID)")
-        args.append("--new-display")
         args.append("--start-app")
         args.append(packageID)
 
-        if flexDisplay {
-            args.append("--flex-display")
+        if useVirtualDisplay {
+            // An app gets a window of its own on a scrcpy virtual display. Avoided on
+            // Android 12-13, where that crashes SystemUI and locks the device.
+            args.append("--new-display")
+            if flexDisplay {
+                args.append("--flex-display")
+            } else {
+                args.append(contentsOf: ["-m", "\(resolution)"])
+            }
         } else {
+            // Mirror the main display with the app in the foreground instead
             args.append(contentsOf: ["-m", "\(resolution)"])
         }
 

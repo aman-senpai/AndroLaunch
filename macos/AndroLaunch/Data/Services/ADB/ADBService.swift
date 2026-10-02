@@ -604,7 +604,8 @@ final class ADBService: ADBServiceProtocol {
     // MARK: - App Launching & Mirroring (using SCRCPY)
     func launchApp(
         packageID: String, deviceID: String, appName: String?, deviceName: String?,
-        audioEnabled: Bool, resolution: Int, clipboardEnabled: Bool, flexDisplay: Bool
+        audioEnabled: Bool, resolution: Int, clipboardEnabled: Bool, flexDisplay: Bool,
+        useVirtualDisplay: Bool
     ) {
         guard let adbPath = currentADBPath else {
             let errorMessage = "ADB executable path not set. Cannot launch app with scrcpy."
@@ -656,15 +657,24 @@ final class ADBService: ADBServiceProtocol {
         var args = [
             "--serial", cleanDeviceID,
             "--window-title", "\(deviceName ?? deviceID) - \(appName ?? packageID)",
-            "--new-display",
             "--start-app", packageID,
             "--audio-output-buffer=10",
         ]
 
-        if flexDisplay {
-            args.append("--flex-display")
-            args.append("--audio-bit-rate=16M")
+        if useVirtualDisplay {
+            // An app gets a window of its own on a scrcpy virtual display. Avoided on
+            // Android 12-13, where that crashes SystemUI and locks the device.
+            args.append("--new-display")
+            if flexDisplay {
+                args.append("--flex-display")
+                args.append("--audio-bit-rate=16M")
+            } else {
+                args.append("-m")
+                args.append("\(resolution)")
+                args.append("--audio-bit-rate=10000")
+            }
         } else {
+            // Mirror the main display with the app in the foreground instead
             args.append("-m")
             args.append("\(resolution)")
             args.append("--audio-bit-rate=10000")

@@ -35,7 +35,8 @@ protocol ADBServiceProtocol {
     func fetchApps(for deviceID: String)
     func launchApp(
         packageID: String, deviceID: String, appName: String?, deviceName: String?,
-        audioEnabled: Bool, resolution: Int, clipboardEnabled: Bool, flexDisplay: Bool)
+        audioEnabled: Bool, resolution: Int, clipboardEnabled: Bool, flexDisplay: Bool,
+        useVirtualDisplay: Bool)
     func launchCamera(deviceID: String, facing: CameraFacing)
     func mirrorDevice(
         deviceID: String, deviceName: String?, audioEnabled: Bool, clipboardEnabled: Bool,

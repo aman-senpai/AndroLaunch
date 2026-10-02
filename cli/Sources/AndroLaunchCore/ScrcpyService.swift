@@ -1,5 +1,25 @@
 import Foundation
 
+// MARK: - Virtual Display Support
+
+/// scrcpy's `--new-display` creates a virtual display. On Android 12, 12L and 13 the platform
+/// SystemUI (WM Shell `LegacySplitScreenController`) dereferences a null `DisplayLayout` for that
+/// display on its next rotation/configuration event, crashes, and on restart re-shows the lock
+/// screen — the phone ends up locked. Android 14 removed that code path, so only these versions
+/// must fall back to mirroring the main display.
+public enum VirtualDisplaySupport {
+    public static let unsafeAPILevels: ClosedRange<Int> = 31...33
+
+    /// `true` when `--new-display` must be avoided for the given `ro.build.version.sdk` value.
+    /// An unknown or unparsable level is treated as unsafe so the device is never locked by mistake.
+    public static func isUnsafe(apiLevel: String?) -> Bool {
+        guard let raw = apiLevel?.trimmingCharacters(in: .whitespacesAndNewlines),
+            let level = Int(raw)
+        else { return true }
+        return unsafeAPILevels.contains(level)
+    }
+}
+
 // MARK: - Scrcpy Service
 
 public final class ScrcpyService {
@@ -279,6 +299,7 @@ public final class ScrcpyService {
         resolution: Int = 1024,
         keepActive: Bool = true,
         flexDisplay: Bool = false,
+        useVirtualDisplay: Bool = true,
         backgroundColor: String? = nil,
         renderFit: String? = nil,
         lockAspectRatio: Bool = true,
@@ -300,15 +321,22 @@ public final class ScrcpyService {
         var args = [
             "--serial", cleanDeviceID,
             "--window-title", "AndroLaunch - \(packageID)",
-            "--new-display",
             "--start-app", packageID,
             "--audio-output-buffer=10",
         ]
 
-        if flexDisplay {
-            args.append("--flex-display")
+        if useVirtualDisplay {
+            // An app gets a window of its own on a scrcpy virtual display. Avoided on
+            // Android 12-13, where that crashes SystemUI and locks the device.
+            args.append("--new-display")
+            if flexDisplay {
+                args.append("--flex-display")
+            } else {
+                // Without flex, constrain to the requested resolution
+                args.append(contentsOf: ["-m", "\(resolution)"])
+            }
         } else {
-            // Without flex, constrain to the requested resolution
+            // Mirror the main display with the app in the foreground instead
             args.append(contentsOf: ["-m", "\(resolution)"])
         }
 

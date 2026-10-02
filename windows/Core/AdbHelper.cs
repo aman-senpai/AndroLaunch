@@ -484,6 +484,31 @@ namespace Androlaunch.Core
             packages.Sort();
             return packages;
         }
+        /// <summary>
+        /// scrcpy's <c>--new-display</c> creates a virtual display. On Android 12, 12L and 13 the
+        /// platform SystemUI (WM Shell <c>LegacySplitScreenController</c>) dereferences a null
+        /// <c>DisplayLayout</c> for that display on its next rotation/configuration event, crashes,
+        /// and on restart re-shows the lock screen — the phone ends up locked. Android 14 removed
+        /// that code path, so only these versions must fall back to mirroring the main display.
+        /// An unknown version is treated as unsafe so the device is never locked by mistake.
+        /// </summary>
+        private static bool VirtualDisplayUnsafe(string serial)
+        {
+            try
+            {
+                var sdk = RunAdbCommand($"-s {serial} shell getprop ro.build.version.sdk").Trim();
+                if (int.TryParse(sdk, out var level))
+                {
+                    return level >= 31 && level <= 33;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error reading Android SDK level: {ex.Message}");
+            }
+            return true;
+        }
+
         public static void LaunchApp(string serial, string packageName)
         {
             try
@@ -494,10 +519,13 @@ namespace Androlaunch.Core
                 {
                     // Swift implementation uses:
                     // --serial <id> --stay-awake --window-title <name> --new-display -m <res> --start-app <pkg>
+                    // Android 12-13: the virtual display crashes SystemUI and locks the device, so
+                    // mirror the main display with the app in the foreground instead.
+                    var virtualDisplay = VirtualDisplayUnsafe(serial) ? "" : "--new-display ";
                     Process.Start(new ProcessStartInfo
                     {
                         FileName = _scrcpyPath,
-                        Arguments = $"-s {serial} --stay-awake --new-display --start-app={packageName}",
+                        Arguments = $"-s {serial} --stay-awake {virtualDisplay}--start-app={packageName}",
                         UseShellExecute = false,
                         CreateNoWindow = true
                     });

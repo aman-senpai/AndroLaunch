@@ -654,11 +654,15 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
         let clipboardEnabled = isClipboardEnabled(for: deviceID)
         let resolution = getResolution(for: deviceID)
         let flexDisplay = isFlexDisplayEnabled(for: deviceID)
-        let deviceName = devices.first(where: { $0.id == deviceID })?.name
+        let device = devices.first(where: { $0.id == deviceID })
+        let deviceName = device?.name
+        // Android 12-13: scrcpy's virtual display crashes SystemUI and locks the device, so
+        // mirror the main display with the app in the foreground instead.
+        let useVirtualDisplay = !(device?.virtualDisplayIsUnsafe ?? true)
         adbService.launchApp(
             packageID: packageID, deviceID: deviceID, appName: appName, deviceName: deviceName,
             audioEnabled: audioEnabled, resolution: resolution, clipboardEnabled: clipboardEnabled,
-            flexDisplay: flexDisplay)
+            flexDisplay: flexDisplay, useVirtualDisplay: useVirtualDisplay)
     }
 
     func mirrorDevice(deviceID: String) {

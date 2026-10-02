@@ -54,6 +54,7 @@ protocol ScrcpyServiceProtocol {
         resolution: Int,
         keepActive: Bool,
         flexDisplay: Bool,
+        useVirtualDisplay: Bool,
         backgroundColor: String?,
         renderFit: String?,
         lockAspectRatio: Bool,

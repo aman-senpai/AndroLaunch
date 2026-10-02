@@ -31,3 +31,18 @@ public struct AndroidDevice: Identifiable, Equatable {
     }
 }
 
+extension AndroidDevice {
+    /// scrcpy's `--new-display` creates a virtual display. On Android 12, 12L and 13 the platform
+    /// SystemUI (WM Shell `LegacySplitScreenController`) dereferences a null `DisplayLayout` for
+    /// that display on its next rotation/configuration event, crashes, and on restart re-shows the
+    /// lock screen — the phone ends up locked. Android 14 removed that code path, so only these
+    /// versions must fall back to mirroring the main display.
+    ///
+    /// An unknown API level is treated as unsafe so the device is never locked by mistake.
+    public var virtualDisplayIsUnsafe: Bool {
+        guard let level = apiLevel.flatMap({ Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) })
+        else { return true }
+        return (31...33).contains(level)
+    }
+}
+
