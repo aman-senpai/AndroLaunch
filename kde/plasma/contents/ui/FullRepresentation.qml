@@ -2,6 +2,8 @@ import QtQuick
 import QtQuick.Layouts
 import org.kde.plasma.components as PlasmaComponents3
 import org.kde.kirigami as Kirigami
+import "components"
+import "../code/util.js" as Util
 
 /*
  * Expanded (popup) representation: device header, tab bar, lazily loaded tabs
@@ -43,10 +45,15 @@ Item {
                 smooth: true
             }
 
+            // The popup header is a single identity line: transport, battery and
+            // the Android version all live on the device card below, so repeating
+            // them here was noise.
             PlasmaComponents3.Label {
                 Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
                 elide: Text.ElideRight
-                text: "AndroLaunch"
+                objectName: "deviceTitle"
+                text: full.backend.activeDevice ? Util.deviceIdentity(full.backend.activeDevice) : "AndroLaunch"
                 font.bold: true
             }
 
@@ -166,7 +173,11 @@ Item {
             Layout.fillWidth: true
 
             Repeater {
-                model: ["Quick", "Apps", "Pair", "Files", "Shell", "AVDs"]
+                // Plain-language names: "Quick"/"Pair"/"AVDs" were too vague to
+                // guess from the tab bar alone. Text only: icon-plus-label tabs
+                // need more width than the popup has at this font size, which
+                // clipped "Emulators" at the right edge.
+                model: ["Device", "Apps", "Wireless", "Files", "Console", "Emulators"]
 
                 PlasmaComponents3.TabButton {
                     text: modelData
@@ -181,6 +192,10 @@ Item {
 
             Layout.fillWidth: true
             Layout.fillHeight: true
+            // The tab content used to sit flush against the popup frame, which
+            // made the toggle tiles and the action rows look crammed.
+            Layout.leftMargin: Kirigami.Units.smallSpacing
+            Layout.rightMargin: Kirigami.Units.smallSpacing
             currentIndex: tabBar.currentIndex
 
             Loader {

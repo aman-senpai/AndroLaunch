@@ -31,6 +31,23 @@ function statusLabel(device) {
     return device.status || "Unknown";
 }
 
+// Identity line for the popup header and the device card. Some transports report
+// a blank or whitespace-only name, which used to render as an empty bold line, so
+// fall through to whatever does identify the device.
+function deviceIdentity(device) {
+    if (!device)
+        return "";
+    var candidates = [device.name, device.model, device.address, device.id];
+    for (var i = 0; i < candidates.length; ++i) {
+        if (candidates[i] === undefined || candidates[i] === null)
+            continue;
+        var value = String(candidates[i]).trim();
+        if (value.length > 0)
+            return value;
+    }
+    return "Android device";
+}
+
 function formatBytes(bytes) {
     if (!bytes || bytes <= 0)
         return "0 B";

@@ -12,7 +12,50 @@ PlasmaComponents3.ScrollView {
 
     required property var backend
 
+    // Reboot mode awaiting confirmation ("" = none). The power buttons only set
+    // this; backend.reboot() runs after an explicit second click, because a
+    // stray click into bootloader/recovery costs the session and, on locked
+    // devices, the ADB authorization as well.
+    property string pendingReboot: ""
+
+    // Names the device when it is known, so a confirmation row that is read at
+    // a glance cannot be mistaken for another device's popup.
+    readonly property string rebootConfirmationText: {
+        const device = root.backend.activeDevice;
+        const target = device ? (device.name || device.id) : "";
+        if (root.pendingReboot === "normal")
+            return target.length > 0 ? "Restart Android on " + target + "?" : "Restart Android?";
+        const mode = root.pendingReboot;
+        return target.length > 0 ? "Reboot " + target + " into " + mode + "?" : "Reboot into " + mode + "?";
+    }
+
+    // The two non-system targets leave the normal Android shell, so they get the
+    // negative colour; a plain restart is disruptive but recoverable.
+    readonly property bool rebootIsDestructive: root.pendingReboot !== "normal"
+
+    function confirmReboot() {
+        const mode = root.pendingReboot;
+        root.pendingReboot = "";
+        if (mode !== "")
+            root.backend.reboot(mode);
+    }
+
     anchors.fill: parent
+
+    Connections {
+        target: root.backend
+
+        function onHasDeviceChanged() {
+            if (!root.backend.hasDevice)
+                root.pendingReboot = "";
+        }
+
+        // Switching device while a confirmation sits open must not fire the
+        // buffered mode at the newly selected device.
+        function onActiveIdChanged() {
+            root.pendingReboot = "";
+        }
+    }
 
     ColumnLayout {
         id: content
@@ -93,24 +136,31 @@ PlasmaComponents3.ScrollView {
                     spacing: Kirigami.Units.smallSpacing
 
                     Kirigami.Icon {
+                        Layout.alignment: Qt.AlignVCenter
                         source: Util.deviceIcon(root.backend.activeDevice)
                         implicitWidth: Kirigami.Units.iconSizes.medium
                         implicitHeight: implicitWidth
                     }
 
+                    // Name, transport, address, Android version: middle-aligned as a
+                    // block against the transport icon and the battery readout.
                     ColumnLayout {
                         Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignVCenter
                         spacing: 0
 
                         PlasmaComponents3.Label {
                             Layout.fillWidth: true
-                            text: root.backend.activeDevice ? (root.backend.activeDevice.name || root.backend.activeDevice.id) : ""
+                            // Same identity line as the popup header.
+                            objectName: "cardTitle"
+                            text: Util.deviceIdentity(root.backend.activeDevice)
                             font.bold: true
                             elide: Text.ElideRight
                         }
 
                         PlasmaComponents3.Label {
                             Layout.fillWidth: true
+                            objectName: "cardSubtitle"
                             text: {
                                 const device = root.backend.activeDevice;
                                 if (!device)
@@ -135,6 +185,7 @@ PlasmaComponents3.ScrollView {
                     }
 
                     RowLayout {
+                        Layout.alignment: Qt.AlignVCenter
                         spacing: Kirigami.Units.smallSpacing / 2
                         visible: root.backend.activeBattery >= 0
 
@@ -152,6 +203,7 @@ PlasmaComponents3.ScrollView {
                     }
 
                     PlasmaComponents3.ToolButton {
+                        Layout.alignment: Qt.AlignVCenter
                         icon.name: "view-refresh"
                         onClicked: root.backend.refresh()
 
@@ -251,10 +303,14 @@ PlasmaComponents3.ScrollView {
             text: "Quick controls"
         }
 
+        // Two columns: the switch indicator plus a readable label need the width,
+        // and four cramped chips per row was part of why they read as buttons.
+        // The column gutter is wider than the row gap so the two tiles do not
+        // look like one continuous bar.
         GridLayout {
             Layout.fillWidth: true
-            columns: 4
-            columnSpacing: Kirigami.Units.smallSpacing
+            columns: 2
+            columnSpacing: Kirigami.Units.smallSpacing * 2
             rowSpacing: Kirigami.Units.smallSpacing
 
             ToggleChip {
@@ -348,32 +404,77 @@ PlasmaComponents3.ScrollView {
             text: "Power"
         }
 
+        // "Normal / Bootloader / Recovery" said nothing about what would happen;
+        // the verbs and tooltips below do, and every one of them is buffered
+        // behind the confirmation row further down.
         RowLayout {
             Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
+            visible: root.pendingReboot === ""
+            objectName: "rebootButtons"
 
-            PlasmaComponents3.ToolButton {
-                Layout.fillWidth: true
-                text: "Normal"
-                display: PlasmaComponents3.ToolButton.TextOnly
+            FlatButton {
+                text: "Reboot"
+                icon.name: "system-reboot"
+                icon.color: Kirigami.Theme.textColor
                 enabled: root.backend.hasDevice
-                onClicked: root.backend.reboot("normal")
+                onClicked: root.pendingReboot = "normal"
+
+                PlasmaComponents3.ToolTip {
+                    text: "Restart Android normally"
+                }
             }
 
-            PlasmaComponents3.ToolButton {
-                Layout.fillWidth: true
+            FlatButton {
                 text: "Bootloader"
-                display: PlasmaComponents3.ToolButton.TextOnly
+                icon.name: "computer"
+                icon.color: Kirigami.Theme.textColor
                 enabled: root.backend.hasDevice
-                onClicked: root.backend.reboot("bootloader")
+                onClicked: root.pendingReboot = "bootloader"
+
+                PlasmaComponents3.ToolTip {
+                    text: "Restart into the bootloader (fastboot mode)"
+                }
             }
 
-            PlasmaComponents3.ToolButton {
-                Layout.fillWidth: true
+            FlatButton {
                 text: "Recovery"
-                display: PlasmaComponents3.ToolButton.TextOnly
+                icon.name: "tools-wizard"
+                icon.color: Kirigami.Theme.textColor
                 enabled: root.backend.hasDevice
-                onClicked: root.backend.reboot("recovery")
+                onClicked: root.pendingReboot = "recovery"
+
+                PlasmaComponents3.ToolTip {
+                    text: "Restart into recovery mode"
+                }
+            }
+        }
+
+        // Inline confirmation shown in place of the buttons above.
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+            visible: root.pendingReboot !== ""
+            objectName: "rebootConfirm"
+
+            PlasmaComponents3.Label {
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+                color: root.rebootIsDestructive ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor
+                text: root.rebootConfirmationText
+            }
+
+            PlasmaComponents3.Button {
+                text: "Reboot"
+                icon.name: "system-reboot"
+                icon.color: root.rebootIsDestructive ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor
+                enabled: root.backend.hasDevice
+                onClicked: root.confirmReboot()
+            }
+
+            PlasmaComponents3.Button {
+                text: "Cancel"
+                onClicked: root.pendingReboot = ""
             }
         }
 
