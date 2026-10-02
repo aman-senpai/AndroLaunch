@@ -37,7 +37,7 @@ This installs AndroLaunch.app to `/Applications`. Dependencies (`adb` and `scrcp
 
 **Option B — Manual download**
 
-1.  **Launch**: Download AndroLaunch from [Releases](https://github.com/aman-senpai/AndroLaunch/releases), move to Applications, and run.
+1.  **Launch**: Download the macOS build (`v<version>-macos.zip`) from [Releases](https://github.com/aman-senpai/AndroLaunch/releases), move AndroLaunch.app to Applications, and run.
 
 2.  **Onboarding Wizard**: On first launch, AndroLaunch guides you through dependency setup with an interactive onboarding window:
     - Automatically detects existing ADB and scrcpy installations

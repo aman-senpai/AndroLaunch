@@ -29,6 +29,9 @@ final class HomebrewService: HomebrewServiceProtocol {
 
     private let brewPath: String?
 
+    /// Dependencies Homebrew ships as casks rather than formulae.
+    private static let caskPackages: Set<String> = ["android-platform-tools"]
+
     init() {
         brewPath = Self.resolveBrewPath()
     }
@@ -108,7 +111,11 @@ final class HomebrewService: HomebrewServiceProtocol {
         DispatchQueue.global(qos: .userInitiated).async {
             let task = Process()
             task.executableURL = URL(fileURLWithPath: brew)
-            task.arguments = ["install", formula]
+            // `android-platform-tools` is a cask in Homebrew now, not a formula,
+            // so it has to be installed with --cask.
+            task.arguments = Self.caskPackages.contains(formula)
+                ? ["install", "--cask", formula]
+                : ["install", formula]
 
             let stdoutPipe = Pipe()
             let stderrPipe = Pipe()
