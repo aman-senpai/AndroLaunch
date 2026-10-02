@@ -27,11 +27,12 @@ Requires **macOS 15.3 (Sequoia) or later**.
 **Option A — Homebrew (recommended)**
 
 ```bash
-brew tap aman-senpai/apps
-brew install --cask androlaunch
+brew install --cask aman-senpai/apps/androlaunch
 ```
 
-This installs AndroLaunch.app to `/Applications`. Dependencies (`adb` and `scrcpy`) are installed automatically if missing. Without tapping first: `brew install --cask aman-senpai/apps/androlaunch`.
+This installs AndroLaunch.app to `/Applications`; dependencies (`adb` and `scrcpy`) are installed automatically if missing.
+
+The tap-qualified name is the reliable form. After adding the tap (`brew tap aman-senpai/apps`) the short `brew install --cask androlaunch` works too, but it fails with *"Cask androlaunch exists in multiple taps"* when this repository is also tapped under its old name — in that case run `brew untap aman-senpai/tap`.
 
 > **Note**: the app is ad-hoc signed (not notarized), so macOS may refuse the first launch. Either right-click AndroLaunch in `/Applications` → **Open**, or run `xattr -dr com.apple.quarantine /Applications/AndroLaunch.app`.
 
@@ -65,7 +66,7 @@ This installs AndroLaunch.app to `/Applications`. Dependencies (`adb` and `scrcp
 
     > **Note**: Requires scrcpy v4.0+ for all features.
 
-3.  **Launch**: Download the Windows version (exe) and run it.
+3.  **Launch**: download the Windows build from [Releases](https://github.com/aman-senpai/AndroLaunch/releases). Windows artifacts are not attached to every release — the newest is `windows.v0.zip` on [v0.3.3](https://github.com/aman-senpai/AndroLaunch/releases/tag/v0.3.3).
 
 ### Linux Installation (KDE Plasma 6)
 
