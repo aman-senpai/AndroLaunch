@@ -75,3 +75,11 @@ fastlane/test_output
 # Code-review-graph
 .code-review-graph/
 .claude/
+
+# Python backend
+__pycache__/
+*.pyc
+
+# NOTE: the generic "bin/" rule above (Visual Studio output) also matches
+# kde/bin/, where the Plasma widget's backend CLI lives. New files there need
+# `git add -f` — existing ones stay tracked.

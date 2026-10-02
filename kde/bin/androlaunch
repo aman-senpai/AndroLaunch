@@ -1,0 +1,1763 @@
+#!/usr/bin/env python3
+"""AndroLaunch backend for the KDE Plasma widget (Linux).
+
+Machine interface used by the plasmoid:
+
+    androlaunch call <action> [<base64-json-args>] [--token <token>]
+
+A single JSON envelope is printed on stdout:
+
+    {"ok": bool, "action": str, "token": str, "message": str,
+     "error": str, "adb": str, "scrcpy": str, "data": ...}
+
+Human interface (same code paths, nicer output):
+
+    androlaunch devices | state | apps | mirror | camera | toggle wifi on
+    androlaunch reboot recovery | apps-uninstall <pkg> | files /sdcard | ...
+
+All device strings (paths, package names, shell commands) are passed through
+argv, never through a shell, so quoting is safe. On-device commands are quoted
+with shlex.quote() because adb joins its arguments into one remote shell line.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import concurrent.futures
+import json
+import math
+import os
+import random
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+VERSION = "1.2.0"
+QR_SERVICE = "ADBQR-connectPhoneOverWifi"
+
+CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "androlaunch"
+STATE_FILE = CONFIG_DIR / "state.json"
+
+DEFAULT_SCRCPY = {
+    "newDisplay": False,
+    "flexDisplay": False,
+    "audio": False,
+    "stayAwake": True,
+    "aspectRatioLock": True,
+    "borderless": False,
+    "maxFps": 60,
+    "bitRate": 8,
+    "maxSize": 0,
+    "cameraFacing": "back",
+    "cameraTorch": False,
+    "cameraZoom": 1.0,
+}
+
+# Actions that must not be scoped with `-s <device>`.
+UNSCOPED = ("connect", "pair", "disconnect", "devices", "start-server", "kill-server", "mdns", "version", "help")
+
+
+# --------------------------------------------------------------------------- #
+# State
+# --------------------------------------------------------------------------- #
+def load_state() -> dict:
+    try:
+        with STATE_FILE.open() as fh:
+            data = json.load(fh)
+            if isinstance(data, dict):
+                return data
+    except (OSError, ValueError):
+        pass
+    return {}
+
+
+def save_state(state: dict) -> None:
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = STATE_FILE.with_suffix(".tmp")
+        with tmp.open("w") as fh:
+            json.dump(state, fh, indent=2)
+        tmp.replace(STATE_FILE)
+    except OSError:
+        pass
+
+
+def remember_active(device_id: str) -> None:
+    state = load_state()
+    state["active"] = device_id
+    save_state(state)
+
+
+def remember_device(dev: dict) -> None:
+    # Only entries that can be reconnected later are useful: an mDNS alias cannot be
+    # `adb connect`ed, the ip:port address can.
+    address = dev.get("address") or (dev["id"] if ":" in dev.get("id", "") else "")
+    if not address:
+        return
+    state = load_state()
+    previous = [
+        p
+        for p in state.get("previous", [])
+        if p.get("id") != dev["id"] and p.get("name", "").casefold() != (dev.get("name") or "").casefold()
+    ]
+    previous.insert(
+        0,
+        {
+            "id": address,
+            "name": dev.get("name") or dev.get("model") or dev["id"],
+            "wireless": True,
+            "lastSeen": int(time.time()),
+        },
+    )
+    state["previous"] = [p for p in previous if "_adb-tls-" not in p.get("id", "")][:10]
+    save_state(state)
+
+
+# --------------------------------------------------------------------------- #
+# Binaries
+# --------------------------------------------------------------------------- #
+def _first_existing(paths) -> str:
+    for path in paths:
+        if path and os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return ""
+
+
+def find_adb() -> str:
+    override = os.environ.get("ANDROLAUNCH_ADB")
+    if override:
+        return override
+    found = shutil.which("adb")
+    if found:
+        return found
+    home = Path.home()
+    return _first_existing(
+        [
+            home / "Android/Sdk/platform-tools/adb",
+            home / ".local/bin/adb",
+            "/usr/lib/android-sdk/platform-tools/adb",
+            "/opt/android-sdk/platform-tools/adb",
+            "/usr/local/bin/adb",
+        ]
+    )
+
+
+def find_scrcpy() -> str:
+    override = os.environ.get("ANDROLAUNCH_SCRCPY")
+    if override:
+        return override
+    found = shutil.which("scrcpy")
+    if found:
+        return found
+    return _first_existing([Path.home() / ".local/bin/scrcpy", "/usr/local/bin/scrcpy"])
+
+
+ADB = find_adb()
+SCRCPY = find_scrcpy()
+
+
+# --------------------------------------------------------------------------- #
+# Process helpers
+# --------------------------------------------------------------------------- #
+class Result:
+    __slots__ = ("ok", "out", "err", "code")
+
+    def __init__(self, ok: bool, out: str = "", err: str = "", code: int = -1):
+        self.ok = ok
+        self.out = out
+        self.err = err
+        self.code = code
+
+    def text(self) -> str:
+        return (self.out or self.err or "").strip()
+
+    def first_line(self) -> str:
+        return self.text().splitlines()[0] if self.text() else ""
+
+
+def run(cmd: list[str], timeout: int = 30) -> Result:
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except FileNotFoundError:
+        return Result(False, "", f"not found: {cmd[0]}")
+    except subprocess.TimeoutExpired:
+        return Result(False, "", f"timeout after {timeout}s: {' '.join(cmd[:2])}")
+    except OSError as exc:  # pragma: no cover - defensive
+        return Result(False, "", str(exc))
+    return Result(proc.returncode == 0, proc.stdout or "", proc.stderr or "", proc.returncode)
+
+
+def detached(cmd: list[str]) -> int:
+    """Start a process that outlives this one. Returns its pid."""
+    proc = subprocess.Popen(  # noqa: S603 - argv, no shell
+        cmd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    return proc.pid
+
+
+def adb(args: list[str], device: str = "", timeout: int = 30) -> Result:
+    if not ADB:
+        return Result(False, "", "adb not installed (Fedora: sudo dnf install android-tools)")
+    cmd = [ADB]
+    if device and args and not args[0].startswith(UNSCOPED):
+        cmd += ["-s", device]
+    cmd += args
+    return run(cmd, timeout=timeout)
+
+
+def adb_shell(command: str, device: str = "", timeout: int = 30) -> Result:
+    return adb(["shell", command], device=device, timeout=timeout)
+
+
+def dumps(obj) -> str:
+    return json.dumps(obj, separators=(",", ":"))
+
+
+# --------------------------------------------------------------------------- #
+# Parsers
+# --------------------------------------------------------------------------- #
+def parse_devices(text: str) -> list[dict]:
+    devices = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.lower().startswith("list of devices"):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        serial, status = parts[0], parts[1]
+        model = ""
+        product = ""
+        for token in parts[2:]:
+            if token.startswith("model:"):
+                model = token[6:].replace("_", " ")
+            elif token.startswith("device:"):
+                product = token[7:]
+        name = model or product or serial
+        mdns = "_adb-tls-" in serial or serial.endswith("._tcp")
+        devices.append(
+            {
+                "id": serial,
+                "name": name,
+                "model": model or product,
+                "status": status,
+                "connected": status == "device",
+                "wireless": ":" in serial or mdns,
+                "address": serial if ":" in serial else "",
+                "emulator": serial.startswith("emulator-"),
+                "mdns": mdns,
+                "battery": -1,
+                "charging": False,
+                "android": "",
+                "api": "",
+                "quick": {},
+            }
+        )
+    return dedupe_devices(devices)
+
+
+def dedupe_devices(devices: list[dict]) -> list[dict]:
+    """Android 11+ exposes one phone twice: as `ip:port` and as
+    `adb-<hash>-<name>._adb-tls-connect._tcp`.
+
+    Keep a single entry whose serial works for both adb and scrcpy — the mDNS alias,
+    because scrcpy refuses the `ip:port` serial while the alias transport exists — and
+    carry the network address along for display and for reconnecting later.
+    """
+    result: list[dict] = []
+    for device in devices:
+        twin = next(
+            (
+                other
+                for other in result
+                if other["mdns"] != device["mdns"]
+                and other["model"]
+                and other["model"] == device["model"]
+            ),
+            None,
+        )
+        if twin is None:
+            if not device["mdns"] and ":" in device["id"]:
+                device["address"] = device["id"]
+            result.append(device)
+            continue
+
+        mdns_entry, address_entry = (device, twin) if device["mdns"] else (twin, device)
+        address = address_entry["id"] if ":" in address_entry["id"] else mdns_entry.get("address", "")
+        mdns_entry["address"] = address
+        mdns_entry["wireless"] = True
+        if address_entry["connected"]:
+            mdns_entry["connected"] = True
+            mdns_entry["status"] = "device"
+        result[result.index(twin)] = mdns_entry
+    return result
+
+
+def parse_info(text: str) -> dict:
+    info = {
+        "model": "",
+        "android": "",
+        "api": "",
+        "battery": -1,
+        "charging": False,
+        "wifi": False,
+        "bluetooth": False,
+        "darkMode": False,
+        "airplaneMode": False,
+        "mobileData": False,
+        "location": False,
+        "dnd": False,
+        "autoRotate": False,
+        "brightness": 128,
+        "brightnessMax": 255,
+        "volume": -1,
+    }
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("MODEL:"):
+            info["model"] = line[6:].strip()
+        elif line.startswith("VER:"):
+            info["android"] = line[4:].strip()
+        elif line.startswith("SDK:"):
+            info["api"] = line[4:].strip()
+        elif line.startswith("level:"):
+            digits = re.search(r"(\d+)", line)
+            if digits:
+                info["battery"] = int(digits.group(1))
+        elif "powered: true" in line:
+            info["charging"] = True
+        elif line.startswith("WIFI:"):
+            info["wifi"] = line.endswith("1")
+        elif line.startswith("BT:"):
+            info["bluetooth"] = line.endswith("1")
+        elif line.startswith("DARK:"):
+            info["darkMode"] = "yes" in line
+        elif line.startswith("AIR:"):
+            info["airplaneMode"] = line.endswith("1")
+        elif line.startswith("DATA:"):
+            info["mobileData"] = line.endswith("1")
+        elif line.startswith("LOC:"):
+            try:
+                info["location"] = int(line[4:].strip()) > 0
+            except ValueError:
+                info["location"] = False
+        elif line.startswith("DND:"):
+            digits = re.search(r"(\d+)", line[4:])
+            info["dnd"] = bool(digits) and int(digits.group(1)) > 0
+        elif line.startswith("ROT:"):
+            info["autoRotate"] = line.endswith("1")
+        elif line.startswith("BRI:"):
+            digits = re.search(r"(\d+)", line)
+            if digits:
+                info["brightness"] = int(digits.group(1))
+                # Android 12+ uses a 0-4095 range; older versions use 0-255.
+                info["brightnessMax"] = 4095 if info["brightness"] > 255 else 255
+        elif "volume is" in line:
+            match = re.search(r"volume is (\d+) in range \[(\d+)\.\.(\d+)\]", line)
+            if match:
+                cur, low, high = (int(g) for g in match.groups())
+                if high > low:
+                    info["volume"] = round((cur - low) / (high - low) * 100)
+    return info
+
+
+PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+$")
+
+
+def parse_scrcpy_apps(text: str) -> list[dict]:
+    apps = []
+    parsing = False
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if "List of apps" in line:
+            parsing = True
+            continue
+        if not parsing or not line.strip():
+            continue
+        match = re.match(r"^\s*([*\-\s])\s+(.*)$", line)
+        if not match:
+            continue
+        marker, rest = match.group(1), match.group(2).strip()
+        tokens = rest.split()
+        pkg = ""
+        for index in range(len(tokens) - 1, -1, -1):
+            if PACKAGE_RE.match(tokens[index]):
+                pkg = tokens[index]
+                tokens.pop(index)
+                break
+        if not pkg:
+            continue
+        apps.append(
+            {
+                "package": pkg,
+                "name": " ".join(tokens).strip() or pkg,
+                "system": marker == "*",
+            }
+        )
+    return apps
+
+
+def parse_pm_packages(text: str) -> list[dict]:
+    apps = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line.startswith("package:"):
+            continue
+        value = line[8:]
+        if "=" in value:
+            apk_path, pkg = value.rsplit("=", 1)
+        else:
+            apk_path, pkg = "", value
+        if not pkg:
+            continue
+        tail_parts = pkg.split(".")
+        if len(tail_parts) >= 3 and tail_parts[0] in ("com", "org", "net", "io", "me", "dev", "app"):
+            tail_parts = tail_parts[-2:]
+        else:
+            tail_parts = tail_parts[-1:]
+        tail = " ".join(tail_parts).replace("_", " ").replace("-", " ").strip()
+        stem = apk_path.rsplit("/", 1)[-1].removesuffix(".apk").strip()
+        label = "" if stem.lower() in ("base", "") or stem == pkg.rsplit(".", 1)[-1] else stem.replace("-", " ").replace("_", " ")
+        apps.append({"package": pkg, "name": (label or tail).title() or pkg, "system": False})
+    return apps
+
+
+LS_LINE_RE = re.compile(
+    r"^(?P<perms>[dlbcps-][rwxstST-]{9}[.+@]?)\s+\d+\s+\S+\s+(?:\S+\s+)?(?P<size>\d+)\s+"
+    r"(?P<date>\d{4}-\d{2}-\d{2})\s+(?P<time>\d{2}:\d{2})\s+(?P<name>.+)$"
+)
+
+
+def parse_ls(text: str, base: str) -> list[dict]:
+    entries = []
+    base = base.rstrip("/") or "/"
+    for raw in text.splitlines():
+        line = raw.rstrip("\r")
+        if not line or line.startswith("total "):
+            continue
+        match = LS_LINE_RE.match(line)
+        if match:
+            perms = match.group("perms")
+            size_text = match.group("size")
+            date = f"{match.group('date')} {match.group('time')}"
+            name = match.group("name")
+        else:
+            parts = line.split(None, 7)
+            if len(parts) < 7:
+                continue
+            perms, size_text, name = parts[0], parts[4], parts[-1]
+            date = " ".join(parts[5:7])
+        if name in (".", "..") or not name:
+            continue
+        if perms.startswith("l") and " -> " in name:
+            name = name.split(" -> ", 1)[0]
+        is_dir = perms.startswith("d")
+        try:
+            size_bytes = int(size_text)
+        except ValueError:
+            size_bytes = 0
+        entries.append(
+            {
+                "name": name,
+                "path": f"{base}/{name}" if base != "/" else f"/{name}",
+                "isDirectory": is_dir,
+                "size": size_bytes,
+                "formattedSize": "--" if is_dir else format_bytes(size_bytes),
+                "date": date,
+                "permissions": perms,
+            }
+        )
+    entries.sort(key=lambda e: (not e["isDirectory"], e["name"].lower()))
+    return entries
+
+
+def format_bytes(size: int) -> str:
+    if size <= 0:
+        return "0 B"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    index = 0
+    value = float(size)
+    while value >= 1024 and index < len(units) - 1:
+        value /= 1024
+        index += 1
+    return f"{value:.1f} {units[index]}"
+
+
+META_RE = re.compile(r"(\d+\.\d+\.\d+\.\d+):(\d+)")
+
+
+def mdns_services(service: str) -> list[dict]:
+    """Discover `_adb-tls-pairing._tcp` / `_adb-tls-connect._tcp` endpoints."""
+    found: list[dict] = []
+    if ADB:
+        res = run([ADB, "mdns", "services"], timeout=8)
+        if res.ok:
+            for line in res.out.splitlines():
+                if service not in line:
+                    continue
+                match = META_RE.search(line)
+                if match:
+                    fields = line.split("\t")
+                    found.append(
+                        {
+                            "ip": match.group(1),
+                            "port": match.group(2),
+                            "service": fields[0].split(".")[0] if fields else service,
+                        }
+                    )
+    if not found and shutil.which("avahi-browse"):
+        res = run(["avahi-browse", "-rpt", "-t", service], timeout=8)
+        for line in res.out.splitlines():
+            if not line.startswith("="):
+                continue
+            fields = line.split(";")
+            if len(fields) >= 9 and ":" not in fields[7]:
+                found.append({"ip": fields[7], "port": fields[8], "service": fields[3]})
+    unique = {(item["ip"], item["port"]): item for item in found}
+    return list(unique.values())
+
+
+# --------------------------------------------------------------------------- #
+# Device helpers
+# --------------------------------------------------------------------------- #
+def list_devices() -> list[dict]:
+    if not ADB:
+        return []
+    adb(["start-server"], timeout=15)
+    res = adb(["devices", "-l"], timeout=15)
+    return parse_devices(res.out) if res.ok else []
+
+
+def resolve_device(requested: str = "") -> str:
+    if requested:
+        return requested
+    state = load_state()
+    devices = list_devices()
+    stored = state.get("active", "")
+    if stored and any(d["id"] == stored for d in devices):
+        return stored
+    for dev in devices:
+        if dev["connected"]:
+            return dev["id"]
+    return devices[0]["id"] if devices else ""
+
+
+INFO_COMMAND = (
+    'echo "MODEL:$(getprop ro.product.model)"; '
+    'echo "VER:$(getprop ro.build.version.release)"; '
+    'echo "SDK:$(getprop ro.build.version.sdk)"; '
+    "dumpsys battery | grep -E \"level:|powered:\"; "
+    'echo "WIFI:$(settings get global wifi_on 2>/dev/null)"; '
+    'echo "BT:$(settings get global bluetooth_on 2>/dev/null)"; '
+    'echo "DARK:$(cmd uimode night 2>/dev/null)"; '
+    'echo "AIR:$(settings get global airplane_mode_on 2>/dev/null)"; '
+    'echo "DATA:$(settings get global mobile_data 2>/dev/null)"; '
+    'echo "LOC:$(settings get secure location_mode 2>/dev/null)"; '
+    'echo "DND:$(cmd settings get global zen_mode 2>/dev/null || settings get global zen_mode 2>/dev/null)"; '
+    'echo "ROT:$(settings get system accelerometer_rotation 2>/dev/null)"; '
+    'echo "BRI:$(settings get system screen_brightness 2>/dev/null)"; '
+    'echo "VOL:$(cmd media_session volume --stream 3 --get 2>/dev/null)";'
+)
+
+
+def device_info(device: str, state: dict | None = None) -> dict:
+    res = adb_shell(INFO_COMMAND, device=device, timeout=25)
+    info = parse_info(res.out) if res.ok else {}
+    if info and state is not None:
+        # authoritative range instead of guessing it from the current value
+        span = (state.get("brightness_span") or {}).get(device)
+        if span in (255, 4095):
+            info["brightnessMax"] = int(span)
+    return info
+
+
+def fill_mdns_addresses(devices: list[dict]) -> None:
+    """mDNS-only devices (no `adb connect` twin yet) still have a discoverable address;
+    look it up so the UI can show it and history can reconnect later."""
+    pending = [d for d in devices if d.get("mdns") and not d.get("address")]
+    if not pending:
+        return
+    for service in mdns_services("_adb-tls-connect._tcp"):
+        instance = service.get("service", "")
+        for device in pending:
+            if not instance:
+                continue
+            if device["id"].split("._adb-tls")[0].endswith(instance) or instance in device["id"]:
+                device["address"] = f"{service['ip']}:{service['port']}"
+                device["wireless"] = True
+
+
+def heal_wireless(devices: list[dict], state: dict) -> list[dict]:
+    """Wireless debugging picks a new port whenever it is re-enabled. Drop offline
+    endpoints and re-connect through mDNS discovery so the widget recovers on its own."""
+    if any(device["connected"] for device in devices):
+        return devices
+    if any(device["connected"] for device in devices if False):  # pragma: no cover
+        return devices
+    stale = [device for device in devices if device["wireless"] and not device["mdns"]]
+    if not stale:
+        return devices
+    if time.time() - float(state.get("last_heal", 0)) < 20:
+        return devices
+    state["last_heal"] = int(time.time())
+    save_state(state)
+
+    for device in stale:
+        adb(["disconnect", device["address"] or device["id"]], timeout=10)
+
+    for service in mdns_services("_adb-tls-connect._tcp"):
+        target = f"{service['ip']}:{service['port']}"
+        result = adb(["connect", target], timeout=15)
+        if result.ok and "connected" in result.out:
+            return list_devices()
+    return devices
+
+
+def prune_mirrors(state: dict) -> list[dict]:
+    """Drop entries whose scrcpy window is gone (closed by the user, or killed when the
+    device dropped)."""
+    alive = []
+    for mirror in state.get("mirrors", []):
+        try:
+            pid = int(mirror.get("pid", 0))
+            os.kill(pid, 0)
+        except (OSError, ValueError, TypeError):
+            continue
+        alive.append(mirror)
+    if len(alive) != len(state.get("mirrors", [])):
+        state["mirrors"] = alive
+        save_state(state)
+    return alive
+
+
+def collect_state(requested: str = "") -> dict:
+    devices = list_devices()
+    state = load_state()
+    devices = heal_wireless(devices, state)
+    fill_mdns_addresses(devices)
+    active = requested or ""
+    if active and not any(d["id"] == active for d in devices):
+        active = ""
+    if not active:
+        stored = state.get("active", "")
+        active = stored if any(d["id"] == stored for d in devices) else ""
+    if not active:
+        active = next((d["id"] for d in devices if d["connected"]), "")
+    if not active and devices:
+        active = devices[0]["id"]
+
+    connected = [d for d in devices if d["connected"]]
+    if connected:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            infos = list(pool.map(lambda d: device_info(d["id"], state), connected))
+        by_id = {d["id"]: info for d, info in zip(connected, infos)}
+        for dev in devices:
+            info = by_id.get(dev["id"])
+            if not info:
+                continue
+            dev["battery"] = info["battery"]
+            dev["charging"] = info["charging"]
+            dev["android"] = info["android"]
+            dev["api"] = info["api"]
+            dev["quick"] = {
+                "wifi": info["wifi"],
+                "bluetooth": info["bluetooth"],
+                "darkMode": info["darkMode"],
+                "airplaneMode": info["airplaneMode"],
+                "mobileData": info["mobileData"],
+                "location": info["location"],
+                "dnd": info["dnd"],
+                "autoRotate": info["autoRotate"],
+                "brightness": info["brightness"],
+                "brightnessMax": info["brightnessMax"],
+                "volume": info["volume"] if info["volume"] >= 0 else 50,
+            }
+        known = [entry.get("id") for entry in state.get("previous", [])]
+        present = [d["id"] for d in connected if not d["emulator"]]
+        if present and present != known[: len(present)]:
+            for dev in connected:
+                if not dev["emulator"]:
+                    remember_device(dev)
+            state = load_state()
+    present_ids = {d["id"] for d in devices} | {d.get("address", "") for d in devices}
+    present_models = {d["model"].casefold() for d in devices if d["model"]}
+    previous = [
+        entry
+        for entry in state.get("previous", [])
+        if entry.get("id") not in present_ids
+        and "_adb-tls-" not in entry.get("id", "")
+        and (entry.get("name") or "").casefold() not in present_models
+    ]
+    return {
+        "devices": devices,
+        "active": active or None,
+        "previous": previous,
+        "qr": state.get("qr", {}),
+        "mirrors": prune_mirrors(state),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Actions
+# --------------------------------------------------------------------------- #
+def action_state(args: dict) -> dict:
+    return {"ok": True, "data": collect_state(args.get("device", ""))}
+
+
+def action_devices(args: dict) -> dict:
+    devices = list_devices()
+    for dev in devices:
+        if dev["connected"]:
+            remember_device(dev)
+    return {"ok": True, "data": {"devices": devices}}
+
+
+def action_select(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    if not device:
+        return {"ok": False, "message": "No device available"}
+    remember_active(device)
+    return {"ok": True, "message": f"Active device: {device}", "data": {"active": device}}
+
+
+TOGGLES = {
+    "wifi": lambda on: ["shell", "svc", "wifi", "enable" if on else "disable"],
+    "bluetooth": lambda on: ["shell", "svc", "bluetooth", "enable" if on else "disable"],
+    "darkmode": lambda on: ["shell", "cmd", "uimode", "night", "yes" if on else "no"],
+    "airplane": lambda on: [
+        "shell",
+        f"settings put global airplane_mode_on {1 if on else 0} && am broadcast -a android.intent.action.AIRPLANE_MODE",
+    ],
+    "data": lambda on: [
+        "shell",
+        f"settings put global mobile_data {1 if on else 0} && svc data {'enable' if on else 'disable'}",
+    ],
+    "location": lambda on: ["shell", "settings put secure location_mode " + ("3" if on else "0")],
+    "dnd": lambda on: ["shell", f"cmd settings put global zen_mode {1 if on else 0} || settings put global zen_mode {1 if on else 0}"],
+    "rotate": lambda on: ["shell", "settings put system accelerometer_rotation " + ("1" if on else "0")],
+}
+
+TOGGLE_LABELS = {
+    "wifi": "Wi-Fi",
+    "bluetooth": "Bluetooth",
+    "darkmode": "Dark mode",
+    "airplane": "Airplane mode",
+    "data": "Mobile data",
+    "location": "Location",
+    "dnd": "Do not disturb",
+    "rotate": "Auto rotate",
+}
+
+
+def action_toggle(args: dict) -> dict:
+    what = str(args.get("what", "")).lower()
+    if what not in TOGGLES:
+        return {"ok": False, "message": f"Unknown toggle: {what}"}
+    on = bool(args.get("on", True))
+    device = resolve_device(args.get("device", ""))
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+    res = adb(TOGGLES[what](on), device=device, timeout=20)
+    label = TOGGLE_LABELS[what]
+    return {
+        "ok": res.ok,
+        "message": f"{label} {'enabled' if on else 'disabled'} on {device}",
+        "error": "" if res.ok else res.text(),
+    }
+
+
+BRIGHTNESS_PROBE = 260  # above the 0-255 range, negligible visual change
+
+
+def _half_up(value: float) -> int:
+    """Round halves upwards: 30% of a 0-15 volume scale should land on 5, not 4."""
+    return int(math.floor(value + 0.5))
+
+
+def percent_to_raw(percent: float, span: int) -> int:
+    """Map 0-100 onto a device's raw range (brightness 0-255/0-4095)."""
+    return _half_up(max(0.0, min(100.0, float(percent))) / 100 * span)
+
+
+def percent_to_index(percent: float, low: int, high: int) -> int:
+    """Map 0-100 onto a volume stream's index range (e.g. music 0-150, ring 0-15)."""
+    return low + _half_up(max(0.0, min(100.0, float(percent))) / 100 * (high - low))
+
+
+def _brightness_span(device: str, state: dict) -> int:
+    """Maximum value of `settings get system screen_brightness`.
+
+    Android 12+ widened it to 4095, older releases use 255. Probing a value just above
+    255 tells them apart without flashing the screen, and the answer is cached per
+    device so later writes stay a single adb round-trip.
+    """
+    cached = (state.get("brightness_span") or {}).get(device)
+    if cached in (255, 4095):
+        return int(cached)
+
+    current = adb_shell("settings get system screen_brightness", device=device, timeout=15)
+    digits = re.search(r"(\d+)", current.out or "")
+    original = int(digits.group(1)) if digits else None
+
+    span = 255
+    probe = adb_shell(f"settings put system screen_brightness {BRIGHTNESS_PROBE}", device=device, timeout=15)
+    if probe.ok:
+        read = adb_shell("settings get system screen_brightness", device=device, timeout=15)
+        digits = re.search(r"(\d+)", read.out or "")
+        if digits and int(digits.group(1)) >= BRIGHTNESS_PROBE:
+            span = 4095
+        if original is not None:
+            adb_shell(f"settings put system screen_brightness {original}", device=device, timeout=15)
+
+    spans = state.get("brightness_span") or {}
+    spans[device] = span
+    state["brightness_span"] = spans
+    save_state(state)
+    return span
+
+
+def action_brightness(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+
+    state = load_state()
+    span = _brightness_span(device, state)
+
+    if args.get("percent") is not None:
+        percent = max(0, min(100, int(round(float(args["percent"])))))
+        value = percent_to_raw(percent, span)
+    else:
+        value = max(0, min(span, int(args.get("value", round(span / 2)))))
+        percent = round(value / span * 100)
+
+    res = adb_shell(f"settings put system screen_brightness {value}", device=device, timeout=20)
+    return {
+        "ok": res.ok,
+        "message": f"Brightness set to {percent}%",
+        "data": {"percent": percent, "value": value, "max": span},
+        "error": "" if res.ok else res.text(),
+    }
+
+
+def _stream_index_range(device: str, stream: int, state: dict) -> tuple[int, int] | None:
+    """Index range of a volume stream (`volume is X in range [min..max]`). The ranges
+    differ per stream and per device (music is 0-150 here, the ring stream 0-15)."""
+    streams = state.get("stream_ranges") or {}
+    cached = streams.get(f"{device}|{stream}")
+    if cached:
+        return int(cached[0]), int(cached[1])
+
+    res = adb(["shell", "cmd", "media_session", "volume", "--stream", str(stream), "--get"], device=device, timeout=20)
+    match = re.search(r"volume is (\d+) in range \[(\d+)\.\.(\d+)\]", res.out or "")
+    if not match:
+        return None
+    low, high = int(match.group(2)), int(match.group(3))
+    streams[f"{device}|{stream}"] = [low, high]
+    state["stream_ranges"] = streams
+    save_state(state)
+    return low, high
+
+
+def action_volume(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+
+    percent = max(0, min(100, int(args.get("value", 50))))
+    stream = int(args.get("stream", 3))
+
+    state = load_state()
+    span = _stream_index_range(device, stream, state)
+    if span is None:
+        return {"ok": False, "message": "Could not read the volume range of this device"}
+    low, high = span
+    target = percent_to_index(percent, low, high)
+
+    res = adb(["shell", "cmd", "media_session", "volume", "--stream", str(stream), "--set", str(target)], device=device, timeout=20)
+    if not res.ok or "Index" in (res.err or ""):
+        res = adb(["shell", "media", "volume", "--stream", str(stream), "--set", str(target)], device=device, timeout=20)
+    return {
+        "ok": res.ok,
+        "message": f"Volume set to {percent}%",
+        "data": {"percent": percent, "index": target, "range": [low, high]},
+        "error": "" if res.ok else res.text(),
+    }
+
+
+def action_ringer(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    mode = str(args.get("mode", "normal"))
+    if mode not in ("normal", "vibrate", "silent"):
+        return {"ok": False, "message": f"Unknown ringer mode: {mode}"}
+    res = adb(["shell", "cmd", "media_session", "set_volume_mode", mode], device=device, timeout=20)
+    return {"ok": res.ok, "message": f"Ringer: {mode}", "error": "" if res.ok else res.text()}
+
+
+def action_reboot(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    mode = str(args.get("mode", "normal"))
+    if mode not in ("normal", "bootloader", "recovery", "sideload"):
+        return {"ok": False, "message": f"Unknown reboot mode: {mode}"}
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+    res = adb(["reboot", mode], device=device, timeout=20)
+    return {"ok": res.ok, "message": f"Rebooting {device} into {mode}", "error": "" if res.ok else res.text()}
+
+
+# scrcpy's `--new-display` creates a virtual display. On Android 12, 12L and 13 the platform
+# SystemUI (WM Shell `LegacySplitScreenController`) dereferences a null `DisplayLayout` for that
+# display on its next rotation/configuration event, crashes, and on restart re-shows the lock
+# screen -- the phone ends up locked. Android 14 removed that code path, so only these versions
+# must fall back to mirroring the main display.
+VIRTUAL_DISPLAY_UNSAFE_API = (31, 32, 33)
+
+
+def virtual_display_supported(device: str) -> bool:
+    """False when scrcpy --new-display would crash SystemUI on this device (Android 12-13)."""
+    try:
+        api = int(str(device_info(device).get("api", "")).strip())
+    except (TypeError, ValueError):
+        # Version unknown: mirror the main display instead of risking a locked phone.
+        return False
+    return api not in VIRTUAL_DISPLAY_UNSAFE_API
+
+
+def _scrcpy_args(opts: dict) -> list[str]:
+    args: list[str] = []
+    if opts.get("newDisplay"):
+        args.append("--new-display")
+        if opts.get("flexDisplay"):
+            args.append("--flex-display")
+    elif int(opts.get("maxSize") or 0) > 0:
+        args += ["-m", str(int(opts["maxSize"]))]
+    if int(opts.get("maxFps") or 0) > 0:
+        args += ["--max-fps", str(int(opts["maxFps"]))]
+    if int(opts.get("bitRate") or 0) > 0:
+        args += ["-b", f"{int(opts['bitRate'])}M"]
+    if not opts.get("audio"):
+        args.append("--no-audio")
+    if opts.get("stayAwake"):
+        args.append("--stay-awake")
+    if opts.get("borderless"):
+        args.append("--window-borderless")
+    if not opts.get("aspectRatioLock", True):
+        args.append("--no-window-aspect-ratio-lock")
+    return args
+
+
+def _start_scrcpy(args: list[str], device: str, kind: str, app: str = "", label: str = "") -> dict:
+    if not SCRCPY:
+        return {"ok": False, "message": "scrcpy not installed (Fedora: sudo dnf install scrcpy)"}
+
+    command = [SCRCPY, "-s", device] + args
+    handle, log_path = tempfile.mkstemp(prefix="androlaunch-scrcpy-", suffix=".log")
+    try:
+        with os.fdopen(handle, "wb") as log:
+            proc = subprocess.Popen(  # noqa: S603 - argv, no shell
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        # scrcpy aborts quickly when the device is unreachable or the serial is ambiguous.
+        time.sleep(1.5)
+        if proc.poll() is not None:
+            try:
+                tail = Path(log_path).read_text(errors="replace").strip().splitlines()[-4:]
+            except OSError:
+                tail = []
+            message = " ".join(tail) or f"scrcpy exited with code {proc.returncode}"
+            return {"ok": False, "message": message, "error": message}
+    finally:
+        try:
+            os.unlink(log_path)
+        except OSError:
+            pass
+
+    state = load_state()
+    mirrors = [
+        mirror
+        for mirror in state.get("mirrors", [])
+        if (mirror.get("device"), mirror.get("kind"), mirror.get("app", "")) != (device, kind, app)
+    ]
+    mirrors.append(
+        {
+            "pid": proc.pid,
+            "device": device,
+            "kind": kind,
+            "app": app,
+            "label": label,
+            "started": int(time.time()),
+        }
+    )
+    state["mirrors"] = mirrors
+    save_state(state)
+    messages = {
+        "mirror": "Mirroring the device screen",
+        "camera": "Camera preview opened",
+        "app": f"{label or 'App'} opened in a new window",
+        "screen-app": f"Mirroring the device screen with {label or 'the app'}",
+    }
+    return {"ok": True, "message": messages.get(kind, "Window opened"), "data": {"pid": proc.pid}}
+
+
+def action_mirror(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+    opts = dict(DEFAULT_SCRCPY)
+    opts.update(args.get("options") or {})
+    note = ""
+    if opts.get("newDisplay") and not virtual_display_supported(device):
+        # Config asked for a virtual display, but that crashes SystemUI on Android 12-13.
+        opts["newDisplay"] = False
+        note = (
+            " (Android 12-13: virtual display disabled, it crashes SystemUI and locks "
+            "the device)"
+        )
+    result = _start_scrcpy(
+        ["--window-title", f"AndroLaunch - {device}"] + _scrcpy_args(opts), device, "mirror", label="Device screen"
+    )
+    if note and result.get("ok"):
+        result["message"] = (result.get("message") or "").rstrip() + note
+    return result
+
+
+def action_camera(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+    opts = dict(DEFAULT_SCRCPY)
+    opts.update(args.get("options") or {})
+    args_list = [
+        "--video-source=camera",
+        "--window-title",
+        f"AndroLaunch Camera - {device}",
+        f"--camera-facing={opts.get('cameraFacing') or 'back'}",
+    ]
+    if opts.get("cameraTorch"):
+        args_list.append("--camera-torch")
+    try:
+        zoom = float(opts.get("cameraZoom") or 1.0)
+    except (TypeError, ValueError):
+        zoom = 1.0
+    if zoom != 1.0:
+        args_list += ["--camera-zoom", str(zoom)]
+    if int(opts.get("maxFps") or 0) > 0:
+        args_list += ["--max-fps", str(int(opts["maxFps"]))]
+    if int(opts.get("bitRate") or 0) > 0:
+        args_list += ["-b", f"{int(opts['bitRate'])}M"]
+    return _start_scrcpy(args_list, device, "camera", label="Camera")
+
+
+def action_app_mirror(args: dict) -> dict:
+    """Open an app in its own window: a scrcpy virtual display, so several apps can run
+    side by side without mirroring the phone screen.
+
+    On Android 12-13 the virtual display crashes SystemUI (which then re-locks the device),
+    so there the app is opened on the mirrored main display instead."""
+    device = resolve_device(args.get("device", ""))
+    package = str(args.get("package", "")).strip()
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+    if not package:
+        return {"ok": False, "message": "No package given"}
+
+    if not virtual_display_supported(device):
+        result = action_app_screen(args)
+        if result.get("ok"):
+            note = (
+                " (Android 12-13: scrcpy's virtual display crashes SystemUI and locks the "
+                "device, so the app was opened on the mirrored screen instead)"
+            )
+            result["message"] = (result.get("message") or "").rstrip() + note
+        return result
+
+    opts = dict(DEFAULT_SCRCPY)
+    opts.update(args.get("options") or {})
+    # An app gets a window of its own: a virtual display that follows the window size,
+    # so several apps can sit side by side.
+    opts["newDisplay"] = True
+    opts["flexDisplay"] = True
+    label = str(args.get("label") or package)
+    return _start_scrcpy(
+        ["--start-app=" + package, "--window-title", f"AndroLaunch - {label}"] + _scrcpy_args(opts),
+        device,
+        "app",
+        app=package,
+        label=label,
+    )
+
+
+def action_app_screen(args: dict) -> dict:
+    """Mirror the phone screen with the app brought to the foreground (no virtual display)."""
+    device = resolve_device(args.get("device", ""))
+    package = str(args.get("package", "")).strip()
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+    if not package:
+        return {"ok": False, "message": "No package given"}
+
+    opts = dict(DEFAULT_SCRCPY)
+    opts.update(args.get("options") or {})
+    opts["newDisplay"] = False
+    label = str(args.get("label") or package)
+    return _start_scrcpy(
+        ["--start-app=" + package, "--window-title", f"AndroLaunch - {label} (screen)"] + _scrcpy_args(opts),
+        device,
+        "screen-app",
+        app=package,
+        label=label,
+    )
+
+
+def action_stop_mirror(args: dict) -> dict:
+    state = load_state()
+    try:
+        pid = int(args.get("pid", 0))
+    except (TypeError, ValueError):
+        return {"ok": False, "message": "No window id"}
+    kept = []
+    stopped = False
+    for mirror in state.get("mirrors", []):
+        if int(mirror.get("pid", 0)) == pid:
+            try:
+                os.kill(pid, 15)
+                stopped = True
+            except OSError:
+                pass
+            continue
+        kept.append(mirror)
+    state["mirrors"] = kept
+    save_state(state)
+    return {"ok": True, "message": f"Closed window {pid}" if stopped else f"Window {pid} is gone"}
+
+
+def action_stop_mirrors(args: dict) -> dict:
+    state = load_state()
+    stopped = 0
+    for mirror in state.get("mirrors", []):
+        try:
+            os.kill(int(mirror["pid"]), 15)
+            stopped += 1
+        except (OSError, ValueError, KeyError):
+            pass
+    state["mirrors"] = []
+    save_state(state)
+    return {"ok": True, "message": f"Closed {stopped} window(s)", "data": {"stopped": stopped}}
+
+
+APPS_CACHE = CONFIG_DIR / "apps-cache.json"
+
+
+def _cached_apps(device: str) -> list[dict]:
+    try:
+        with APPS_CACHE.open() as fh:
+            cache = json.load(fh)
+        entry = cache.get(device) or {}
+        apps = entry.get("apps") or []
+        return apps if isinstance(apps, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _store_apps(device: str, apps: list[dict]) -> None:
+    try:
+        with APPS_CACHE.open() as fh:
+            cache = json.load(fh)
+    except (OSError, ValueError):
+        cache = {}
+    cache[device] = {"apps": apps, "fetched": int(time.time())}
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = APPS_CACHE.with_suffix(".tmp")
+        with tmp.open("w") as fh:
+            json.dump(cache, fh)
+        tmp.replace(APPS_CACHE)
+    except OSError:
+        pass
+
+
+def _scrcpy_apps(device: str) -> list[dict]:
+    """App labels only exist in the APK resources, so `scrcpy --list-apps` is the one
+    practical source of readable names. It can refuse to start (e.g. a stale port), so
+    it is worth a second attempt before giving up."""
+    if not SCRCPY:
+        return []
+    for attempt in range(2):
+        res = run([SCRCPY, "-s", device, "--list-apps"], timeout=25)
+        if res.ok and "List of apps" in res.out:
+            return parse_scrcpy_apps(res.out)
+        if attempt == 0:
+            time.sleep(0.4)
+    return []
+
+
+def action_apps(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    if not device:
+        return {"ok": False, "message": "No device connected", "data": []}
+
+    scrcpy_apps = _scrcpy_apps(device)
+    if scrcpy_apps:
+        scrcpy_apps.sort(key=lambda a: (a["system"], a["name"].lower()))
+        _store_apps(device, scrcpy_apps)
+        return {
+            "ok": True,
+            "data": scrcpy_apps,
+            "message": f"{len(scrcpy_apps)} apps",
+            "source": "scrcpy",
+        }
+
+    # Falling back means package-derived names, which look wrong; prefer the last list
+    # that had real labels.
+    cached = _cached_apps(device)
+    if cached and not args.get("refresh"):
+        return {
+            "ok": True,
+            "data": cached,
+            "message": f"{len(cached)} apps (last known list; scrcpy unavailable)",
+            "source": "cache",
+        }
+
+    include_system = bool(args.get("system", False))
+    flags = "-f" if include_system else "-f -3"
+    res = adb_shell(f"pm list packages {flags}", device=device, timeout=25)
+    apps = parse_pm_packages(res.out)
+    apps.sort(key=lambda a: (a["system"], a["name"].lower()))
+    return {
+        "ok": res.ok,
+        "data": apps,
+        "message": f"{len(apps)} apps — scrcpy is unavailable, so these are package names",
+        "source": "pm",
+        "error": "" if res.ok else res.text(),
+    }
+
+
+def _package_action(args: dict, adb_args: list[str], message: str, timeout: int = 60) -> dict:
+    device = resolve_device(args.get("device", ""))
+    package = str(args.get("package", "")).strip()
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+    if not package:
+        return {"ok": False, "message": "No package given"}
+    res = adb(adb_args + [package], device=device, timeout=timeout)
+    text = res.text()
+    ok = res.ok and "Failure" not in text
+    return {"ok": ok, "message": message.format(package=package) if ok else (text or message.format(package=package)), "error": "" if ok else text}
+
+
+def action_app_launch(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    package = str(args.get("package", "")).strip()
+    if not device or not package:
+        return {"ok": False, "message": "No device/package"}
+    res = adb(["shell", "monkey", "-p", package, "-c", "android.intent.category.LAUNCHER", "1"], device=device, timeout=30)
+    if res.ok and "No activities found" not in res.out:
+        return {"ok": True, "message": f"Launched {package}"}
+
+    # Fallback: resolve the launcher activity and start it explicitly.
+    resolved = adb_shell(f"cmd package resolve-activity --brief {shlex.quote(package)} | tail -n 1", device=device, timeout=30)
+    activity = resolved.out.strip()
+    if resolved.ok and "/" in activity:
+        started = adb_shell(f"am start -n {shlex.quote(activity)}", device=device, timeout=30)
+        if started.ok and "Error" not in started.out:
+            return {"ok": True, "message": f"Launched {package} ({activity})"}
+        return {"ok": False, "message": started.text() or f"Could not start {activity}"}
+    return {"ok": False, "message": (res.text() or resolved.text() or f"Could not launch {package}")}
+
+
+def action_app_uninstall(args: dict) -> dict:
+    return _package_action(args, ["uninstall"], "Uninstalled {package}")
+
+
+def action_app_clear(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    package = str(args.get("package", "")).strip()
+    if not device or not package:
+        return {"ok": False, "message": "No device/package"}
+    res = adb(["shell", "pm", "clear", package], device=device, timeout=30)
+    ok = res.ok and "Success" in res.out
+    return {"ok": ok, "message": f"Cleared data for {package}" if ok else (res.text() or "Failed to clear data")}
+
+
+def action_apk_install(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    path = str(args.get("path", "")).strip()
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+    if not path or not os.path.isfile(path):
+        return {"ok": False, "message": f"APK not found: {path}"}
+    res = adb(["install", "-r", path], device=device, timeout=300)
+    ok = res.ok and "Success" in res.out
+    return {"ok": ok, "message": f"Installed {os.path.basename(path)}" if ok else (res.text() or "Install failed")}
+
+
+def action_files(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    path = str(args.get("path") or "/sdcard")
+    if not device:
+        return {"ok": False, "message": "No device connected", "data": []}
+    # A trailing slash makes ls follow symlinks such as /sdcard -> /storage/self/primary
+    target = path if path == "/" else path.rstrip("/") + "/"
+    res = adb_shell(f"ls -la {shlex.quote(target)}", device=device, timeout=25)
+    if not res.ok:
+        return {"ok": False, "message": res.text() or f"Cannot list {path}", "data": []}
+    entries = parse_ls(res.out, path)
+    return {"ok": True, "data": entries, "message": f"{len(entries)} items", "path": path}
+
+
+def action_file_push(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    local = str(args.get("local", ""))
+    remote = str(args.get("remote", "/sdcard/"))
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+    if not os.path.exists(local):
+        return {"ok": False, "message": f"Not found: {local}"}
+    res = adb(["push", local, remote], device=device, timeout=600)
+    return {"ok": res.ok, "message": f"Uploaded {os.path.basename(local)}" if res.ok else (res.text() or "Upload failed")}
+
+
+def action_file_pull(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    remote = str(args.get("remote", ""))
+    local = str(args.get("local") or os.path.expanduser("~/Downloads"))
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+    if not remote:
+        return {"ok": False, "message": "No remote path"}
+    os.makedirs(local, exist_ok=True) if os.path.isdir(local) else os.makedirs(os.path.dirname(local) or ".", exist_ok=True)
+    res = adb(["pull", remote, local], device=device, timeout=600)
+    return {"ok": res.ok, "message": f"Saved to {local}" if res.ok else (res.text() or "Download failed")}
+
+
+def action_file_delete(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    remote = str(args.get("remote", ""))
+    if not device or not remote:
+        return {"ok": False, "message": "No device/path"}
+    res = adb_shell(f"rm -rf {shlex.quote(remote)}", device=device, timeout=30)
+    return {"ok": res.ok, "message": f"Deleted {remote.rsplit('/', 1)[-1]}" if res.ok else (res.text() or "Delete failed")}
+
+
+def action_file_mkdir(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    remote = str(args.get("remote", ""))
+    if not device or not remote:
+        return {"ok": False, "message": "No device/path"}
+    res = adb_shell(f"mkdir -p {shlex.quote(remote)}", device=device, timeout=30)
+    return {"ok": res.ok, "message": f"Created {remote}" if res.ok else (res.text() or "mkdir failed")}
+
+
+def action_wireless_connect(args: dict) -> dict:
+    ip = str(args.get("ip", "")).strip()
+    port = str(args.get("port") or "5555")
+    if not ip:
+        return {"ok": False, "message": "No IP address"}
+    target = f"{ip}:{port}"
+    res = adb(["connect", target], timeout=30)
+    ok = res.ok and "connected" in res.out
+    if ok:
+        state = load_state()
+        state["active"] = target
+        save_state(state)
+    return {"ok": ok, "message": f"Connected to {target}" if ok else (res.text() or f"Failed to connect to {target}")}
+
+
+def action_wireless_pair(args: dict) -> dict:
+    ip = str(args.get("ip", "")).strip()
+    port = str(args.get("port", "")).strip()
+    code = str(args.get("code", "")).strip()
+    if not ip or not port or not code:
+        return {"ok": False, "message": "IP, port and pairing code are required"}
+    target = f"{ip}:{port}"
+    res = adb(["pair", target, code], timeout=45)
+    ok = res.ok and "Successfully paired" in res.out
+    return {"ok": ok, "message": f"Paired with {target}" if ok else (res.text() or f"Failed to pair with {target}")}
+
+
+def action_wireless_disconnect(args: dict) -> dict:
+    target = str(args.get("target") or resolve_device(args.get("device", "")))
+    if not target:
+        return {"ok": False, "message": "No target"}
+    res = adb(["disconnect", target], timeout=20)
+    return {"ok": res.ok, "message": f"Disconnected {target}" if res.ok else (res.text() or "Failed to disconnect")}
+
+
+def action_tcpip(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    port = str(args.get("port") or "5555")
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+    if device.startswith("emulator-"):
+        res = adb(["tcpip", port], timeout=20)
+    else:
+        res = adb(["tcpip", port], device=device, timeout=20)
+    return {
+        "ok": res.ok,
+        "message": f"Wireless ADB enabled on port {port}" if res.ok else (res.text() or "Failed to enable TCP/IP mode"),
+    }
+
+
+def action_qr_new(args: dict) -> dict:
+    password = f"{random.randint(100000, 999999)}"
+    payload = f"WIFI:T:ADB;S:{QR_SERVICE};P:{password};;"
+    qr = {"payload": payload, "password": password, "created": int(time.time())}
+    state = load_state()
+    state["qr"] = qr
+    save_state(state)
+    return {"ok": True, "data": qr, "message": "Scan the QR code with Android wireless debugging"}
+
+
+def action_qr_info(args: dict) -> dict:
+    state = load_state()
+    qr = state.get("qr") or {}
+    if not qr.get("payload"):
+        return action_qr_new(args)
+    return {"ok": True, "data": qr}
+
+
+def action_discover_pairing(args: dict) -> dict:
+    services = mdns_services("_adb-tls-pairing._tcp")
+    return {"ok": True, "data": services, "message": f"{len(services)} pairing service(s)"}
+
+
+def action_discover_connect(args: dict) -> dict:
+    services = mdns_services("_adb-tls-connect._tcp")
+    return {"ok": True, "data": services, "message": f"{len(services)} connect service(s)"}
+
+
+def action_connect_previous(args: dict) -> dict:
+    target = str(args.get("id") or args.get("device", ""))
+    if not target:
+        return {"ok": False, "message": "No device id"}
+    res = adb(["connect", target], timeout=30)
+    ok = res.ok and "connected" in res.out
+    return {"ok": ok, "message": f"Reconnected to {target}" if ok else (res.text() or "Failed to connect")}
+
+
+def action_shell(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    command = str(args.get("command", "")).strip()
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+    if not command:
+        return {"ok": False, "message": "No command given"}
+    res = adb_shell(command, device=device, timeout=int(args.get("timeout") or 60))
+    return {
+        "ok": res.ok,
+        "data": {"stdout": res.out.strip(), "stderr": res.err.strip(), "code": res.code},
+        "message": res.out.strip() or res.err.strip() or "done",
+        "error": "" if res.ok else res.err.strip(),
+    }
+
+
+def _terminal_command(device: str, inner: str) -> list[str] | None:
+    adb_bin = ADB or "adb"
+    scoped = f"{shlex.quote(adb_bin)}" + (f" -s {shlex.quote(device)}" if device else "")
+    script = f"{scoped} {inner}; echo; exec bash"
+    for term, args in (
+        ("konsole", ["-e", "bash", "-c", script]),
+        ("kgx", ["--", "bash", "-c", script]),
+        ("gnome-terminal", ["--", "bash", "-c", script]),
+        ("xterm", ["-e", "bash", "-c", script]),
+        ("alacritty", ["-e", "bash", "-c", script]),
+        ("kitty", ["bash", "-c", script]),
+    ):
+        path = shutil.which(term)
+        if path:
+            return [path] + args
+    return None
+
+
+def action_open_terminal(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    cmd = _terminal_command(device, "shell")
+    if not cmd:
+        return {"ok": False, "message": "No terminal emulator found (install konsole)"}
+    detached(cmd)
+    return {"ok": True, "message": f"ADB shell opened{' for ' + device if device else ''}"}
+
+
+def action_open_logcat(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    cmd = _terminal_command(device, "logcat -v color")
+    if not cmd:
+        return {"ok": False, "message": "No terminal emulator found (install konsole)"}
+    detached(cmd)
+    return {"ok": True, "message": "Logcat opened"}
+
+
+def action_avds(args: dict) -> dict:
+    emulator = shutil.which("emulator")
+    if not emulator:
+        return {"ok": False, "message": "Android emulator not installed", "data": []}
+    res = run([emulator, "-list-avds"], timeout=20)
+    names = [line.strip() for line in res.out.splitlines() if line.strip()]
+    running = {d["name"] for d in list_devices() if d["emulator"]}
+    avds = [{"name": name, "running": any(name in r for r in running)} for name in names]
+    return {"ok": True, "data": avds, "message": f"{len(avds)} AVD(s)"}
+
+
+def action_avd_start(args: dict) -> dict:
+    name = str(args.get("name", "")).strip()
+    emulator = shutil.which("emulator")
+    if not emulator:
+        return {"ok": False, "message": "Android emulator not installed"}
+    if not name:
+        return {"ok": False, "message": "No AVD name"}
+    detached([emulator, "-avd", name])
+    return {"ok": True, "message": f"Starting {name}"}
+
+
+def action_history(args: dict) -> dict:
+    state = load_state()
+    return {"ok": True, "data": state.get("previous", [])}
+
+
+def action_clipboard_send(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    text = str(args.get("text", ""))
+    if not device or not text:
+        return {"ok": False, "message": "No device/text"}
+    quoted = shlex.quote(text)
+    res = adb_shell(
+        f"am broadcast -a ch.pete.adbclipboard.set -e text {quoted} || input text {quoted}",
+        device=device,
+        timeout=30,
+    )
+    return {"ok": res.ok, "message": "Text sent to Android clipboard" if res.ok else (res.text() or "Failed to send text")}
+
+
+def action_clipboard_get(args: dict) -> dict:
+    device = resolve_device(args.get("device", ""))
+    if not device:
+        return {"ok": False, "message": "No device connected"}
+    res = adb_shell("am broadcast -a ch.pete.adbclipboard.get", device=device, timeout=30)
+    return {"ok": res.ok, "data": {"text": res.out.strip()}, "message": res.out.strip() or "No clipboard data"}
+
+
+def action_version(args: dict) -> dict:
+    return {
+        "ok": True,
+        "message": f"AndroLaunch {VERSION}",
+        "data": {"version": VERSION, "adb": ADB, "scrcpy": SCRCPY},
+    }
+
+
+ACTIONS = {
+    "version": action_version,
+    "state": action_state,
+    "devices": action_devices,
+    "select": action_select,
+    "toggle": action_toggle,
+    "brightness": action_brightness,
+    "volume": action_volume,
+    "ringer": action_ringer,
+    "reboot": action_reboot,
+    "mirror": action_mirror,
+    "camera": action_camera,
+    "app_mirror": action_app_mirror,
+    "app_screen": action_app_screen,
+    "stop_mirror": action_stop_mirror,
+    "stop_mirrors": action_stop_mirrors,
+    "apps": action_apps,
+    "app_launch": action_app_launch,
+    "app_uninstall": action_app_uninstall,
+    "app_clear": action_app_clear,
+    "apk_install": action_apk_install,
+    "files": action_files,
+    "file_push": action_file_push,
+    "file_pull": action_file_pull,
+    "file_delete": action_file_delete,
+    "file_mkdir": action_file_mkdir,
+    "wireless_connect": action_wireless_connect,
+    "wireless_pair": action_wireless_pair,
+    "wireless_disconnect": action_wireless_disconnect,
+    "tcpip": action_tcpip,
+    "qr_new": action_qr_new,
+    "qr_info": action_qr_info,
+    "discover_pairing": action_discover_pairing,
+    "discover_connect": action_discover_connect,
+    "connect_previous": action_connect_previous,
+    "shell": action_shell,
+    "open_terminal": action_open_terminal,
+    "open_logcat": action_open_logcat,
+    "avds": action_avds,
+    "avd_start": action_avd_start,
+    "history": action_history,
+    "clipboard_send": action_clipboard_send,
+    "clipboard_get": action_clipboard_get,
+}
+
+
+# --------------------------------------------------------------------------- #
+# Entry points
+# --------------------------------------------------------------------------- #
+def envelope(action: str, token: str, result: dict | None) -> dict:
+    result = result or {}
+    payload = {
+        "ok": bool(result.get("ok", True)),
+        "action": action,
+        "token": token,
+        "message": result.get("message", ""),
+        "error": result.get("error", ""),
+        "adb": ADB,
+        "scrcpy": SCRCPY,
+        "version": VERSION,
+    }
+    if "data" in result:
+        payload["data"] = result["data"]
+    if "path" in result:
+        payload["path"] = result["path"]
+    if "source" in result:
+        payload["source"] = result["source"]
+    return payload
+
+
+def decode_args(raw: str) -> dict:
+    if not raw:
+        return {}
+    try:
+        decoded = base64.b64decode(raw + "=" * (-len(raw) % 4)).decode("utf-8", "replace")
+        data = json.loads(decoded)
+        return data if isinstance(data, dict) else {}
+    except (ValueError, TypeError):
+        return {}
+
+
+def cmd_call(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="androlaunch call", add_help=False)
+    parser.add_argument("action")
+    parser.add_argument("payload", nargs="?", default="")
+    parser.add_argument("--token", default="")
+    parser.add_argument("--json", default="")
+    args, _unknown = parser.parse_known_args(argv)
+
+    action = args.action
+    if action not in ACTIONS:
+        print(dumps(envelope(action, args.token, {"ok": False, "message": f"Unknown action: {action}"})))
+        return 2
+
+    payload = decode_args(args.payload)
+    if args.json:
+        try:
+            extra = json.loads(args.json)
+            if isinstance(extra, dict):
+                payload.update(extra)
+        except ValueError:
+            pass
+
+    try:
+        result = ACTIONS[action](payload)
+    except Exception as exc:  # noqa: BLE001 - report failures to the widget
+        result = {"ok": False, "message": f"{type(exc).__name__}: {exc}"}
+    print(dumps(envelope(action, args.token, result)))
+    return 0 if result.get("ok", True) else 1
+
+
+BOOLEAN_TOGGLES = {
+    "wifi": "wifi",
+    "bluetooth": "bluetooth",
+    "darkmode": "darkmode",
+    "dark": "darkmode",
+    "airplane": "airplane",
+    "data": "data",
+    "location": "location",
+    "dnd": "dnd",
+    "rotate": "rotate",
+}
+
+
+def cmd_cli(argv: list[str]) -> int:
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__)
+        return 0
+    if argv[0] in ("-V", "--version", "version"):
+        return cmd_call(["version"])
+
+    command, rest = argv[0], argv[1:]
+    args: dict = {}
+    action = command
+
+    if command == "toggle":
+        if len(rest) < 2:
+            print("usage: androlaunch toggle <wifi|bluetooth|data|dark|airplane|location|dnd|rotate> <on|off>", file=sys.stderr)
+            return 2
+        what = BOOLEAN_TOGGLES.get(rest[0].lower())
+        if not what:
+            print(f"unknown toggle: {rest[0]}", file=sys.stderr)
+            return 2
+        args = {"what": what, "on": rest[1].lower() in ("on", "1", "true", "yes", "enable")}
+    elif command == "reboot":
+        args = {"mode": rest[0] if rest else "normal"}
+    elif command == "brightness":
+        args = {"value": int(rest[0]) if rest else 128}
+    elif command == "volume":
+        args = {"value": int(rest[0]) if rest else 50}
+    elif command == "files":
+        args = {"path": rest[0] if rest else "/sdcard"}
+    elif command == "apps-uninstall":
+        args = {"package": rest[0] if rest else ""}
+    elif command == "apps-launch":
+        args = {"package": rest[0] if rest else ""}
+    elif command == "app-mirror":
+        args = {"package": rest[0] if rest else ""}
+    elif command == "shell":
+        args = {"command": " ".join(rest)}
+    elif command == "connect":
+        target = rest[0] if rest else ""
+        host, _, port = target.partition(":")
+        args = {"ip": host, "port": port or "5555"}
+    elif command == "pair":
+        target = rest[0] if rest else ""
+        host, _, port = target.partition(":")
+        args = {"ip": host, "port": port, "code": rest[1] if len(rest) > 1 else ""}
+    elif command == "apk-install":
+        args = {"path": rest[0] if rest else ""}
+    elif command == "avd-start":
+        args = {"name": rest[0] if rest else ""}
+    elif command == "select":
+        args = {"device": rest[0] if rest else ""}
+    elif command in ACTIONS:
+        for item in rest:
+            key, _, value = item.partition("=")
+            args[key.lstrip("-").replace("-", "_")] = value
+    else:
+        print(f"unknown command: {command}\n", file=sys.stderr)
+        print(__doc__)
+        return 2
+
+    result = ACTIONS[action](args)
+    if result.get("message"):
+        print(result["message"])
+    if "data" in result:
+        print(dumps(result["data"]))
+    return 0 if result.get("ok", True) else 1
+
+
+def main() -> int:
+    argv = sys.argv[1:]
+    if argv and argv[0] == "call":
+        return cmd_call(argv[1:])
+    if argv and argv[0] == "_actions":
+        print("\n".join(sorted(ACTIONS)))
+        return 0
+    return cmd_cli(argv)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

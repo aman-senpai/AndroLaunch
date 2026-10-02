@@ -1,0 +1,22 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "AndroLaunch"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Control Android devices over ADB from the panel: status, quick toggles, mirroring, apps, files and wireless pairing.",
+        "Description[de]": "Android-Ger\u00e4te per ADB aus der Leiste steuern: Status, Schnellschalter, Mirroring, Apps, Dateien und WLAN-Kopplung.",
+        "Icon": "androlaunch",
+        "Id": "org.androlaunch.plasma",
+        "License": "MIT",
+        "Name": "AndroLaunch",
+        "Name[de]": "AndroLaunch",
+        "Version": "1.2.0",
+        "Website": "https://github.com/aman-senpai/AndroLaunch"
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml"
+}

@@ -63,25 +63,28 @@ This installs AndroLaunch.app to `/Applications`. Dependencies (`adb` and `scrcp
 
 3.  **Launch**: Download the Windows version (exe) and run it.
 
-### Linux Installation (Caelestia Desktop Shell)
+### Linux Installation (KDE Plasma 6)
 
-1. **Install Dependencies**:
-   - **Fedora**: `sudo dnf install android-tools scrcpy`
-   - **Arch Linux**: `sudo pacman -S android-tools scrcpy`
-   - **Ubuntu/Debian**: `sudo apt install android-tools-adb scrcpy`
+One command installs the dependencies, the `androlaunch` CLI and the Plasma panel widget, then
+adds the widget to your panel:
 
-2. **Install Widget**:
-   ```bash
-   cd linux
-   chmod +x install.sh
-   ./install.sh
-   ```
+```bash
+curl -fsSL https://raw.githubusercontent.com/aman-senpai/AndroLaunch/master/install.sh | bash
+```
 
-3. **Features on Linux**:
-   - Native Taskbar Icon & Popout in [Caelestia Shell](https://github.com/caelestia-dots/shell)
-   - Full device control in Nexus Control Center
-   - Wireless Pairing via QR Code
-   - CLI / IPC support (`caelestia shell androlaunch <command>`)
+Requirements: KDE Plasma 6 (`plasma-workspace`), `android-tools` (adb) and `scrcpy` — the
+installer installs the latter two with your package manager if they are missing. Everything is
+user-local: backend at `~/.local/bin/androlaunch`, widget at
+`~/.local/share/plasma/plasmoids/org.androlaunch.plasma`. Uninstall with `--uninstall`.
+
+**Features on Linux**:
+- Native panel (menubar) widget: device/battery status, tabbed popup with quick toggles,
+  mirroring, app manager, file browser, wireless pairing, ADB shell and AVD control
+- Wireless pairing via QR code or 6-digit pairing code
+- Full CLI (`androlaunch devices|state|mirror|toggle|apps|files|shell|...`)
+
+See [`kde/README.md`](kde/README.md) for details, CLI reference and troubleshooting.
+
 ### Step 2: Configure Your Android Device
 
 -----
@@ -109,6 +112,7 @@ Control your installed applications and manage APK files effortlessly:
 
   * **App List and Search**: Browse all installed apps with a quick search function.
   * **Launch Apps**: Open any app instantly from the menu.
+  * **App Windows**: Open an app in its own resizable window on a scrcpy virtual display. On Android 12–13 the app is instead opened on the mirrored screen (foreground), because the platform SystemUI crashes on such virtual displays and locks the device.
   * **New! App Uninstall**: Remove unwanted apps with a confirmation dialog.
   * **New! Clear App Data**: Reset an application to its initial state by clearing all its saved data.
   * **New! Install APK**: Drag and drop or select an APK file to install it directly onto the connected device.
