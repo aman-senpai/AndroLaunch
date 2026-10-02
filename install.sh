@@ -399,7 +399,7 @@ if [ "$WAS_INSTALLED" -eq 1 ]; then
     echo "  systemctl --user restart plasma-plasmashell"
 fi
 echo ""
-echo "Enable USB debugging on the phone, then plug it in (or use the Pair tab for Wi-Fi)."
+echo "Enable USB debugging on the phone, then plug it in (or use the Wireless tab for Wi-Fi)."
 echo ""
 echo "CLI:  $HELPER devices"
 echo "      $HELPER state"

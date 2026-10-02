@@ -37,16 +37,18 @@ From a checkout, run `./install.sh` in the repository root (it uses `kde/` direc
 
 ## Using the widget
 
-Click the panel icon to open the popup, which has six tabs:
+Click the panel icon to open the popup. Its header is a single line naming the active device; the
+transport, battery percentage and Android version live on the device card below it, and the tab bar
+uses plain-language labels instead of the old `Quick`/`Pair`/`AVDs` names:
 
 | Tab | What it does |
 | --- | --- |
-| **Quick** | device card (name, model, Android version, battery), device switcher, eight quick toggles (Wi-Fi, Bluetooth, data, dark mode, airplane, location, DND, auto-rotate), brightness/volume sliders, mirror + camera + shell + logcat buttons, reboot (system/bootloader/recovery), reconnect to previous devices |
+| **Device** | device card (name, model, Android version, battery), device switcher, eight switch tiles (Wi-Fi, Bluetooth, data, dark mode, airplane, location, DND, auto-rotate — each shows the requested state until the phone echoes it back), brightness/volume sliders, mirror + camera + shell + logcat buttons, power (reboot / bootloader / recovery, each buffered behind a confirmation row that names the device), reconnect to previous devices |
 | **Apps** | search installed apps (labels always come from `scrcpy --list-apps`), **open an app in its own window**, mirror the phone screen with the app open, launch it on the device only, clear its data, uninstall (double confirmation), install an APK |
-| **Pair** | wireless debugging: QR pairing, manual `ip:port` + 6-digit code, direct `adb connect`, switch a USB device to TCP/IP, disconnect |
+| **Wireless** | wireless debugging: QR pairing, manual `ip:port` + 6-digit code, direct `adb connect`, switch a USB device to TCP/IP, disconnect |
 | **Files** | browse `/sdcard`, download, upload, create folders, delete (double confirmation) |
-| **Shell** | run one-off ADB shell commands, presets (screenshot, IP, battery, memory, processes, storage), open an interactive shell or logcat in Konsole, clipboard sync |
-| **AVDs** | list and start Android Virtual Devices (needs the Android SDK emulator) |
+| **Console** | run one-off ADB shell commands, presets (screenshot, IP, battery, memory, processes, storage), open an interactive shell or logcat in Konsole, clipboard sync |
+| **Emulators** | list and start Android Virtual Devices (needs the Android SDK emulator) |
 
 The panel entry is the icon only — device name, connection type and battery level are in the
 tooltip (hover) and in the popup.
@@ -64,7 +66,7 @@ The window button on an app row (`window-new`) starts the app on a **scrcpy virt
 gets its own resizable window and several apps can run side by side next to your desktop windows.
 The camera/`video-display` button mirrors the *phone screen* with the app in the foreground instead,
 and the play button only launches the app on the device. Every window is listed under
-**Open windows** in the Quick tab with an individual close button (`stop-mirror`); "Stop mirroring"
+**Open windows** in the Device tab with an individual close button (`stop-mirror`); "Stop mirroring"
 closes them all. A window that fails to start reports scrcpy's error in the popup instead of failing
 silently.
 
@@ -170,7 +172,7 @@ panel icon ─ PlasmoidItem (contents/ui/main.qml)
   virtual display crashes the platform SystemUI, which then re-shows the lock screen. AndroLaunch
   opens the app on the mirrored screen instead there; real virtual-display windows return on
   Android 14+ (the code path was removed upstream).
-* **Nothing in the AVDs tab** — Fedora does not package the Android emulator; install the
+* **Nothing in the Emulators tab** — Fedora does not package the Android emulator; install the
   Android SDK emulator or Android Studio.
 * **Wireless pairing fails** — enable *Wireless debugging* on the phone first; the QR flow needs
   both devices on the same network.
@@ -206,12 +208,32 @@ unknown types, broken bindings and read-only property writes) and the backend pa
 ```bash
 QT_QPA_PLATFORM=offscreen qmltestrunner-qt6 -input kde/test/tst_load.qml      # every QML component loads
 QT_QPA_PLATFORM=offscreen qmltestrunner-qt6 -input kde/test/tst_sliders.qml   # payload encoding + write coalescing
+QT_QPA_PLATFORM=offscreen qmltestrunner-qt6 -input kde/test/tst_reboot_confirm.qml   # power buttons need confirmation
+QT_QPA_PLATFORM=offscreen qmltestrunner-qt6 -input kde/test/tst_toggle_chip.qml   # toggle tiles stay honest
+QT_QPA_PLATFORM=offscreen qmltestrunner-qt6 -input kde/test/tst_device_labels.qml   # header/card device labels
+QT_QPA_PLATFORM=offscreen qmltestrunner-qt6 -input kde/test/tst_power_row.qml   # power row is centred
 python3 kde/test/test_backend.py                                             # parsers, mappings, app-list sources
 ```
 
 `tst_sliders.qml` runs the real `Backend.qml` against `kde/test/fake_helper.py`, which records the
 arguments it receives — that is how the "empty payload" bug (every action silently falling back to
 its default) is kept from coming back.
+
+`tst_reboot_confirm.qml` clicks the Device tab power buttons against a stub backend and asserts that
+nothing reboots until the confirmation click, so a refactor cannot silently make bootloader/recovery
+a one-click action again.
+
+`tst_toggle_chip.qml` pins the toggle tile contract: a click requests the inverse state instead of
+flipping the binding, the requested state shows immediately while `adb shell svc` is running, and the
+optimistic state is retired by the device's echo (or by `pendingTimeout` when the toggle failed).
+
+`tst_device_labels.qml` pins the popup's device lines: the header is a single identity line that is
+never blank (it falls through name, model, address and id), while the device card carries transport,
+address, Android version and battery.
+
+`tst_power_row.qml` pins the Device tab's reboot / bootloader / recovery row: equal thirds, and each
+button's icon + label pair centred. Plasma's stock button content left-aligns the label as soon as an
+icon is visible, which is what made the row look ragged.
 
 `./install.sh` from a checkout always installs the working tree, so iterate by editing
 `kde/plasma/…` and re-running it; restart `plasma-plasmashell` after changing QML.
