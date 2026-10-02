@@ -25,7 +25,7 @@ AndroLaunch requires `adb` to communicate with Android devices. For screen mirro
 **Option A — Homebrew (recommended)**
 
 ```bash
-brew tap aman-senpai/tap
+brew tap aman-senpai/apps
 brew install --cask androlaunch
 ```
 
@@ -72,8 +72,13 @@ adds the widget to your panel:
 curl -fsSL https://raw.githubusercontent.com/aman-senpai/AndroLaunch/master/install.sh | bash
 ```
 
-Requirements: KDE Plasma 6 (`plasma-workspace`), `android-tools` (adb) and `scrcpy` — the
-installer installs the latter two with your package manager if they are missing. Everything is
+Requirements: KDE Plasma 6 (`plasma-workspace`). `android-tools` (adb), `scrcpy` and `python3` are
+installed with your package manager (`dnf`, `apt-get`, `pacman`, `zypper`, `apk`) if they are
+missing. When the distro packages no scrcpy — Fedora 44 ships none, and RPM Fusion carries none
+either — the installer downloads the static **x86_64** build from the
+[scrcpy releases](https://github.com/Genymobile/scrcpy/releases) into `~/.local/share/scrcpy`
+(checksum-verified against the release `SHA256SUMS.txt`, wrapper at `~/.local/bin/scrcpy`); upstream
+publishes no Linux aarch64 build, so there scrcpy must be installed manually. Everything is
 user-local: backend at `~/.local/bin/androlaunch`, widget at
 `~/.local/share/plasma/plasmoids/org.androlaunch.plasma`. Uninstall with `--uninstall`.
 

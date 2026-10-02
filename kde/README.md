@@ -15,13 +15,20 @@ curl -fsSL https://raw.githubusercontent.com/aman-senpai/AndroLaunch/master/inst
 
 The installer:
 
-1. installs missing `adb` (`android-tools`) and `scrcpy` from your package manager,
+1. installs missing `adb` (`android-tools`), `scrcpy` and `python3` from your package manager,
 2. installs the backend CLI to `~/.local/bin/androlaunch`,
 3. installs the plasmoid `org.androlaunch.plasma`,
 4. adds the widget to your panel.
 
 Options: `--skip-deps`, `--no-panel`, `--bin-dir PATH`, `--uninstall`, `--help`.
 Set `ANDROLAUNCH_REF` to install another git ref.
+
+`scrcpy` comes from your package manager when the distro has a package for it. Fedora 44 ships none
+(and RPM Fusion carries none either), so the installer then downloads the static **x86_64** build
+from the [scrcpy releases](https://github.com/Genymobile/scrcpy/releases) into
+`~/.local/share/scrcpy`, verifies it against the release `SHA256SUMS.txt` and puts a wrapper at
+`~/.local/bin/scrcpy` (the path the backend looks at after `PATH`). Upstream publishes no Linux
+aarch64 build — on those machines install scrcpy yourself.
 
 From a checkout, run `./install.sh` in the repository root (it uses `kde/` directly).
 
@@ -162,7 +169,7 @@ panel icon ─ PlasmoidItem (contents/ui/main.qml)
 
 ## Troubleshooting
 
-* **Icon shows a warning triangle** — `adb` is missing: `sudo dnf install android-tools scrcpy`.
+* **Icon shows a warning triangle** — `adb` is missing: `sudo dnf install android-tools`.
 * **Widget shows "…" or does not appear after an upgrade** — Plasma caches compiled QML:
   `rm -rf ~/.cache/plasmashell/qmlcache && systemctl --user restart plasma-plasmashell`.
 * **"Backend not available" in the popup** — run `androlaunch call version` in a terminal; the
