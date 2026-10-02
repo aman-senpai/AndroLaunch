@@ -34,6 +34,8 @@ This installs AndroLaunch.app to `/Applications`; dependencies (`adb` and `scrcp
 
 The tap-qualified name is the reliable form. After adding the tap (`brew tap aman-senpai/apps`) the short `brew install --cask androlaunch` works too, but it fails with *"Cask androlaunch exists in multiple taps"* when this repository is also tapped under its old name — in that case run `brew untap aman-senpai/tap`.
 
+Homebrew 5+ asks you to trust a third-party tap the first time: accept the prompt, or run `brew trust aman-senpai/apps` (needed in scripts and on CI).
+
 > **Note**: the app is ad-hoc signed (not notarized), so macOS may refuse the first launch. Either right-click AndroLaunch in `/Applications` → **Open**, or run `xattr -dr com.apple.quarantine /Applications/AndroLaunch.app`.
 
 **Option B — Manual download**
