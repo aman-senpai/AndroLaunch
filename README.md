@@ -71,6 +71,7 @@ Homebrew 5+ asks you to trust a third-party tap the first time: accept the promp
 3.  **Launch**: download [`AndroLaunch-0.3.9-windows-x64-setup.exe`](https://github.com/aman-senpai/AndroLaunch/releases/download/v0.3.9/AndroLaunch-0.3.9-windows-x64-setup.exe) from [Releases](https://github.com/aman-senpai/AndroLaunch/releases/tag/v0.3.9). The per-user installer requires no administrator privileges. Alternatively, extract **all** of `v0.3.9-windows.zip` and run `AndroLaunch/AndroLaunch.WinUI.exe`; do not move the executable out of that folder.
 
 The Windows app uses **WinUI 3**: native navigation, menus, dialogs, system light/dark styling and a Mica backdrop. It includes device controls and mirroring configuration, app management and APK installation/export, a file browser, an Android emulator manager, QR/manual wireless pairing, saved commands, preferences and dependency onboarding. Android SDK command-line tools and the emulator are required only for AVD management; configure their paths in Settings.
+The native Windows title bar follows the same system app mode and updates live when Windows switches between light and dark.
 
 The Windows 10 (1809+) / Windows 11 x64 packages include .NET and Windows App SDK; neither runtime needs a separate installation. The notification-area icon is the same monochrome Android mark as the macOS menu bar, embedded in light/dark variants. Windows may initially put it under **Hidden icons**; drag it onto the taskbar to pin it. Closing the main window leaves AndroLaunch running in the tray; choose **Exit** to quit.
 

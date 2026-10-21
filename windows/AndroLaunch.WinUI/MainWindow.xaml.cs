@@ -21,6 +21,7 @@ namespace AndroLaunch.WinUI
             InitializeComponent();
             Title = "AndroLaunch";
             SystemBackdrop = new MicaBackdrop();
+            AppWindow.TitleBar.PreferredTheme = TitleBarTheme.UseDefaultAppMode;
             AppWindow.Resize(new SizeInt32(1120, 720));
             AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "app_icon.ico"));
             AppWindow.Closing += AppWindow_Closing;
