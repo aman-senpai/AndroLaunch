@@ -428,8 +428,16 @@ namespace Androlaunch.Core
                 {
                     if (process != null)
                     {
-                        var output = process.StandardOutput.ReadToEnd();
-                        var error = process.StandardError.ReadToEnd();
+                        Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+                        Task<string> errorTask = process.StandardError.ReadToEndAsync();
+                        if (!process.WaitForExit(20000))
+                        {
+                            try { process.Kill(entireProcessTree: true); } catch { }
+                            process.WaitForExit(5000);
+                        }
+
+                        var output = outputTask.GetAwaiter().GetResult();
+                        var error = errorTask.GetAwaiter().GetResult();
                         var combined = output + "\n" + error;
 
                         var lines = combined.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
@@ -807,7 +815,8 @@ namespace Androlaunch.Core
         }
 
         private static string _pairingPassword = "";
-        private static bool _isPairingActive = false;
+        private static volatile bool _isPairingActive;
+        private static int _pairingGeneration;
         public static event Action<string>? OnPairingStatusChanged;
         public static event Action? OnPairingComplete;
 
@@ -815,6 +824,7 @@ namespace Androlaunch.Core
         {
             StopPairingService();
             _isPairingActive = true;
+            int generation = ++_pairingGeneration;
 
             // 1. Generate Password
             var random = new Random();
@@ -825,7 +835,7 @@ namespace Androlaunch.Core
             string qrString = $"WIFI:T:ADB;S:ADBQR-connectPhoneOverWifi;P:{_pairingPassword};;";
 
             // 3. Start Discovery in background
-            Task.Run(() => RunPairingDiscovery());
+            Task.Run(() => RunPairingDiscovery(generation));
 
             OnPairingStatusChanged?.Invoke("Waiting for device to scan QR code...");
             return (qrString, _pairingPassword);
@@ -834,6 +844,7 @@ namespace Androlaunch.Core
         public static void StopPairingService()
         {
             _isPairingActive = false;
+            _pairingGeneration++;
             OnPairingStatusChanged?.Invoke("Pairing stopped.");
         }
 
@@ -977,12 +988,12 @@ namespace Androlaunch.Core
             }
         }
 
-        private static async Task RunPairingDiscovery()
+        private static async Task RunPairingDiscovery(int generation)
         {
             var processedEndpoints = new HashSet<string>();
             var processedConnectHosts = new HashSet<string>();
 
-            while (_isPairingActive)
+            while (_isPairingActive && generation == _pairingGeneration)
             {
                 try
                 {
@@ -1029,7 +1040,10 @@ namespace Androlaunch.Core
                                 OnPairingStatusChanged?.Invoke($"Connected to {result.IPAddress}!");
                                 OnPairingComplete?.Invoke();
                                 // Restart pairing for next device like macOS implementation
-                                StartPairingService();
+                                if (generation == _pairingGeneration)
+                                {
+                                    StartPairingService();
+                                }
                                 return;
                             }
                         }

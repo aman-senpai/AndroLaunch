@@ -1,78 +1,104 @@
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using Androlaunch.Core;
 
 namespace Androlaunch.UI.Renderers
 {
+    /// <summary>Native Windows 11 menu rendering: accent-neutral selection and a standard check mark.</summary>
     public class MenuRenderer : ToolStripProfessionalRenderer
     {
         public MenuRenderer() : base(new MenuColorTable())
         {
-            this.RoundedEdges = true;
+            RoundedEdges = true;
+        }
+
+        protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+        {
+            using var brush = new SolidBrush(ThemeManager.Background);
+            e.Graphics.FillRectangle(brush, e.AffectedBounds);
+        }
+
+        protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+        {
+            using var pen = new Pen(ThemeManager.Border);
+            Rectangle bounds = new(0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
+            e.Graphics.DrawRectangle(pen, bounds);
         }
 
         protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
         {
-            if (e.Item.Enabled && e.Item.Selected)
+            var item = e.Item;
+            if (item is not ToolStripMenuItem)
             {
-                var g = e.Graphics;
-                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                
-                // Subtle rounded selection
-                var rect = new Rectangle(e.Item.ContentRectangle.X + 3, e.Item.ContentRectangle.Y + 1, 
-                                         e.Item.ContentRectangle.Width - 6, e.Item.ContentRectangle.Height - 2);
-                
-                using (var brush = new SolidBrush(ThemeManager.Selection))
-                {
-                    g.FillRoundedRectangle(brush, rect, 4);
-                }
+                return;
+            }
+
+            using (var background = new SolidBrush(ThemeManager.Background))
+            {
+                e.Graphics.FillRectangle(background, item.Bounds);
+            }
+
+            if (item.Enabled && item.Selected)
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                var rect = new Rectangle(3, 1, item.Width - 7, item.Height - 3);
+                using var brush = new SolidBrush(ThemeManager.Selection);
+                e.Graphics.FillRoundedRectangle(brush, rect, 4);
             }
         }
 
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
-            if (ThemeManager.IsDarkMode)
-                e.TextColor = e.Item.Selected ? Color.White : ThemeManager.Foreground;
+            if (!e.Item.Enabled)
+            {
+                e.TextColor = ThemeManager.SecondaryForeground;
+            }
+            else if (e.Item.Selected)
+            {
+                e.TextColor = ThemeManager.IsDarkMode ? Color.White : ThemeManager.Foreground;
+            }
             else
-                e.TextColor = ThemeManager.Foreground; // Always dark text in light mode for better legibility on light tints
+            {
+                e.TextColor = ThemeManager.Foreground;
+            }
+
             base.OnRenderItemText(e);
         }
 
         protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
         {
-            e.ArrowColor = Color.FromArgb(180, 180, 180);
+            e.ArrowColor = ThemeManager.SecondaryForeground;
             base.OnRenderArrow(e);
         }
 
         protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
         {
             var g = e.Graphics;
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
 
-            var r = e.ImageRectangle;
-            // Modern Pill Toggle
-            int switchWidth = 22;
-            int switchHeight = 14;
-            var switchRect = new Rectangle(r.Left + (r.Width - switchWidth) / 2, r.Top + (r.Height - switchHeight) / 2, switchWidth, switchHeight);
+            Rectangle r = e.ImageRectangle;
+            const int glyphSize = 16;
+            var glyphRect = new Rectangle(
+                r.Left + (r.Width - glyphSize) / 2,
+                r.Top + (r.Height - glyphSize) / 2,
+                glyphSize,
+                glyphSize);
 
-            bool isChecked = ((ToolStripMenuItem)e.Item).Checked;
+            Color foreground = e.Item.Selected
+                ? (ThemeManager.IsDarkMode ? Color.White : ThemeManager.Foreground)
+                : ThemeManager.Foreground;
+            Color background = e.Item.Selected ? ThemeManager.Selection : ThemeManager.Background;
 
-            // Background pill with subtle border
-            using (var brush = new SolidBrush(isChecked ? ThemeManager.Accent : (ThemeManager.IsDarkMode ? Color.FromArgb(70, 70, 72) : Color.FromArgb(200, 200, 205))))
-            {
-                g.FillRoundedRectangle(brush, switchRect, switchHeight / 2);
-            }
+            ControlPaint.DrawMenuGlyph(g, glyphRect, MenuGlyph.Checkmark, foreground, background);
+        }
 
-            // The knob
-            int knobPadding = 2;
-            int knobSize = switchHeight - (knobPadding * 2);
-            float knobX = isChecked ? switchRect.Right - knobSize - knobPadding : switchRect.Left + knobPadding;
-            var knobRect = new System.Drawing.RectangleF(knobX, switchRect.Top + knobPadding, knobSize, knobSize);
-
-            using (var brush = new SolidBrush(Color.White))
-            {
-                g.FillEllipse(brush, knobRect);
-            }
+        protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+        {
+            var g = e.Graphics;
+            int y = e.Item.Height / 2;
+            using var pen = new Pen(ThemeManager.Border);
+            g.DrawLine(pen, 8, y, e.Item.Width - 8, y);
         }
     }
 
@@ -80,15 +106,13 @@ namespace Androlaunch.UI.Renderers
     {
         public static void FillRoundedRectangle(this Graphics g, Brush brush, Rectangle rect, int radius)
         {
-            using (var path = GetRoundedRectanglePath(rect, radius))
-            {
-                g.FillPath(brush, path);
-            }
+            using var path = GetRoundedRectanglePath(rect, radius);
+            g.FillPath(brush, path);
         }
 
-        private static System.Drawing.Drawing2D.GraphicsPath GetRoundedRectanglePath(Rectangle rect, int radius)
+        private static GraphicsPath GetRoundedRectanglePath(Rectangle rect, int radius)
         {
-            var path = new System.Drawing.Drawing2D.GraphicsPath();
+            var path = new GraphicsPath();
             int d = radius * 2;
             path.AddArc(rect.X, rect.Y, d, d, 180, 90);
             path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
@@ -104,11 +128,16 @@ namespace Androlaunch.UI.Renderers
         public override Color ToolStripDropDownBackground => ThemeManager.Background;
         public override Color MenuBorder => ThemeManager.Border;
         public override Color MenuItemSelected => ThemeManager.Selection;
-        public override Color MenuItemBorder => Color.Transparent; // No border for rounded selection
+        public override Color MenuItemBorder => Color.Transparent;
         public override Color ImageMarginGradientBegin => ThemeManager.Background;
         public override Color ImageMarginGradientMiddle => ThemeManager.Background;
         public override Color ImageMarginGradientEnd => ThemeManager.Background;
+        public override Color CheckBackground => ThemeManager.Background;
+        public override Color CheckSelectedBackground => ThemeManager.Selection;
+        public override Color CheckPressedBackground => ThemeManager.Selection;
         public override Color SeparatorDark => ThemeManager.Border;
         public override Color SeparatorLight => ThemeManager.Border;
+        public override Color GripDark => ThemeManager.Border;
+        public override Color GripLight => ThemeManager.Background;
     }
 }

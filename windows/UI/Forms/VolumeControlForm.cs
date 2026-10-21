@@ -1,44 +1,132 @@
 using System;
 using System.Drawing;
-using System.IO;
 using System.Windows.Forms;
 using Androlaunch.Core;
+using Androlaunch.UI.Controls;
 
 namespace Androlaunch.UI.Forms
 {
-    public class VolumeControlForm : Form
+    public class VolumeControlForm : ThemedForm
     {
-        private string deviceSerial;
-        private TrackBar trackVolume;
-        private Label lblVolume;
+        private readonly string deviceSerial;
+        private readonly TrackBar trackVolume;
+        private readonly Label lblValue;
 
         public VolumeControlForm(string serial)
         {
-            this.deviceSerial = serial;
-            this.Text = "Volume Control";
-            this.Size = new Size(300, 150);
-            this.FormBorderStyle = FormBorderStyle.FixedToolWindow;
-            this.StartPosition = FormStartPosition.CenterParent;
+            deviceSerial = serial;
 
-            try
+            Text = "Volume";
+            ClientSize = new Size(380, 200);
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.CenterScreen;
+
+            var lblTitle = new Label
             {
-                string iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "app_icon.ico");
-                if (!System.IO.File.Exists(iconPath)) iconPath = "app_icon.ico";
-                if (System.IO.File.Exists(iconPath)) this.Icon = new Icon(iconPath);
-            } catch { }
+                Text = "Media volume",
+                AutoSize = true,
+                Font = new Font(ThemeManager.UiFont.FontFamily, 11F, FontStyle.Bold, GraphicsUnit.Point),
+                ForeColor = ThemeManager.Foreground,
+                Margin = new Padding(0, 0, 0, 10)
+            };
 
-            lblVolume = new Label { Text = "Adjusting Media Volume", Location = new Point(10, 10), AutoSize = true };
-            trackVolume = new TrackBar { Minimum = 0, Maximum = 15, Value = 7, Width = 260, Location = new Point(10, 40) };
-            
-            trackVolume.Scroll += TrackVolume_Scroll;
+            trackVolume = new TrackBar
+            {
+                Minimum = 0,
+                Maximum = 15,
+                Value = 7,
+                TickFrequency = 1,
+                SmallChange = 1,
+                LargeChange = 3,
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 0, 0, 4)
+            };
+            trackVolume.Scroll += (_, _) => ApplyVolume();
 
-            this.Controls.Add(lblVolume);
-            this.Controls.Add(trackVolume);
+            lblValue = new Label
+            {
+                Text = "7 / 15",
+                AutoSize = true,
+                ForeColor = ThemeManager.SecondaryForeground,
+                Margin = new Padding(0, 0, 0, 10)
+            };
+
+            var btnClose = new ThemedButton
+            {
+                Text = "Close",
+                Kind = ThemedButton.ButtonKind.Primary,
+                Anchor = AnchorStyles.Right,
+                Margin = new Padding(0)
+            };
+            btnClose.Click += (_, _) => Close();
+
+            var root = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 4,
+                Padding = new Padding(18),
+                BackColor = ThemeManager.Background
+            };
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.Controls.Add(lblTitle, 0, 0);
+            root.Controls.Add(trackVolume, 0, 1);
+            root.Controls.Add(lblValue, 0, 2);
+            root.Controls.Add(btnClose, 0, 3);
+            Controls.Add(root);
+
+            ThemeManager.ThemeChanged += OnThemeChanged;
+            Shown += (_, _) =>
+            {
+                lblValue.ForeColor = ThemeManager.SecondaryForeground;
+                UpdateValueLabel();
+            };
+            UpdateValueLabel();
         }
 
-        private void TrackVolume_Scroll(object? sender, EventArgs e)
+        private void ApplyVolume()
         {
-             AdbHelper.SetVolume(deviceSerial, trackVolume.Value);
+            UpdateValueLabel();
+            AdbHelper.SetVolume(deviceSerial, trackVolume.Value);
+        }
+
+        private void UpdateValueLabel()
+        {
+            lblValue.Text = $"{trackVolume.Value} / {trackVolume.Maximum}";
+        }
+
+        private void OnThemeChanged()
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            if (InvokeRequired)
+            {
+                BeginInvoke((MethodInvoker)(() =>
+                {
+                    ThemeManager.ApplyTheme(this);
+                    lblValue.ForeColor = ThemeManager.SecondaryForeground;
+                }));
+            }
+            else
+            {
+                ThemeManager.ApplyTheme(this);
+                lblValue.ForeColor = ThemeManager.SecondaryForeground;
+            }
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            ThemeManager.ThemeChanged -= OnThemeChanged;
+            base.OnFormClosed(e);
         }
     }
 }

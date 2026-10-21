@@ -68,7 +68,9 @@ Homebrew 5+ asks you to trust a third-party tap the first time: accept the promp
 
     > **Note**: Requires scrcpy v4.0+ for all features.
 
-3.  **Launch**: download the Windows build from [Releases](https://github.com/aman-senpai/AndroLaunch/releases). Windows artifacts are not attached to every release — the newest is `windows.v0.zip` on [v0.3.3](https://github.com/aman-senpai/AndroLaunch/releases/tag/v0.3.3).
+3.  **Launch**: download `v0.3.9-windows.zip` from [Releases](https://github.com/aman-senpai/AndroLaunch/releases/tag/v0.3.9), extract `Androlaunch.exe`, and run it. The executable is self-contained for Windows 10/11 x64 — no installer or separate .NET runtime is required.
+
+The Windows build uses native WinForms controls with Windows 11 light/dark theming, native window chrome and a native tray menu, and it uses the same monochrome Android mark as the macOS menu bar. On first run Windows 11 may put a new tray icon in the hidden-icons flyout; drag the AndroLaunch icon onto the taskbar to pin it.
 
 ### Linux Installation (KDE Plasma 6)
 

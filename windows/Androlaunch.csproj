@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -6,20 +6,50 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Androlaunch</AssemblyName>
+    <RootNamespace>Androlaunch</RootNamespace>
+    <ApplicationIcon>Resources\app_icon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationVisualStyles>true</ApplicationVisualStyles>
+    <ApplicationUseCompatibleTextRendering>false</ApplicationUseCompatibleTextRendering>
+    <Product>AndroLaunch</Product>
+    <AssemblyTitle>AndroLaunch</AssemblyTitle>
+    <Description>Android device management for Windows</Description>
+    <Company>AndroLaunch</Company>
+    <Copyright>MIT License</Copyright>
+    <Version>0.3.9</Version>
+    <FileVersion>0.3.9.0</FileVersion>
+    <AssemblyVersion>0.3.9.0</AssemblyVersion>
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <RepositoryUrl>https://github.com/aman-senpai/AndroLaunch</RepositoryUrl>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <ApplicationIcon>Resources\app_icon.ico</ApplicationIcon>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-    <BaseOutputPath>build\obj\</BaseOutputPath>
-    <OutputPath>build\release\</OutputPath>
-    <PublishDir>build\release\</PublishDir>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <BaseOutputPath>build\bin\</BaseOutputPath>
+    <OutputPath>build\bin\</OutputPath>
+    <PublishDir>build\dist\</PublishDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <Optimize>true</Optimize>
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="Resources\app_icon.ico">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <EmbeddedResource Include="Resources\app_icon.ico" />
+    <EmbeddedResource Include="Resources\tray_icon_light.ico" />
+    <EmbeddedResource Include="Resources\tray_icon_dark.ico" />
   </ItemGroup>
 
   <ItemGroup>

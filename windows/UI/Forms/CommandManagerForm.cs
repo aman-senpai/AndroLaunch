@@ -1,179 +1,259 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Windows.Forms;
 using System.Linq;
+using System.Windows.Forms;
 using Androlaunch.Core;
-using Androlaunch.UI.Renderers;
+using Androlaunch.UI.Controls;
 
 namespace Androlaunch.UI.Forms
 {
-    public class CommandManagerForm : Form
+    public class CommandManagerForm : ThemedForm
     {
-        private ListBox listCommands;
-        private TextBox txtName;
-        private TextBox txtCommand;
-        private CheckBox chkBackground;
-        private CheckBox chkHost;
-        private Button btnAdd;
-        private Button btnUpdate;
-        private Button btnDelete;
-        private Button btnImport;
-        private Button btnExport;
-        
-        private List<AdbHelper.ShellCommand> commands;
+        private readonly ListBox listCommands;
+        private readonly TextBox txtName;
+        private readonly TextBox txtCommand;
+        private readonly CheckBox chkBackground;
+        private readonly CheckBox chkHost;
+        private readonly ThemedButton btnAdd;
+        private readonly ThemedButton btnUpdate;
+        private readonly ThemedButton btnDelete;
+        private readonly ThemedButton btnImport;
+        private readonly ThemedButton btnExport;
+        private readonly Label lblHint;
+
+        private List<AdbHelper.ShellCommand> commands = new();
         private AdbHelper.ShellCommand? selectedCommand;
 
         public CommandManagerForm()
         {
-            InitializeComponent();
-            LoadCommands();
-            ApplyCurrentTheme();
-            ThemeManager.ThemeChanged += () => {
-                if (this.IsHandleCreated) this.BeginInvoke((MethodInvoker)delegate { 
-                    ThemeManager.ApplyTheme(this);
-                    ApplyCurrentTheme(); // This one sets specialized control colors
-                });
-            };
-        }
+            Text = "Manage commands";
+            ClientSize = new Size(800, 540);
+            MinimumSize = new Size(680, 460);
+            StartPosition = FormStartPosition.CenterScreen;
+            ShowInTaskbar = true;
 
-        private void ApplyCurrentTheme()
-        {
-            this.BackColor = ThemeManager.Background;
-            this.ForeColor = ThemeManager.Foreground;
-            listCommands.BackColor = ThemeManager.Background;
-            txtName.BackColor = ThemeManager.Surface;
-            txtName.ForeColor = ThemeManager.Foreground;
-            txtCommand.BackColor = ThemeManager.Surface;
-            txtCommand.ForeColor = ThemeManager.Foreground;
-            this.Refresh();
-        }
-
-        private void InitializeComponent()
-        {
-            this.Text = "Commands";
-            this.Size = new Size(600, 450);
-            this.Font = new Font("Segoe UI", 10F);
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
-            this.StartPosition = FormStartPosition.CenterScreen;
-
-            try
+            var lblList = new Label
             {
-                string iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "app_icon.ico");
-                if (!System.IO.File.Exists(iconPath)) iconPath = "app_icon.ico";
-                if (System.IO.File.Exists(iconPath)) this.Icon = new Icon(iconPath);
-            } catch { }
+                Text = "Saved commands",
+                AutoSize = false,
+                Height = 24,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Font = ThemeManager.MenuHeaderFont,
+                ForeColor = ThemeManager.Foreground,
+                Margin = new Padding(0, 0, 0, 8)
+            };
 
-            TableLayoutPanel mainLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(10) };
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
-            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
-
-            // Left side: List
-            Panel leftPanel = new Panel { Dock = DockStyle.Fill };
             listCommands = new ListBox
             {
                 Dock = DockStyle.Fill,
-                BorderStyle = BorderStyle.None,
-                ItemHeight = 45,
-                DrawMode = DrawMode.OwnerDrawFixed
-            };
-            listCommands.DrawItem += (s, e) => {
-                if (e.Index < 0) return;
-                var g = e.Graphics;
-                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-                bool isSelected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
-                var cmd = commands[e.Index];
-
-                using (var brush = new SolidBrush(ThemeManager.Background))
-                {
-                    g.FillRectangle(brush, e.Bounds);
-                }
-
-                if (isSelected)
-                {
-                    var selectionRect = new Rectangle(e.Bounds.X + 5, e.Bounds.Y + 3, e.Bounds.Width - 10, e.Bounds.Height - 6);
-                    g.FillRoundedRectangle(new SolidBrush(ThemeManager.IsDarkMode ? ThemeManager.Accent : Color.FromArgb(220, 235, 255)), selectionRect, 5);
-                }
-
-                string icon = cmd.IsHostCommand ? "💻" : "📱";
-                string backgroundIcon = cmd.IsBackground ? " ⚙️" : "";
-                using (var brush = new SolidBrush(isSelected && ThemeManager.IsDarkMode ? Color.White : ThemeManager.Foreground))
-                {
-                    g.DrawString($"{icon}{backgroundIcon} {cmd.Name}", listCommands.Font, brush, 
-                                 new Rectangle(e.Bounds.X + 10, e.Bounds.Y, e.Bounds.Width - 20, e.Bounds.Height), 
-                                 new StringFormat { LineAlignment = StringAlignment.Center });
-                }
+                IntegralHeight = false,
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = ThemeManager.UiFont,
+                Margin = new Padding(0)
             };
             listCommands.SelectedIndexChanged += ListCommands_SelectedIndexChanged;
-            leftPanel.Controls.Add(listCommands);
 
-            btnDelete = CreateButton("Delete", Color.FromArgb(255, 59, 48), Color.White);
-            btnDelete.Dock = DockStyle.Bottom;
-            btnDelete.Click += (s, e) => DeleteCommand();
-            leftPanel.Controls.Add(btnDelete);
-            
-            mainLayout.Controls.Add(leftPanel, 0, 0);
-
-            // Right side: Editor
-            Panel rightPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10, 0, 0, 0) };
-            
-            Label lblName = new Label { Text = "Name:", Dock = DockStyle.Top, Height = 25 };
-            txtName = new TextBox { Dock = DockStyle.Top, BorderStyle = BorderStyle.FixedSingle };
-            
-            Label lblCommand = new Label { Text = "Command:", Dock = DockStyle.Top, Height = 25, Margin = new Padding(0, 10, 0, 0) };
-            txtCommand = new TextBox { Dock = DockStyle.Top, Multiline = true, Height = 80, BorderStyle = BorderStyle.FixedSingle };
-            
-            chkBackground = new CheckBox { Text = "Run in Background", Dock = DockStyle.Top, Height = 30, FlatStyle = FlatStyle.Flat };
-            chkHost = new CheckBox { Text = "Host Command (Runs on PC)", Dock = DockStyle.Top, Height = 30, FlatStyle = FlatStyle.Flat };
-            
-            txtName.BorderStyle = BorderStyle.FixedSingle;
-            txtCommand.BorderStyle = BorderStyle.FixedSingle;
-
-            Panel buttonPanel = new Panel { Dock = DockStyle.Top, Height = 45, Margin = new Padding(0, 20, 0, 0) };
-            btnAdd = CreateButton("Add New", ThemeManager.Surface, ThemeManager.Foreground);
-            btnAdd.Width = 90;
-            btnAdd.Click += (s, e) => AddCommand();
-            
-            btnUpdate = CreateButton("Save Changes", ThemeManager.Accent, Color.White);
-            btnUpdate.Width = 120;
-            btnUpdate.Left = 100;
-            btnUpdate.Enabled = false;
-            btnUpdate.Click += (s, e) => UpdateCommand();
-            
-            btnUpdate.EnabledChanged += (s, e) => {
-                btnUpdate.Refresh(); // Force repaint with new state
+            var leftPanel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 2,
+                Padding = new Padding(12),
+                BackColor = ThemeManager.Background
             };
-            
-            buttonPanel.Controls.Add(btnAdd);
-            buttonPanel.Controls.Add(btnUpdate);
+            leftPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            leftPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            leftPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            leftPanel.Controls.Add(lblList, 0, 0);
+            leftPanel.Controls.Add(listCommands, 0, 1);
 
-            Panel footerPanel = new Panel { Dock = DockStyle.Bottom, Height = 50, Padding = new Padding(0, 5, 0, 5) };
-            btnImport = CreateButton("Import JSON", Color.FromArgb(45, 45, 48), Color.White);
-            btnImport.Width = 110;
-            btnImport.Click += (s, e) => ImportCommands();
-            
-            btnExport = CreateButton("Export JSON", Color.FromArgb(45, 45, 48), Color.White);
-            btnExport.Width = 110;
-            btnExport.Left = 120;
-            btnExport.Click += (s, e) => ExportCommands();
-            
-            footerPanel.Controls.Add(btnImport);
-            footerPanel.Controls.Add(btnExport);
+            var lblName = new Label
+            {
+                Text = "Name",
+                AutoSize = true,
+                ForeColor = ThemeManager.Foreground,
+                Margin = new Padding(0, 0, 0, 4)
+            };
+            txtName = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = ThemeManager.UiFont,
+                Margin = new Padding(0, 0, 0, 10)
+            };
+            txtName.TextChanged += (_, _) => UpdateButtonStates();
 
-            rightPanel.Controls.Add(buttonPanel);
-            rightPanel.Controls.Add(chkHost);
-            rightPanel.Controls.Add(chkBackground);
-            rightPanel.Controls.Add(txtCommand);
-            rightPanel.Controls.Add(lblCommand);
-            rightPanel.Controls.Add(txtName);
-            rightPanel.Controls.Add(lblName);
-            rightPanel.Controls.Add(footerPanel);
+            var lblCommand = new Label
+            {
+                Text = "Command",
+                AutoSize = true,
+                ForeColor = ThemeManager.Foreground,
+                Margin = new Padding(0, 0, 0, 4)
+            };
+            txtCommand = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                Multiline = true,
+                AcceptsReturn = true,
+                WordWrap = true,
+                ScrollBars = ScrollBars.Vertical,
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = ThemeManager.MonoFont,
+                Margin = new Padding(0, 0, 0, 10)
+            };
+            txtCommand.TextChanged += (_, _) => UpdateButtonStates();
 
-            mainLayout.Controls.Add(rightPanel, 1, 0);
-            this.Controls.Add(mainLayout);
+            var checkPanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Margin = new Padding(0, 0, 0, 8)
+            };
+            chkBackground = new CheckBox
+            {
+                Text = "Run in background",
+                AutoSize = true,
+                ForeColor = ThemeManager.Foreground,
+                Margin = new Padding(0, 0, 20, 0)
+            };
+            chkHost = new CheckBox
+            {
+                Text = "Run on this PC",
+                AutoSize = true,
+                ForeColor = ThemeManager.Foreground,
+                Margin = new Padding(0)
+            };
+            chkBackground.CheckedChanged += (_, _) => UpdateButtonStates();
+            chkHost.CheckedChanged += (_, _) => UpdateButtonStates();
+            checkPanel.Controls.Add(chkBackground);
+            checkPanel.Controls.Add(chkHost);
+
+            btnAdd = new ThemedButton { Text = "Add new", Margin = new Padding(0, 0, 6, 0) };
+            btnUpdate = new ThemedButton { Text = "Save changes", Kind = ThemedButton.ButtonKind.Primary, Margin = new Padding(0, 0, 6, 0) };
+            btnDelete = new ThemedButton { Text = "Delete", Kind = ThemedButton.ButtonKind.Danger, Margin = new Padding(0) };
+            btnAdd.Click += (_, _) => AddCommand();
+            btnUpdate.Click += (_, _) => UpdateCommand();
+            btnDelete.Click += (_, _) => DeleteCommand();
+
+            var actionPanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.RightToLeft,
+                WrapContents = false,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Margin = new Padding(0)
+            };
+            actionPanel.Controls.Add(btnDelete);
+            actionPanel.Controls.Add(btnUpdate);
+            actionPanel.Controls.Add(btnAdd);
+
+            btnImport = new ThemedButton { Text = "Import…", Margin = new Padding(0, 0, 6, 0) };
+            btnExport = new ThemedButton { Text = "Export…", Margin = new Padding(0) };
+            btnImport.Click += (_, _) => ImportCommands();
+            btnExport.Click += (_, _) => ExportCommands();
+
+            var filePanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Margin = new Padding(0)
+            };
+            filePanel.Controls.Add(btnImport);
+            filePanel.Controls.Add(btnExport);
+
+            var bottomPanel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Margin = new Padding(0, 4, 0, 0)
+            };
+            bottomPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            bottomPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            bottomPanel.Controls.Add(filePanel, 0, 0);
+            bottomPanel.Controls.Add(actionPanel, 1, 0);
+
+            lblHint = new Label
+            {
+                Text = "Device commands run through adb shell. “Run on this PC” runs the command on Windows.",
+                AutoSize = false,
+                Dock = DockStyle.Fill,
+                Height = 40,
+                ForeColor = ThemeManager.SecondaryForeground,
+                Margin = new Padding(0, 10, 0, 0)
+            };
+
+            var rightPanel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 7,
+                Padding = new Padding(12),
+                BackColor = ThemeManager.Background
+            };
+            rightPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            rightPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            rightPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            rightPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            rightPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            rightPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            rightPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            rightPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            rightPanel.Controls.Add(lblName, 0, 0);
+            rightPanel.Controls.Add(txtName, 0, 1);
+            rightPanel.Controls.Add(lblCommand, 0, 2);
+            rightPanel.Controls.Add(txtCommand, 0, 3);
+            rightPanel.Controls.Add(checkPanel, 0, 4);
+            rightPanel.Controls.Add(bottomPanel, 0, 5);
+            rightPanel.Controls.Add(lblHint, 0, 6);
+
+            var split = new SplitContainer
+            {
+                Dock = DockStyle.Fill,
+                FixedPanel = FixedPanel.Panel1,
+                SplitterWidth = 1,
+                Panel1MinSize = 180,
+                BackColor = ThemeManager.Border
+            };
+            split.Panel1.BackColor = ThemeManager.Background;
+            split.Panel2.BackColor = ThemeManager.Background;
+            split.Panel1.Controls.Add(leftPanel);
+            split.Panel2.Controls.Add(rightPanel);
+            Controls.Add(split);
+            split.SplitterDistance = 250;
+
+            KeyPreview = true;
+            KeyDown += CommandManagerForm_KeyDown;
+            ThemeManager.ThemeChanged += OnThemeChanged;
+            Shown += (_, _) => ApplyThemeColors();
+
+            LoadCommands();
+            ApplyThemeColors();
+        }
+
+        private void CommandManagerForm_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.Control && e.KeyCode == Keys.S)
+            {
+                UpdateCommand();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            else if (e.KeyCode == Keys.Escape)
+            {
+                Close();
+            }
         }
 
         private void LoadCommands()
@@ -184,23 +264,38 @@ namespace Androlaunch.UI.Forms
 
         private void RefreshList()
         {
-            listCommands.Items.Clear();
-            foreach (var cmd in commands)
+            int previousIndex = listCommands.SelectedIndex;
+            listCommands.BeginUpdate();
+            try
             {
-                listCommands.Items.Add(cmd.Name);
+                listCommands.Items.Clear();
+                foreach (AdbHelper.ShellCommand command in commands)
+                {
+                    listCommands.Items.Add(command.Name);
+                }
             }
+            finally
+            {
+                listCommands.EndUpdate();
+            }
+
+            if (commands.Count > 0)
+            {
+                listCommands.SelectedIndex = Math.Clamp(previousIndex, 0, commands.Count - 1);
+            }
+            else
+            {
+                ClearEditor();
+            }
+
+            UpdateButtonStates();
         }
 
         private void ListCommands_SelectedIndexChanged(object? sender, EventArgs e)
         {
-            if (listCommands.SelectedIndex == -1)
+            if (listCommands.SelectedIndex < 0 || listCommands.SelectedIndex >= commands.Count)
             {
-                selectedCommand = null;
-                btnUpdate.Enabled = false;
-                txtName.Clear();
-                txtCommand.Clear();
-                chkBackground.Checked = false;
-                chkHost.Checked = false;
+                ClearEditor();
                 return;
             }
 
@@ -209,18 +304,27 @@ namespace Androlaunch.UI.Forms
             txtCommand.Text = selectedCommand.Command;
             chkBackground.Checked = selectedCommand.IsBackground;
             chkHost.Checked = selectedCommand.IsHostCommand;
-            btnUpdate.Enabled = true;
+            UpdateButtonStates();
+        }
+
+        private void ClearEditor()
+        {
+            selectedCommand = null;
+            txtName.Clear();
+            txtCommand.Clear();
+            chkBackground.Checked = false;
+            chkHost.Checked = false;
+            UpdateButtonStates();
         }
 
         private void AddCommand()
         {
-            if (string.IsNullOrWhiteSpace(txtName.Text) || string.IsNullOrWhiteSpace(txtCommand.Text))
+            if (!ValidateEditor())
             {
-                MessageBox.Show("Please fill Name and Command.", "Validation Error");
                 return;
             }
 
-            var cmd = new AdbHelper.ShellCommand
+            var command = new AdbHelper.ShellCommand
             {
                 Name = txtName.Text.Trim(),
                 Command = txtCommand.Text.Trim(),
@@ -228,7 +332,7 @@ namespace Androlaunch.UI.Forms
                 IsHostCommand = chkHost.Checked
             };
 
-            commands.Add(cmd);
+            commands.Add(command);
             AdbHelper.SaveCommands(commands);
             RefreshList();
             listCommands.SelectedIndex = commands.Count - 1;
@@ -236,8 +340,10 @@ namespace Androlaunch.UI.Forms
 
         private void UpdateCommand()
         {
-            if (selectedCommand == null) return;
-            if (string.IsNullOrWhiteSpace(txtName.Text) || string.IsNullOrWhiteSpace(txtCommand.Text)) return;
+            if (selectedCommand is null || !ValidateEditor())
+            {
+                return;
+            }
 
             selectedCommand.Name = txtName.Text.Trim();
             selectedCommand.Command = txtCommand.Text.Trim();
@@ -245,106 +351,164 @@ namespace Androlaunch.UI.Forms
             selectedCommand.IsHostCommand = chkHost.Checked;
 
             AdbHelper.SaveCommands(commands);
-            int idx = listCommands.SelectedIndex;
+            int index = listCommands.SelectedIndex;
             RefreshList();
-            listCommands.SelectedIndex = idx;
+            listCommands.SelectedIndex = index;
         }
 
         private void DeleteCommand()
         {
-            if (selectedCommand == null) return;
-            if (MessageBox.Show($"Are you sure you want to delete '{selectedCommand.Name}'?", "Confirm Delete", MessageBoxButtons.YesNo) == DialogResult.Yes)
+            if (selectedCommand is null)
             {
-                commands.Remove(selectedCommand);
-                AdbHelper.SaveCommands(commands);
-                RefreshList();
+                return;
             }
+
+            DialogResult result = MessageBox.Show(
+                this,
+                $"Delete “{selectedCommand.Name}”?",
+                "Delete command",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            if (result != DialogResult.Yes)
+            {
+                return;
+            }
+
+            commands.Remove(selectedCommand);
+            selectedCommand = null;
+            AdbHelper.SaveCommands(commands);
+            RefreshList();
         }
 
         private void ImportCommands()
         {
-            using (var ofd = new OpenFileDialog { Filter = "JSON Files|*.json" })
+            using var dialog = new OpenFileDialog
             {
-                if (ofd.ShowDialog() == DialogResult.OK)
+                Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                Title = "Import commands"
+            };
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+
+            try
+            {
+                string json = System.IO.File.ReadAllText(dialog.FileName);
+                List<AdbHelper.ShellCommand>? imported =
+                    System.Text.Json.JsonSerializer.Deserialize<List<AdbHelper.ShellCommand>>(json);
+
+                if (imported is null || imported.Count == 0)
                 {
-                    try
-                    {
-                        string json = System.IO.File.ReadAllText(ofd.FileName);
-                        var imported = System.Text.Json.JsonSerializer.Deserialize<List<AdbHelper.ShellCommand>>(json);
-                        if (imported != null)
-                        {
-                            commands.AddRange(imported);
-                            AdbHelper.SaveCommands(commands);
-                            RefreshList();
-                            MessageBox.Show($"Imported {imported.Count} commands.");
-                        }
-                    }
-                    catch (Exception ex) { MessageBox.Show("Import failed: " + ex.Message); }
+                    MessageBox.Show(this, "The file does not contain any commands.", "Import commands", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
                 }
+
+                commands.AddRange(imported);
+                AdbHelper.SaveCommands(commands);
+                RefreshList();
+                MessageBox.Show(this, $"Imported {imported.Count} command(s).", "Import commands", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Could not import commands", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
         private void ExportCommands()
         {
-            using (var sfd = new SaveFileDialog { Filter = "JSON Files|*.json", FileName = "androlaunch_commands.json" })
+            using var dialog = new SaveFileDialog
             {
-                if (sfd.ShowDialog() == DialogResult.OK)
-                {
-                    try
-                    {
-                        string json = System.Text.Json.JsonSerializer.Serialize(commands, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                        System.IO.File.WriteAllText(sfd.FileName, json);
-                        MessageBox.Show("Exported successful.");
-                    }
-                    catch (Exception ex) { MessageBox.Show("Export failed: " + ex.Message); }
-                }
+                Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                FileName = "androlaunch_commands.json",
+                Title = "Export commands"
+            };
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+
+            try
+            {
+                string json = System.Text.Json.JsonSerializer.Serialize(
+                    commands,
+                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                System.IO.File.WriteAllText(dialog.FileName, json);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Could not export commands", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-        private Button CreateButton(string text, Color back, Color fore)
-        {
-            var btn = new Button
-            {
-                Text = text,
-                BackColor = back,
-                ForeColor = fore,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI Semibold", 9.5f),
-                Height = 35,
-                Cursor = Cursors.Hand
-            };
-            btn.FlatAppearance.BorderSize = 0;
-            btn.FlatAppearance.MouseOverBackColor = Color.Transparent; // We handle hover via drawing or just leave it
-            btn.FlatAppearance.MouseDownBackColor = Color.Transparent;
-            
-            btn.Paint += (s, e) => {
-                var g = e.Graphics;
-                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                
-                // Clear background to parent's color to avoid black corners
-                g.Clear(btn.Parent?.BackColor ?? ThemeManager.Background);
-                
-                Color actualBack = back;
-                Color actualFore = fore;
 
-                if (!btn.Enabled)
+        private bool ValidateEditor()
+        {
+            if (!string.IsNullOrWhiteSpace(txtName.Text) && !string.IsNullOrWhiteSpace(txtCommand.Text))
+            {
+                return true;
+            }
+
+            MessageBox.Show(
+                this,
+                "Enter both a name and a command.",
+                "AndroLaunch",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+
+            return false;
+        }
+
+        private void UpdateButtonStates()
+        {
+            bool editing = selectedCommand is not null;
+            bool hasContent = !string.IsNullOrWhiteSpace(txtName.Text) && !string.IsNullOrWhiteSpace(txtCommand.Text);
+            btnUpdate.Enabled = editing && hasContent;
+            btnDelete.Enabled = editing;
+            btnAdd.Enabled = hasContent;
+        }
+
+        private void OnThemeChanged()
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            if (InvokeRequired)
+            {
+                BeginInvoke((MethodInvoker)(() =>
                 {
-                    actualBack = ThemeManager.IsDarkMode ? Color.FromArgb(60, 60, 62) : Color.FromArgb(230, 230, 235);
-                    actualFore = ThemeManager.SecondaryForeground;
-                }
-                else if (back == ThemeManager.Surface) // For standard "secondary" buttons
-                {
-                    actualBack = ThemeManager.IsDarkMode ? Color.FromArgb(45, 45, 48) : Color.FromArgb(225, 225, 230);
-                    actualFore = ThemeManager.Foreground;
-                }
-                
-                using (var brush = new SolidBrush(actualBack))
-                {
-                    g.FillRoundedRectangle(brush, btn.ClientRectangle, 6);
-                }
-                
-                TextRenderer.DrawText(g, btn.Text, btn.Font, btn.ClientRectangle, actualFore, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-            };
-            return btn;
+                    ThemeManager.ApplyTheme(this);
+                    ApplyThemeColors();
+                }));
+            }
+            else
+            {
+                ThemeManager.ApplyTheme(this);
+                ApplyThemeColors();
+            }
+        }
+
+        private void ApplyThemeColors()
+        {
+            listCommands.BackColor = ThemeManager.Surface;
+            listCommands.ForeColor = ThemeManager.Foreground;
+            txtName.BackColor = ThemeManager.Surface;
+            txtName.ForeColor = ThemeManager.Foreground;
+            txtCommand.BackColor = ThemeManager.Surface;
+            txtCommand.ForeColor = ThemeManager.Foreground;
+            lblHint.ForeColor = ThemeManager.SecondaryForeground;
+            Invalidate(true);
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            ThemeManager.ThemeChanged -= OnThemeChanged;
+            base.OnFormClosed(e);
         }
     }
 }

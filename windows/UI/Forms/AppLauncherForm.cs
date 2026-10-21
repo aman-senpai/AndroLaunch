@@ -1,308 +1,517 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Windows.Forms;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Runtime.InteropServices;
+using System.Windows.Forms;
 using Androlaunch.Core;
-using Androlaunch.UI.Renderers;
+using Androlaunch.UI.Controls;
 
 namespace Androlaunch.UI.Forms
 {
-    public class AppLauncherForm : Form
+    public class AppLauncherForm : ThemedForm
     {
-        private string deviceSerial;
-        private ListBox listApps;
-        private TextBox txtSearch;
-        private List<AdbHelper.AppInfo> allApps = new List<AdbHelper.AppInfo>();
-        
-        private Color BackColorMain => ThemeManager.Background;
-        private Color AccentColor => ThemeManager.Accent;
-        private Color TextColor => ThemeManager.Foreground;
-        private Color SecondaryTextColor => ThemeManager.SecondaryForeground;
-        private Color BorderColor => ThemeManager.Border;
+        private readonly string deviceSerial;
+        private readonly TextBox txtSearch;
+        private readonly Label lblSearchHint;
+        private readonly Panel searchPanel;
+        private readonly DataGridView gridApps;
+        private readonly Label lblStatus;
+        private readonly ThemedButton btnLaunch;
+        private readonly ThemedButton btnClear;
+        private readonly ThemedButton btnUninstall;
+        private readonly ThemedButton btnRefresh;
 
-        [DllImport("user32.dll")]
-        public static extern bool ReleaseCapture();
-        [DllImport("user32.dll")]
-        public static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
+        private List<AdbHelper.AppInfo> allApps = new();
+        private bool _loading;
 
         public AppLauncherForm(string serial)
         {
-            this.deviceSerial = serial;
-            this.FormBorderStyle = FormBorderStyle.None;
-            this.BackColor = BackColorMain;
-            this.Width = 500;
-            this.Height = 550;
-            this.StartPosition = FormStartPosition.CenterScreen;
-            this.ShowInTaskbar = false;
-            this.TopMost = true;
+            deviceSerial = serial;
+
+            Text = "App manager";
+            ClientSize = new Size(780, 560);
+            MinimumSize = new Size(620, 420);
+            StartPosition = FormStartPosition.CenterScreen;
+            ShowInTaskbar = true;
+
+            txtSearch = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = new Font(ThemeManager.UiFont.FontFamily, 11F, FontStyle.Regular, GraphicsUnit.Point),
+                Margin = new Padding(0)
+            };
+            txtSearch.TextChanged += (_, _) => FilterApps();
+            txtSearch.KeyDown += TxtSearch_KeyDown;
+            txtSearch.Enter += (_, _) => UpdateSearchHint();
+            txtSearch.Leave += (_, _) => UpdateSearchHint();
+
+            lblSearchHint = new Label
+            {
+                Text = "Search apps",
+                AutoSize = false,
+                Height = 20,
+                Width = 200,
+                TextAlign = ContentAlignment.MiddleLeft,
+                ForeColor = ThemeManager.SecondaryForeground,
+                BackColor = ThemeManager.Surface,
+                Cursor = Cursors.IBeam,
+                Margin = new Padding(0)
+            };
+            lblSearchHint.Click += (_, _) => txtSearch.Focus();
+
+            searchPanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Height = 32,
+                BackColor = ThemeManager.Surface,
+                Margin = new Padding(0, 0, 0, 8)
+            };
+            searchPanel.Controls.Add(txtSearch);
+            searchPanel.Controls.Add(lblSearchHint);
+            lblSearchHint.BringToFront();
+            searchPanel.Resize += (_, _) => PositionSearchHint();
+
+            gridApps = new DataGridView
+            {
+                Dock = DockStyle.Fill,
+                BorderStyle = BorderStyle.FixedSingle,
+                BackgroundColor = ThemeManager.Surface,
+                GridColor = ThemeManager.Border,
+                RowHeadersVisible = false,
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                AllowUserToResizeRows = false,
+                AllowUserToOrderColumns = false,
+                ReadOnly = true,
+                MultiSelect = false,
+                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                ColumnHeadersHeight = 32,
+                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
+                EnableHeadersVisualStyles = false,
+                CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+                ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None,
+                Margin = new Padding(0)
+            };
+            gridApps.DefaultCellStyle.BackColor = ThemeManager.Surface;
+            gridApps.DefaultCellStyle.ForeColor = ThemeManager.Foreground;
+            gridApps.DefaultCellStyle.SelectionBackColor = ThemeManager.Accent;
+            gridApps.DefaultCellStyle.SelectionForeColor = ThemeManager.AccentForeground;
+            gridApps.DefaultCellStyle.Font = ThemeManager.UiFont;
+            gridApps.DefaultCellStyle.Padding = new Padding(6, 0, 6, 0);
+            gridApps.ColumnHeadersDefaultCellStyle.BackColor = ThemeManager.Surface;
+            gridApps.ColumnHeadersDefaultCellStyle.ForeColor = ThemeManager.SecondaryForeground;
+            gridApps.ColumnHeadersDefaultCellStyle.SelectionBackColor = ThemeManager.Surface;
+            gridApps.ColumnHeadersDefaultCellStyle.SelectionForeColor = ThemeManager.SecondaryForeground;
+            gridApps.ColumnHeadersDefaultCellStyle.Font = ThemeManager.MenuHeaderFont;
+            gridApps.ColumnHeadersDefaultCellStyle.Padding = new Padding(6, 0, 6, 0);
+            gridApps.RowTemplate.Height = 30;
+            gridApps.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "AppName",
+                HeaderText = "App",
+                FillWeight = 45,
+                SortMode = DataGridViewColumnSortMode.NotSortable
+            });
+            gridApps.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = "PackageName",
+                HeaderText = "Package",
+                FillWeight = 55,
+                SortMode = DataGridViewColumnSortMode.NotSortable
+            });
+            gridApps.SelectionChanged += (_, _) => UpdateButtons();
+            gridApps.CellDoubleClick += (_, e) =>
+            {
+                if (e.RowIndex >= 0)
+                {
+                    LaunchSelected();
+                }
+            };
+            gridApps.KeyDown += GridApps_KeyDown;
+
+            lblStatus = new Label
+            {
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                AutoSize = false,
+                ForeColor = ThemeManager.SecondaryForeground,
+                Margin = new Padding(0, 0, 8, 0)
+            };
+
+            btnLaunch = new ThemedButton { Text = "Launch", Kind = ThemedButton.ButtonKind.Primary };
+            btnClear = new ThemedButton { Text = "Clear data" };
+            btnUninstall = new ThemedButton { Text = "Uninstall", Kind = ThemedButton.ButtonKind.Danger };
+            btnRefresh = new ThemedButton { Text = "Refresh" };
+
+            btnLaunch.Click += (_, _) => LaunchSelected();
+            btnClear.Click += (_, _) => ClearSelectedData();
+            btnUninstall.Click += (_, _) => UninstallSelected();
+            btnRefresh.Click += async (_, _) => await LoadAppsAsync();
+
+            var buttonPanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.RightToLeft,
+                WrapContents = false,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Margin = new Padding(0)
+            };
+            buttonPanel.Controls.Add(btnLaunch);
+            buttonPanel.Controls.Add(btnClear);
+            buttonPanel.Controls.Add(btnUninstall);
+            buttonPanel.Controls.Add(btnRefresh);
+
+            var footer = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Margin = new Padding(0, 8, 0, 0)
+            };
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            footer.Controls.Add(lblStatus, 0, 0);
+            footer.Controls.Add(buttonPanel, 1, 0);
+
+            var root = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 3,
+                Padding = new Padding(12),
+                BackColor = ThemeManager.Background
+            };
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.Controls.Add(searchPanel, 0, 0);
+            root.Controls.Add(gridApps, 0, 1);
+            root.Controls.Add(footer, 0, 2);
+            Controls.Add(root);
+
+            AcceptButton = btnLaunch;
+            KeyPreview = true;
+            KeyDown += AppLauncherForm_KeyDown;
+            Shown += async (_, _) =>
+            {
+                ApplyThemeColors();
+                PositionSearchHint();
+                txtSearch.Focus();
+                UpdateSearchHint();
+                await LoadAppsAsync();
+            };
+            ThemeManager.ThemeChanged += OnThemeChanged;
+            ApplyThemeColors();
+        }
+
+        private AdbHelper.AppInfo? SelectedApp
+        {
+            get
+            {
+                if (gridApps.SelectedRows.Count == 0)
+                {
+                    return null;
+                }
+
+                return gridApps.SelectedRows[0].Tag as AdbHelper.AppInfo;
+            }
+        }
+
+        private void PositionSearchHint()
+        {
+            lblSearchHint.Location = new Point(7, Math.Max(0, (searchPanel.Height - lblSearchHint.Height) / 2));
+        }
+
+        private async Task LoadAppsAsync()
+        {
+            if (_loading)
+            {
+                return;
+            }
+
+            _loading = true;
+            UpdateButtons();
+            lblStatus.Text = $"Loading apps from {deviceSerial}…";
 
             try
             {
-                string iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "app_icon.ico");
-                if (!System.IO.File.Exists(iconPath)) iconPath = "app_icon.ico";
-                if (System.IO.File.Exists(iconPath)) this.Icon = new Icon(iconPath);
-            }
-            catch { }
-
-            // Rounded container and border
-            this.Paint += (s, e) => {
-                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                using (var path = GetRoundedPath(new Rectangle(0, 0, this.Width, this.Height), 12))
+                List<AdbHelper.AppInfo> apps = await Task.Run(() => AdbHelper.GetApps(deviceSerial));
+                if (IsDisposed)
                 {
-                    this.Region = new Region(path);
-                    using (var pen = new Pen(BorderColor, 2))
-                    {
-                        e.Graphics.DrawPath(pen, path);
-                    }
-                }
-            };
-
-            // Draggable header area
-            var dragPanel = new Panel { Dock = DockStyle.Top, Height = 15, Cursor = Cursors.SizeAll };
-            dragPanel.MouseDown += (s, e) => {
-                if (e.Button == MouseButtons.Left)
-                {
-                    ReleaseCapture();
-                    SendMessage(this.Handle, 0xA1, 0x2, 0);
-                }
-            };
-
-            // Search Box
-            var searchHeader = new Panel { Dock = DockStyle.Top, Height = 65, Padding = new Padding(20, 5, 20, 10) };
-            txtSearch = new TextBox {
-                Dock = DockStyle.Fill,
-                BackColor = BackColorMain,
-                ForeColor = TextColor,
-                BorderStyle = BorderStyle.None,
-                Font = new Font("Segoe UI Semilight", 18f),
-                PlaceholderText = "Search apps..."
-            };
-            txtSearch.KeyDown += (s, e) => {
-                if (e.KeyCode == Keys.Down && listApps.Items.Count > 0) {
-                    listApps.Focus();
-                    if (listApps.SelectedIndex == -1) listApps.SelectedIndex = 0;
-                }
-                if (e.KeyCode == Keys.Escape) this.Close();
-                if (e.KeyCode == Keys.Enter) LaunchSelected();
-            };
-            searchHeader.Controls.Add(txtSearch);
-
-            var sep = new Panel { Dock = DockStyle.Top, Height = 1, BackColor = BorderColor };
-
-            // Results List
-            listApps = new ListBox {
-                Dock = DockStyle.Fill,
-                BackColor = BackColorMain,
-                ForeColor = TextColor,
-                BorderStyle = BorderStyle.None,
-                Font = new Font("Segoe UI", 11f),
-                ItemHeight = 52, // Slightly taller for better spacing
-                DrawMode = DrawMode.OwnerDrawFixed,
-                IntegralHeight = false
-            };
-            
-            listApps.DrawItem += (s, e) => {
-                if (e.Index < 0) return;
-                var g = e.Graphics;
-                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-                bool isSelected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
-                var app = (AdbHelper.AppInfo)listApps.Items[e.Index];
-
-                // Background
-                using (var brush = new SolidBrush(BackColorMain))
-                {
-                    g.FillRectangle(brush, e.Bounds);
+                    return;
                 }
 
-                if (isSelected)
-                {
-                    var selectionRect = new Rectangle(e.Bounds.X + 8, e.Bounds.Y + 4, e.Bounds.Width - 16, e.Bounds.Height - 8);
-                    using (var brush = new SolidBrush(ThemeManager.Selection))
-                    {
-                        g.FillRoundedRectangle(brush, selectionRect, 6);
-                    }
-                }
-
-                // Content Rectangles
-                var nameRect = new Rectangle(e.Bounds.X + 24, e.Bounds.Y + 10, e.Bounds.Width - 48, 22);
-                var pkgRect = new Rectangle(e.Bounds.X + 24, e.Bounds.Y + 30, e.Bounds.Width - 48, 18);
-
-                // Draw App Name
-                using (var brush = new SolidBrush(isSelected && ThemeManager.IsDarkMode ? Color.White : TextColor))
-                {
-                    g.DrawString(app.Name, new Font("Segoe UI Semibold", 10.5f), brush, nameRect,
-                                 new StringFormat { Trimming = StringTrimming.EllipsisCharacter });
-                }
-                
-                // Draw Package ID (only if different and small font)
-                if (app.Name != app.PackageName)
-                {
-                    Color pkgColor = isSelected ? (ThemeManager.IsDarkMode ? Color.FromArgb(200, 255, 255, 255) : ThemeManager.SecondaryForeground) : SecondaryTextColor;
-                    using (var brush = new SolidBrush(pkgColor))
-                    {
-                        g.DrawString(app.PackageName, new Font("Segoe UI", 8.2f), brush, pkgRect,
-                                     new StringFormat { Trimming = StringTrimming.EllipsisCharacter });
-                    }
-                }
-            };
-
-            listApps.KeyDown += (s, e) => {
-                if (e.KeyCode == Keys.Enter) LaunchSelected();
-                if (e.KeyCode == Keys.Escape) this.Close();
-                if (e.KeyCode == Keys.Back) txtSearch.Focus();
-                if (e.KeyCode == Keys.Delete) UninstallSelected();
-            };
-            listApps.DoubleClick += (s, e) => LaunchSelected();
-
-            // Button Action Area
-            var actionPanel = new Panel { Dock = DockStyle.Bottom, Height = 75, Padding = new Padding(15, 10, 15, 20) };
-            
-            var btnLaunch = CreateButton("🚀 Launch", AccentColor, Color.White);
-            btnLaunch.Width = 145;
-            btnLaunch.Location = new Point(15, 15);
-            btnLaunch.Click += (s, e) => LaunchSelected();
-
-            var btnClear = CreateButton("🧹 Clear Data", Color.FromArgb(45, 45, 48), Color.White);
-            btnClear.Width = 145;
-            btnClear.Location = new Point(170, 15);
-            btnClear.Click += (s, e) => ClearDataSelected();
-
-            var btnUninstall = CreateButton("🗑️ Uninstall", Color.FromArgb(45, 45, 48), Color.FromArgb(255, 69, 58));
-            btnUninstall.Width = 145;
-            btnUninstall.Location = new Point(325, 15);
-            btnUninstall.Click += (s, e) => UninstallSelected();
-
-            actionPanel.Controls.Add(btnLaunch);
-            actionPanel.Controls.Add(btnClear);
-            actionPanel.Controls.Add(btnUninstall);
-
-            this.Controls.Add(listApps);
-            this.Controls.Add(sep);
-            this.Controls.Add(searchHeader);
-            this.Controls.Add(dragPanel);
-            this.Controls.Add(actionPanel);
-
-            txtSearch.TextChanged += (s, e) => FilterApps();
-            this.Load += (s, e) => LoadApps();
-            this.Deactivate += (s, e) => this.Close();
-
-            ThemeManager.ThemeChanged += () => {
-                if (this.IsHandleCreated) this.BeginInvoke((MethodInvoker)(() => {
-                    ThemeManager.ApplyTheme(this);
-                    this.Refresh();
-                }));
-            };
-        }
-
-        private Button CreateButton(string text, Color back, Color fore)
-        {
-            var btn = new Button {
-                Text = text,
-                BackColor = back,
-                ForeColor = fore,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI Semibold", 9.5f),
-                Height = 40,
-                Cursor = Cursors.Hand
-            };
-            btn.FlatAppearance.BorderSize = 0;
-            btn.FlatAppearance.MouseOverBackColor = Color.Transparent;
-            btn.FlatAppearance.MouseDownBackColor = Color.Transparent;
-
-            btn.Paint += (s, e) => {
-                var g = e.Graphics;
-                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                
-                // Clear background to parent's color to avoid black corners
-                g.Clear(btn.Parent?.BackColor ?? ThemeManager.Background);
-
-                Color actualBack = (back == AccentColor) ? back : (ThemeManager.IsDarkMode ? Color.FromArgb(45, 45, 48) : Color.FromArgb(230, 230, 235));
-                using (var brush = new SolidBrush(actualBack))
-                {
-                    g.FillRoundedRectangle(brush, btn.ClientRectangle, 6);
-                }
-                TextRenderer.DrawText(g, btn.Text, btn.Font, btn.ClientRectangle, fore, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-            };
-            return btn;
-        }
-
-        private async void LoadApps()
-        {
-            try 
-            {
-                allApps = await Task.Run(() => AdbHelper.GetApps(deviceSerial));
+                allApps = apps;
+                _loading = false;
                 FilterApps();
-                this.BeginInvoke((MethodInvoker)(() => txtSearch.Focus()));
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _loading = false;
+                if (!IsDisposed)
+                {
+                    lblStatus.Text = "Could not load apps";
+                    MessageBox.Show(this, ex.Message, "AndroLaunch", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            finally
+            {
+                if (!IsDisposed)
+                {
+                    UpdateButtons();
+                }
+            }
         }
 
         private void FilterApps()
         {
-            string query = txtSearch.Text.ToLower();
-            var filtered = allApps.Where(a => 
-                a.Name.ToLower().Contains(query) || 
-                a.PackageName.ToLower().Contains(query)
-            ).ToList();
+            string query = txtSearch.Text.Trim();
+            List<AdbHelper.AppInfo> filtered = string.IsNullOrEmpty(query)
+                ? allApps
+                : allApps.Where(app =>
+                    app.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    app.PackageName.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
 
-            listApps.BeginUpdate();
-            listApps.Items.Clear();
-            foreach (var app in filtered) listApps.Items.Add(app);
-            if (listApps.Items.Count > 0 && !string.IsNullOrEmpty(query)) listApps.SelectedIndex = 0;
-            listApps.EndUpdate();
+            gridApps.SuspendLayout();
+            try
+            {
+                gridApps.Rows.Clear();
+                foreach (AdbHelper.AppInfo app in filtered)
+                {
+                    int index = gridApps.Rows.Add(app.Name, app.PackageName);
+                    gridApps.Rows[index].Tag = app;
+                }
+            }
+            finally
+            {
+                gridApps.ResumeLayout();
+            }
+
+            UpdateSearchHint();
+
+            if (gridApps.Rows.Count > 0 && !string.IsNullOrEmpty(query))
+            {
+                gridApps.ClearSelection();
+                gridApps.Rows[0].Selected = true;
+                gridApps.CurrentCell = gridApps.Rows[0].Cells[0];
+            }
+
+            lblStatus.Text = _loading
+                ? $"Loading apps from {deviceSerial}…"
+                : allApps.Count == 0
+                    ? "No apps found"
+                    : filtered.Count == allApps.Count
+                        ? $"{allApps.Count} apps"
+                        : $"{filtered.Count} of {allApps.Count} apps";
+
+            UpdateButtons();
+        }
+
+        private void UpdateSearchHint()
+        {
+            lblSearchHint.Visible = txtSearch.TextLength == 0 && !txtSearch.Focused;
+        }
+
+        private void UpdateButtons()
+        {
+            bool hasSelection = SelectedApp is not null;
+            btnLaunch.Enabled = hasSelection && !_loading;
+            btnClear.Enabled = hasSelection && !_loading;
+            btnUninstall.Enabled = hasSelection && !_loading;
+            btnRefresh.Enabled = !_loading;
         }
 
         private void LaunchSelected()
         {
-            if (listApps.SelectedItem is AdbHelper.AppInfo app)
+            AdbHelper.AppInfo? app = SelectedApp;
+            if (app is null)
             {
-                AdbHelper.LaunchApp(deviceSerial, app.PackageName);
-                this.Close();
+                return;
+            }
+
+            AdbHelper.LaunchApp(deviceSerial, app.PackageName);
+            Close();
+        }
+
+        private async void ClearSelectedData()
+        {
+            AdbHelper.AppInfo? app = SelectedApp;
+            if (app is null)
+            {
+                return;
+            }
+
+            DialogResult result = MessageBox.Show(
+                this,
+                $"Clear all data for {app.Name}?\n\nThis resets the app to its initial state.",
+                "Clear app data",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            if (result != DialogResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                UseWaitCursor = true;
+                await Task.Run(() => AdbHelper.ClearAppData(deviceSerial, app.PackageName));
+                MessageBox.Show(this, "App data cleared.", "AndroLaunch", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Could not clear app data", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                UseWaitCursor = false;
             }
         }
 
-        private void UninstallSelected()
+        private async void UninstallSelected()
         {
-            if (listApps.SelectedItem is AdbHelper.AppInfo app)
+            AdbHelper.AppInfo? app = SelectedApp;
+            if (app is null)
             {
-                if (MessageBox.Show($"Uninstall {app.Name}?\n({app.PackageName})", "Confirm", MessageBoxButtons.YesNo) == DialogResult.Yes)
-                {
-                    AdbHelper.UninstallApp(deviceSerial, app.PackageName);
-                    LoadApps();
-                }
+                return;
+            }
+
+            DialogResult result = MessageBox.Show(
+                this,
+                $"Uninstall {app.Name}?\n\n{app.PackageName}",
+                "Uninstall app",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            if (result != DialogResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                UseWaitCursor = true;
+                await Task.Run(() => AdbHelper.UninstallApp(deviceSerial, app.PackageName));
+                await LoadAppsAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Could not uninstall app", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                UseWaitCursor = false;
             }
         }
 
-        private void ClearDataSelected()
+        private void TxtSearch_KeyDown(object? sender, KeyEventArgs e)
         {
-            if (listApps.SelectedItem is AdbHelper.AppInfo app)
+            if (e.KeyCode == Keys.Down && gridApps.Rows.Count > 0)
             {
-                if (MessageBox.Show($"Clear all data for {app.Name}?\nThis will reset the app.", "Confirm Clear", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                gridApps.Focus();
+                if (gridApps.SelectedRows.Count == 0)
                 {
-                    try {
-                        AdbHelper.ClearAppData(deviceSerial, app.PackageName);
-                        MessageBox.Show("App data cleared.", "Success");
-                    } catch (Exception ex) {
-                        MessageBox.Show("Failed: " + ex.Message);
-                    }
+                    gridApps.Rows[0].Selected = true;
+                    gridApps.CurrentCell = gridApps.Rows[0].Cells[0];
                 }
+                e.Handled = true;
+            }
+            else if (e.KeyCode == Keys.Enter)
+            {
+                LaunchSelected();
+                e.Handled = true;
+            }
+            else if (e.KeyCode == Keys.Escape)
+            {
+                Close();
             }
         }
-        private System.Drawing.Drawing2D.GraphicsPath GetRoundedPath(Rectangle rect, int radius)
+
+        private void GridApps_KeyDown(object? sender, KeyEventArgs e)
         {
-            var path = new System.Drawing.Drawing2D.GraphicsPath();
-            int d = radius * 2;
-            path.AddArc(rect.X, rect.Y, d, d, 180, 90);
-            path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
-            path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
-            path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
-            path.CloseFigure();
-            return path;
+            if (e.KeyCode == Keys.Enter)
+            {
+                LaunchSelected();
+                e.Handled = true;
+            }
+            else if (e.KeyCode == Keys.Back)
+            {
+                txtSearch.Focus();
+                txtSearch.SelectionStart = txtSearch.TextLength;
+                e.Handled = true;
+            }
+            else if (e.KeyCode == Keys.Delete)
+            {
+                UninstallSelected();
+                e.Handled = true;
+            }
+        }
+
+        private void AppLauncherForm_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                Close();
+            }
+        }
+
+        private void OnThemeChanged()
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            if (InvokeRequired)
+            {
+                BeginInvoke((MethodInvoker)(() =>
+                {
+                    ThemeManager.ApplyTheme(this);
+                    ApplyThemeColors();
+                }));
+            }
+            else
+            {
+                ThemeManager.ApplyTheme(this);
+                ApplyThemeColors();
+            }
+        }
+
+        private void ApplyThemeColors()
+        {
+            txtSearch.BackColor = ThemeManager.Surface;
+            txtSearch.ForeColor = ThemeManager.Foreground;
+            lblSearchHint.BackColor = ThemeManager.Surface;
+            lblSearchHint.ForeColor = ThemeManager.SecondaryForeground;
+            searchPanel.BackColor = ThemeManager.Surface;
+
+            gridApps.BackgroundColor = ThemeManager.Surface;
+            gridApps.GridColor = ThemeManager.Border;
+            gridApps.DefaultCellStyle.BackColor = ThemeManager.Surface;
+            gridApps.DefaultCellStyle.ForeColor = ThemeManager.Foreground;
+            gridApps.DefaultCellStyle.SelectionBackColor = ThemeManager.Accent;
+            gridApps.DefaultCellStyle.SelectionForeColor = ThemeManager.AccentForeground;
+            gridApps.ColumnHeadersDefaultCellStyle.BackColor = ThemeManager.Surface;
+            gridApps.ColumnHeadersDefaultCellStyle.ForeColor = ThemeManager.SecondaryForeground;
+            gridApps.ColumnHeadersDefaultCellStyle.SelectionBackColor = ThemeManager.Surface;
+            gridApps.ColumnHeadersDefaultCellStyle.SelectionForeColor = ThemeManager.SecondaryForeground;
+            lblStatus.ForeColor = ThemeManager.SecondaryForeground;
+            Invalidate(true);
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            ThemeManager.ThemeChanged -= OnThemeChanged;
+            base.OnFormClosed(e);
         }
     }
 }
