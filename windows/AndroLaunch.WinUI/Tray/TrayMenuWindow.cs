@@ -34,6 +34,12 @@ namespace AndroLaunch.WinUI.Tray
                 presenter.IsAlwaysOnTop = true;
             }
 
+            IntPtr hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            int exStyle = GetWindowLong(hwnd, GwlExStyle);
+            SetWindowLong(hwnd, GwlExStyle, exStyle | WsExToolWindow | WsExLayered | WsExTransparent | WsExNoActivate);
+            SetLayeredWindowAttributes(hwnd, 0, 0, LwaAlpha);
+            SetWindowRgn(hwnd, CreateRectRgn(0, 0, 0, 0), true);
+
             anchor = new Grid
             {
                 Width = 1,
@@ -96,5 +102,27 @@ namespace AndroLaunch.WinUI.Tray
 
         [DllImport("user32.dll")]
         private static extern bool GetCursorPos(out CursorPoint point);
+
+        private const int GwlExStyle = -20;
+        private const int WsExToolWindow = 0x00000080;
+        private const int WsExLayered = 0x00080000;
+        private const int WsExTransparent = 0x00000020;
+        private const int WsExNoActivate = 0x08000000;
+        private const uint LwaAlpha = 0x00000002;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
+
+        [DllImport("gdi32.dll")]
+        private static extern IntPtr CreateRectRgn(int x1, int y1, int x2, int y2);
+
+        [DllImport("user32.dll")]
+        private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
     }
 }
