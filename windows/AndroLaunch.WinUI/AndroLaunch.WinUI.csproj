@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>AndroLaunch.WinUI</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <AppxPackage>false</AppxPackage>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>Assets\app_icon.ico</ApplicationIcon>
+    <AppxMSBuildToolsPath Condition="Exists('$(MSBuildProjectDirectory)\..\.tools\AppxPackage\Microsoft.AppxPackage.Targets')">$(MSBuildProjectDirectory)\..\.tools\AppxPackage\</AppxMSBuildToolsPath>
+    <Version>0.3.9</Version>
+    <FileVersion>0.3.9.0</FileVersion>
+    <AssemblyVersion>0.3.9.0</AssemblyVersion>
+    <Product>AndroLaunch</Product>
+    <AssemblyTitle>AndroLaunch</AssemblyTitle>
+    <Description>Android device management for Windows, built with WinUI 3</Description>
+    <Company>AndroLaunch</Company>
+    <Copyright>MIT License</Copyright>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Core\AdbHelper.cs" Link="Core\AdbHelper.cs" />
+    <Compile Include="..\Core\AppSettings.cs" Link="Core\AppSettings.cs" />
+    <Compile Include="..\Core\LaunchFlags.cs" Link="Core\LaunchFlags.cs" />
+    <Compile Include="..\Core\AndroidFile.cs" Link="Core\AndroidFile.cs" />
+    <Compile Include="..\Core\EmulatorService.cs" Link="Core\EmulatorService.cs" />
+    <Compile Include="..\Core\ClipboardSyncService.cs" Link="Core\ClipboardSyncService.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Assets\tray_icon_dark.ico" LogicalName="AndroLaunch.Tray.dark.ico" />
+    <EmbeddedResource Include="Assets\tray_icon_light.ico" LogicalName="AndroLaunch.Tray.light.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.260224002" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.9169" />
+    <PackageReference Include="QRCoder" Version="1.7.0" />
+    <PackageReference Include="Zeroconf" Version="3.7.16" />
+  </ItemGroup>
+
+  <!-- Unpackaged publishing must retain the application's compiled XAML and resource index. -->
+  <Target Name="PublishWinUIResources" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <_WinUIResource Include="$(TargetDir)$(AssemblyName).pri;$(TargetDir)**\*.xbf" />
+      <ResolvedFileToPublish Include="@(_WinUIResource)">
+        <RelativePath>%(_WinUIResource.RecursiveDir)%(_WinUIResource.Filename)%(_WinUIResource.Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+</Project>

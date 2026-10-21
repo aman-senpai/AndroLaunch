@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="AndroLaunch.WinUI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="AndroLaunch">
+    <Grid x:Name="RootGrid">
+        <NavigationView
+            x:Name="Nav"
+            PaneDisplayMode="Left"
+            IsBackButtonVisible="Collapsed"
+            IsSettingsVisible="False"
+            SelectionChanged="Nav_SelectionChanged"
+            OpenPaneLength="210">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="Devices" Tag="devices">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8EA;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Apps" Tag="apps">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE71D;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Files" Tag="files">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8B7;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Emulators" Tag="emulators">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE7F8;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Settings" Tag="settings">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE713;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+            <Frame x:Name="ContentFrame" />
+        </NavigationView>
+    </Grid>
+</Window>

@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Text.RegularExpressions;
 using System.Linq;
-using System.Windows.Forms;
 using System.Threading.Tasks;
 using Zeroconf;
 using QRCoder;
@@ -17,6 +18,11 @@ namespace Androlaunch.Core
             public string Model { get; set; } = "";
             public string Product { get; set; } = "";
             public string Name { get; set; } = ""; // Display name
+            public string Status { get; set; } = "device";
+
+            public bool IsWireless =>
+                Serial.Contains(':') ||
+                Serial.Contains("_adb-tls-", StringComparison.OrdinalIgnoreCase);
 
             public override string ToString() => string.IsNullOrEmpty(Name) ? Serial : Name;
         }
@@ -37,7 +43,7 @@ namespace Androlaunch.Core
             {
                 var processInfo = new ProcessStartInfo
                 {
-                    FileName = "adb",
+                    FileName = _adbPath ?? "adb",
                     Arguments = "devices -l",
                     RedirectStandardOutput = true,
                     UseShellExecute = false,
@@ -54,14 +60,15 @@ namespace Androlaunch.Core
                         var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                         foreach (var line in lines.Skip(1))
                         {
-                            if (string.IsNullOrWhiteSpace(line) || line.Contains("offline") || line.Contains("unauthorized"))
+                            if (string.IsNullOrWhiteSpace(line))
                                 continue;
 
                             var parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-                            if (parts.Length < 1) continue;
+                            if (parts.Length < 2) continue;
 
                             var serial = parts[0];
-                            var info = new AdbDeviceInfo { Serial = serial };
+                            var status = parts[1];
+                            var info = new AdbDeviceInfo { Serial = serial, Status = status };
 
                             // Parse long output: product:XXX model:YYY device:ZZZ transport_id:N
                             foreach (var part in parts)
@@ -72,19 +79,21 @@ namespace Androlaunch.Core
 
                             info.Name = string.IsNullOrEmpty(info.Model) ? serial : info.Model;
 
-                            // Deduplication logic:
-                            // Use a key that represents the physical device. 
-                            var deviceKey = $"{info.Product}|{info.Model}";
-                            
-                            int GetPriority(string s) {
-                                if (s.Contains("_adb-tls-connect")) return 2; // mDNS
-                                if (s.Contains(".") || s.Contains(":")) return 1; // IP
-                                return 3; // USB / Hardware (likely no dots or underscores)
+                            // Deduplicate physical devices while remembering which transport is best.
+                            var deviceKey = string.IsNullOrEmpty(info.Product) && string.IsNullOrEmpty(info.Model)
+                                ? serial
+                                : $"{info.Product}|{info.Model}";
+
+                            int GetPriority(AdbDeviceInfo device) {
+                                int statusPriority = device.Status == "device" ? 10 : 0;
+                                if (device.Serial.Contains("_adb-tls-connect")) return statusPriority + 2; // mDNS
+                                if (device.Serial.Contains(".") || device.Serial.Contains(":")) return statusPriority + 1; // IP
+                                return statusPriority + 3; // USB / Hardware (likely no dots or underscores)
                             }
 
                             if (deviceDictionary.TryGetValue(deviceKey, out var existing))
                             {
-                                if (GetPriority(serial) > GetPriority(existing.Serial))
+                                if (GetPriority(info) > GetPriority(existing))
                                 {
                                     deviceDictionary[deviceKey] = info;
                                 }
@@ -107,26 +116,45 @@ namespace Androlaunch.Core
         private static string? _adbPath;
         private static string? _scrcpyPath;
 
+        public static string? AdbPath => _adbPath;
+        public static string? ScrcpyPath => _scrcpyPath;
+
         static AdbHelper()
+        {
+            ResolvePaths();
+        }
+
+        public static void RefreshToolPaths()
         {
             ResolvePaths();
         }
 
         private static void ResolvePaths()
         {
-            _adbPath = FindExecutable("adb.exe", new[] {
-                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Android\Sdk\platform-tools\adb.exe"),
-                @"C:\Program Files (x86)\Android\android-sdk\platform-tools\adb.exe",
-                @"C:\platform-tools\adb.exe"
-            });
+            AppSettings settings = AppSettingsStore.Current;
 
-            _scrcpyPath = FindExecutable("scrcpy.exe", new[] {
-                @"C:\ProgramData\chocolatey\bin\scrcpy.exe",
-                @"C:\scrcpy\scrcpy.exe"
-            });
+            _adbPath = !string.IsNullOrWhiteSpace(settings.AdbPath) && System.IO.File.Exists(settings.AdbPath)
+                ? settings.AdbPath
+                : FindExecutable("adb.exe", new[] {
+                    System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Android\Sdk\platform-tools\adb.exe"),
+                    System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\WinGet\Links\adb.exe"),
+                    System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), @"scoop\shims\adb.exe"),
+                    @"C:\ProgramData\chocolatey\bin\adb.exe",
+                    @"C:\Program Files (x86)\Android\android-sdk\platform-tools\adb.exe",
+                    @"C:\platform-tools\adb.exe"
+                });
+
+            _scrcpyPath = !string.IsNullOrWhiteSpace(settings.ScrcpyPath) && System.IO.File.Exists(settings.ScrcpyPath)
+                ? settings.ScrcpyPath
+                : FindExecutable("scrcpy.exe", new[] {
+                    System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\WinGet\Links\scrcpy.exe"),
+                    System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), @"scoop\shims\scrcpy.exe"),
+                    @"C:\ProgramData\chocolatey\bin\scrcpy.exe",
+                    @"C:\scrcpy\scrcpy.exe"
+                });
         }
 
-        private static string FindExecutable(string fileName, string[] searchPaths)
+        public static string? FindExecutable(string fileName, string[] searchPaths)
         {
             // 1. Check if accessible in PATH (by trying to get full path)
             try
@@ -146,6 +174,59 @@ namespace Androlaunch.Core
             return fileName;
         }
 
+        public static bool IsToolAvailable(string fileName, string[] searchPaths, out string? resolvedPath)
+        {
+            resolvedPath = null;
+            try
+            {
+                resolvedPath = GetFullPathFromPath(fileName);
+            }
+            catch
+            {
+                // Fall through to the explicit paths.
+            }
+
+            if (string.IsNullOrWhiteSpace(resolvedPath))
+            {
+                resolvedPath = searchPaths.FirstOrDefault(System.IO.File.Exists);
+            }
+
+            return !string.IsNullOrWhiteSpace(resolvedPath) && System.IO.File.Exists(resolvedPath);
+        }
+
+        public static bool TestAdb(out string message)
+        {
+            RefreshToolPaths();
+            try
+            {
+                string output = RunAdbCommand("version");
+                message = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "ADB is available.";
+                return true;
+            }
+            catch (Exception ex)
+            {
+                message = ex.Message.Trim();
+                return false;
+            }
+        }
+
+        public static bool TestScrcpy(out string? path)
+        {
+            string[] paths =
+            {
+                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\WinGet\Links\scrcpy.exe"),
+                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), @"scoop\shims\scrcpy.exe"),
+                @"C:\ProgramData\chocolatey\bin\scrcpy.exe",
+                @"C:\scrcpy\scrcpy.exe"
+            };
+            bool available = IsToolAvailable("scrcpy.exe", paths, out path);
+            if (available)
+            {
+                _scrcpyPath = path;
+            }
+            return available;
+        }
+
         public class DeviceState
         {
             public bool Wifi { get; set; }
@@ -161,19 +242,21 @@ namespace Androlaunch.Core
 
         public class MirrorConfig
         {
-            public int MaxSize { get; set; } = 0; // 0 = original
+            public int MaxSize { get; set; } = 0; // mirroring size; 0 = original
+            public int AppResolution { get; set; } = 900; // app-window resolution; 0 = original
             public int MaxFps { get; set; } = 0; // 0 = unlimited
             public int BitRate { get; set; } = 8; // Mbps
             public bool AudioEnabled { get; set; } = true;
             public bool ClipboardEnabled { get; set; } = true;
             public string Orientation { get; set; } = "Auto"; // 0, 90, 180, 270 or Auto
             public bool Borderless { get; set; } = false;
+            public bool FlexDisplay { get; set; } = false;
 
             // Camera specific
-            public string CameraFacing { get; set; } = "front";
+            public string CameraFacing { get; set; } = "Auto";
             public int CameraFps { get; set; } = 0;
-            public string CameraSize { get; set; } = "1280x720";
-            public string CameraAr { get; set; } = "";
+            public int CameraSize { get; set; } = 0; // 0 = original
+            public string CameraAr { get; set; } = "Auto";
         }
 
         public class AppInfo
@@ -184,154 +267,17 @@ namespace Androlaunch.Core
         }
 
         private static Dictionary<string, MirrorConfig> _deviceConfigs = new Dictionary<string, MirrorConfig>();
-        private static Dictionary<string, Process> _clipboardProcesses = new Dictionary<string, Process>();
-        private static HashSet<string> _clipboardSyncDevices = new HashSet<string>();
-        private static string? _lastClipboardText = null;
-        private static System.Windows.Forms.Timer? _clipboardTimer = null;
 
         public static MirrorConfig GetConfig(string serial)
         {
-            if (!_deviceConfigs.ContainsKey(serial))
-                _deviceConfigs[serial] = new MirrorConfig();
-            return _deviceConfigs[serial];
-        }
-
-        public static bool IsClipboardSyncActive(string serial) => _clipboardSyncDevices.Contains(serial);
-
-        public static void ToggleClipboardSync(string serial, bool enable)
-        {
-            if (enable)
+            if (!_deviceConfigs.TryGetValue(serial, out MirrorConfig? config))
             {
-                if (!_clipboardSyncDevices.Contains(serial))
-                {
-                    _clipboardSyncDevices.Add(serial);
-                    StartClipboardSyncProcess(serial);
-                    StartClipboardObserver();
-                }
+                config = new MirrorConfig();
+                _deviceConfigs[serial] = config;
             }
-            else
-            {
-                _clipboardSyncDevices.Remove(serial);
-                StopClipboardSyncProcess(serial);
-                if (_clipboardSyncDevices.Count == 0) StopClipboardObserver();
-            }
+
+            return config;
         }
-
-        private static void StartClipboardSyncProcess(string serial)
-        {
-            try 
-            {
-                var psi = new ProcessStartInfo {
-                    FileName = _scrcpyPath,
-                    Arguments = $"-s {serial} --no-video --no-audio --no-window",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    WorkingDirectory = string.IsNullOrEmpty(_scrcpyPath) ? null : System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(_scrcpyPath))
-                };
-
-                if (!string.IsNullOrEmpty(_adbPath)) psi.Environment["ADB"] = _adbPath;
-
-                var process = new Process { StartInfo = psi };
-                process.OutputDataReceived += (sender, e) => {
-                    if (!string.IsNullOrEmpty(e.Data))
-                    {
-                        Debug.WriteLine($"[scrcpy-{serial}] {e.Data}");
-                        // Scrcpy prints the device clipboard content when it changes
-                        // Looking for: "Device clipboard: ..." or similar depending on version
-                        // In recent versions it might just sync, but in background we can catch it.
-                        if (e.Data.Contains("Device clipboard: "))
-                        {
-                            var text = e.Data.Replace("Device clipboard: ", "").Trim();
-                            if (!string.IsNullOrEmpty(text))
-                            {
-                                // We must use a thread compatible with OLE (STA) for Clipboard
-                                System.Threading.Thread thread = new System.Threading.Thread(() => {
-                                    try { 
-                                        _lastClipboardText = text; // Prevent feedback loop
-                                        Clipboard.SetText(text); 
-                                    } catch { }
-                                });
-                                thread.SetApartmentState(System.Threading.ApartmentState.STA);
-                                thread.Start();
-                            }
-                        }
-                    }
-                };
-                process.ErrorDataReceived += (sender, e) => {
-                    if (!string.IsNullOrEmpty(e.Data)) Debug.WriteLine($"[scrcpy-err-{serial}] {e.Data}");
-                };
-
-                if (process.Start())
-                {
-                    process.BeginOutputReadLine();
-                    process.BeginErrorReadLine();
-                    _clipboardProcesses[serial] = process;
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Failed to start clipboard sync process: {ex.Message}");
-            }
-        }
-
-        private static void StopClipboardSyncProcess(string serial)
-        {
-            if (_clipboardProcesses.TryGetValue(serial, out var p))
-            {
-                try 
-                { 
-                    if (!p.HasExited) p.Kill(true); 
-                } 
-                catch { }
-                _clipboardProcesses.Remove(serial);
-            }
-        }
-
-        private static void StartClipboardObserver()
-        {
-            if (_clipboardTimer != null) return;
-            _clipboardTimer = new System.Windows.Forms.Timer();
-            _clipboardTimer.Interval = 1000;
-            _clipboardTimer.Tick += (s, e) => {
-                try 
-                {
-                    if (Clipboard.ContainsText())
-                    {
-                        var text = Clipboard.GetText();
-                        if (text != _lastClipboardText && text.Length < 100000)
-                        {
-                            _lastClipboardText = text;
-                            foreach (var serial in _clipboardSyncDevices.ToList())
-                            {
-                                SendClipboardToDevice(serial, text);
-                            }
-                        }
-                    }
-                }
-                catch { }
-            };
-            _clipboardTimer.Start();
-        }
-
-        private static void StopClipboardObserver()
-        {
-            _clipboardTimer?.Stop();
-            _clipboardTimer = null;
-            _lastClipboardText = null;
-        }
-
-        private static void SendClipboardToDevice(string serial, string text)
-        {
-            try 
-            {
-                var escaped = text.Replace("'", "'\\''");
-                RunAdbCommand($"-s {serial} shell am broadcast -a ch.pete.adbclipboard.WRITE -n ch.pete.adbclipboard/.WriteReceiver -e text '{escaped}'");
-            }
-            catch { }
-        }
-
         public static DeviceState GetDeviceState(string serial)
         {
             var state = new DeviceState();
@@ -397,11 +343,10 @@ namespace Androlaunch.Core
             try
             {
                 RunAdbCommand($"-s {serial} install -r \"{apkPath}\"");
-                MessageBox.Show("APK Installation Started/Completed.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to install APK.\nError: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                throw new InvalidOperationException($"Failed to install APK. {ex.Message}", ex);
             }
         }
 
@@ -525,15 +470,35 @@ namespace Androlaunch.Core
                 // This will open a scrcpy window directly for the app.
                 try 
                 {
-                    // Swift implementation uses:
-                    // --serial <id> --stay-awake --window-title <name> --new-display -m <res> --start-app <pkg>
                     // Android 12-13: the virtual display crashes SystemUI and locks the device, so
                     // mirror the main display with the app in the foreground instead.
-                    var virtualDisplay = VirtualDisplayUnsafe(serial) ? "" : "--new-display ";
+                    MirrorConfig config = GetConfig(serial);
+                    var args = $"-s {serial} --stay-awake --window-title \"AndroLaunch - {packageName}\"";
+                    if (!VirtualDisplayUnsafe(serial))
+                    {
+                        args += " --new-display";
+                        if (config.FlexDisplay)
+                        {
+                            args += " --flex-display";
+                        }
+                        else if (config.AppResolution > 0)
+                        {
+                            args += $" -m {config.AppResolution}";
+                        }
+                    }
+                    else if (config.AppResolution > 0)
+                    {
+                        args += $" -m {config.AppResolution}";
+                    }
+
+                    if (!config.AudioEnabled) args += " --no-audio";
+                    if (!config.ClipboardEnabled) args += " --no-clipboard-autosync";
+                    args += $" --start-app={packageName}";
+
                     Process.Start(new ProcessStartInfo
                     {
                         FileName = _scrcpyPath,
-                        Arguments = $"-s {serial} --stay-awake {virtualDisplay}--start-app={packageName}",
+                        Arguments = args,
                         UseShellExecute = false,
                         CreateNoWindow = true
                     });
@@ -580,7 +545,7 @@ namespace Androlaunch.Core
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to launch app.\nError: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                throw new InvalidOperationException($"Failed to launch app. {ex.Message}", ex);
             }
         }
 
@@ -605,9 +570,9 @@ namespace Androlaunch.Core
             try 
             {
                 var config = GetConfig(serial);
-                var args = $"-s {serial}";
-                
-                if (config.MaxSize > 0) args += $" -m {config.MaxSize}";
+                var args = $"-s {serial} --window-title \"AndroLaunch - {serial}\"";
+
+                if (!config.FlexDisplay && config.MaxSize > 0) args += $" -m {config.MaxSize}";
                 if (config.MaxFps > 0) args += $" --max-fps {config.MaxFps}";
                 if (config.BitRate > 0) args += $" --video-bit-rate {config.BitRate}M";
                 if (config.Orientation != "Auto") args += $" --lock-video-orientation {config.Orientation}";
@@ -625,7 +590,7 @@ namespace Androlaunch.Core
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to launch scrcpy. Ensure it is installed.\nPath used: {_scrcpyPath}\nError: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                throw new InvalidOperationException($"Failed to launch scrcpy. Ensure it is installed. Path used: {_scrcpyPath}. {ex.Message}", ex);
             }
         }
 
@@ -635,11 +600,12 @@ namespace Androlaunch.Core
             {
                 var config = GetConfig(serial);
                 var facing = facingOverride ?? config.CameraFacing;
-                var args = $"-s {serial} --video-source=camera --camera-facing={facing}";
-                
-                if (config.CameraFps > 0) args += $" --camera-fps {config.CameraFps}";
-                if (!string.IsNullOrEmpty(config.CameraSize)) args += $" --camera-size={config.CameraSize}";
-                if (!string.IsNullOrEmpty(config.CameraAr)) args += $" --camera-ar={config.CameraAr}";
+                var args = $"-s {serial} --video-source=camera --window-title \"AndroLaunch Camera - {serial}\"";
+
+                if (!string.IsNullOrEmpty(facing) && facing != "Auto") args += $" --camera-facing={facing}";
+                if (config.CameraFps > 0) args += $" --max-fps {config.CameraFps}";
+                if (config.CameraSize > 0) args += $" -m {config.CameraSize}";
+                if (!string.IsNullOrEmpty(config.CameraAr) && config.CameraAr != "Auto") args += $" --camera-ar={config.CameraAr}";
                 if (!config.AudioEnabled) args += " --no-audio";
 
                 Process.Start(new ProcessStartInfo
@@ -652,7 +618,7 @@ namespace Androlaunch.Core
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to launch camera mirroring.\nError: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                throw new InvalidOperationException($"Failed to launch camera mirroring. {ex.Message}", ex);
             }
         }
 
@@ -690,7 +656,7 @@ namespace Androlaunch.Core
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to open shell.\nError: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                throw new InvalidOperationException($"Failed to open shell. {ex.Message}", ex);
             }
         }
 
@@ -812,6 +778,273 @@ namespace Androlaunch.Core
                 }
                 return output;
             }
+        }
+
+
+        public sealed class DeviceInfo
+        {
+            public string AndroidVersion { get; set; } = "";
+            public int ApiLevel { get; set; }
+            public string Model { get; set; } = "";
+            public string Manufacturer { get; set; } = "";
+            public int? BatteryLevel { get; set; }
+            public bool IsCharging { get; set; }
+
+            public string Summary
+            {
+                get
+                {
+                    var parts = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(AndroidVersion))
+                    {
+                        parts.Add(ApiLevel > 0 ? $"Android {AndroidVersion} (API {ApiLevel})" : $"Android {AndroidVersion}");
+                    }
+                    if (BatteryLevel is int level)
+                    {
+                        parts.Add(IsCharging ? $"{level}% charging" : $"{level}%");
+                    }
+                    return string.Join("  ·  ", parts);
+                }
+            }
+        }
+
+        public static DeviceInfo GetDeviceInfo(string serial)
+        {
+            var info = new DeviceInfo();
+            try
+            {
+                string properties = RunAdbCommand($"-s {serial} shell getprop");
+                var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (string line in properties.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    Match match = Regex.Match(line, @"^\[([^\]]+)\]:\s*\[(.*)\]$");
+                    if (match.Success)
+                    {
+                        values[match.Groups[1].Value] = match.Groups[2].Value;
+                    }
+                }
+
+                if (values.TryGetValue("ro.build.version.release", out string? release)) info.AndroidVersion = release;
+                if (values.TryGetValue("ro.build.version.sdk", out string? sdk) && int.TryParse(sdk, out int api)) info.ApiLevel = api;
+                if (values.TryGetValue("ro.product.model", out string? model)) info.Model = model;
+                if (values.TryGetValue("ro.product.manufacturer", out string? manufacturer)) info.Manufacturer = manufacturer;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error reading device info: {ex.Message}");
+            }
+
+            try
+            {
+                string battery = RunAdbCommand($"-s {serial} shell dumpsys battery");
+                Match levelMatch = Regex.Match(battery, @"level:\s*(\d+)");
+                Match statusMatch = Regex.Match(battery, @"status:\s*(\d+)");
+                if (levelMatch.Success && int.TryParse(levelMatch.Groups[1].Value, out int level))
+                {
+                    info.BatteryLevel = level;
+                }
+                if (statusMatch.Success && int.TryParse(statusMatch.Groups[1].Value, out int status))
+                {
+                    info.IsCharging = status is 2 or 5;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error reading battery info: {ex.Message}");
+            }
+
+            return info;
+        }
+
+        public static void Disconnect(string serial)
+        {
+            try
+            {
+                RunAdbCommand($"disconnect {serial}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to disconnect {serial}: {ex.Message}");
+                throw;
+            }
+        }
+
+        public static void OpenLogcat(string serial)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/k title Logcat - {serial} & \"{_adbPath}\" -s {serial} logcat -v time",
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to open logcat. {ex.Message}", ex);
+            }
+        }
+
+        public static string GetAppVersion(string serial, string packageName)
+        {
+            string output = RunAdbCommand($"-s {serial} shell dumpsys package {packageName}");
+            return string.Join(
+                Environment.NewLine,
+                output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Where(line => line.Contains("version", StringComparison.OrdinalIgnoreCase)));
+        }
+
+        public static string GetAppPermissions(string serial, string packageName)
+        {
+            string output = RunAdbCommand($"-s {serial} shell dumpsys package {packageName}");
+            return string.Join(
+                Environment.NewLine,
+                output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Where(line => line.Contains("permission", StringComparison.OrdinalIgnoreCase)));
+        }
+
+        public static string? GetApkPath(string serial, string packageName)
+        {
+            string output = RunAdbCommand($"-s {serial} shell pm path {packageName}");
+            foreach (string line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (line.StartsWith("package:", StringComparison.Ordinal))
+                {
+                    return line.Substring("package:".Length).Trim();
+                }
+            }
+
+            return null;
+        }
+
+        public static void ExportApk(string serial, string packageName, string destinationPath)
+        {
+            string? remotePath = GetApkPath(serial, packageName);
+            if (string.IsNullOrWhiteSpace(remotePath))
+            {
+                throw new InvalidOperationException("Could not find the APK path on the device.");
+            }
+
+            RunAdbCommand($"-s {serial} pull {Quote(remotePath)} {Quote(destinationPath)}");
+        }
+
+        public static List<AndroidFile> ListFiles(string serial, string path)
+        {
+            string target = string.IsNullOrWhiteSpace(path) ? "/sdcard" : path.TrimEnd('/');
+            if (target.Length == 0)
+            {
+                target = "/";
+            }
+
+            string output = RunAdbCommand($"-s {serial} shell ls -la {Quote(target + "/")}");
+            return ParseFileList(output, target);
+        }
+
+        private static List<AndroidFile> ParseFileList(string output, string parentPath)
+        {
+            var files = new List<AndroidFile>();
+
+            // Toybox:       -rw-rw---- 1 u0_a123 sdcard_rw 12345 2026-04-12 17:00 name
+            // Toolbox:      -rw-rw---- u0_a123 sdcard_rw 12345 Apr 12 17:00 name
+            // Simple:       -rw-rw---- 12345 Apr 12 17:00 name
+            var patterns = new[]
+            {
+                new Regex(@"^([dl-][rwxstST-]{9}[+@.]?)\s+\d+\s+\S+\s+\S+\s+(\d+)\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+(.+)$"),
+                new Regex(@"^([dl-][rwxstST-]{9}[+@.]?)\s+\S+\s+\S+\s+(\d+)\s+([A-Z][a-z]{2}\s+\d+\s+[\d:]{4,5})\s+(.+)$"),
+                new Regex(@"^([dl-][rwxstST-]{9}[+@.]?)\s+(\d+)\s+([A-Z][a-z]{2}\s+\d+\s+[\d:]{4,5})\s+(.+)$")
+            };
+
+            foreach (string rawLine in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string line = rawLine.TrimEnd();
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("total ", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                foreach (Regex pattern in patterns)
+                {
+                    Match match = pattern.Match(line);
+                    if (!match.Success)
+                    {
+                        continue;
+                    }
+
+                    string permissions = match.Groups[1].Value;
+                    string sizeText = match.Groups[2].Value;
+                    string date = match.Groups[3].Value;
+                    if (match.Groups.Count >= 6)
+                    {
+                        date += " " + match.Groups[4].Value;
+                    }
+
+                    string name = match.Groups[match.Groups.Count - 1].Value.Trim();
+                    int arrow = name.IndexOf(" -> ", StringComparison.Ordinal);
+                    if (arrow >= 0)
+                    {
+                        name = name[..arrow];
+                    }
+
+                    if (name is "." or ".." or "./" or "../")
+                    {
+                        break;
+                    }
+
+                    bool isDirectory = permissions.StartsWith('d') || permissions.StartsWith('l') || name.EndsWith('/');
+                    name = name.TrimEnd('/');
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        break;
+                    }
+
+                    long size = long.TryParse(sizeText, out long parsedSize) ? parsedSize : 0;
+                    string fullPath = parentPath == "/"
+                        ? "/" + name
+                        : parentPath + "/" + name;
+
+                    files.Add(new AndroidFile
+                    {
+                        Name = name,
+                        Path = fullPath,
+                        Size = size,
+                        ModificationDate = date,
+                        IsDirectory = isDirectory,
+                        Permissions = permissions
+                    });
+                    break;
+                }
+            }
+
+            return files
+                .OrderByDescending(file => file.IsDirectory)
+                .ThenBy(file => file.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        public static void PushFile(string serial, string localPath, string remotePath)
+        {
+            RunAdbCommand($"-s {serial} push {Quote(localPath)} {Quote(remotePath)}");
+        }
+
+        public static void PullFile(string serial, string remotePath, string localPath)
+        {
+            RunAdbCommand($"-s {serial} pull {Quote(remotePath)} {Quote(localPath)}");
+        }
+
+        public static void DeleteFile(string serial, string path)
+        {
+            RunAdbCommand($"-s {serial} shell rm -rf {Quote(path)}");
+        }
+
+        public static void CreateDirectory(string serial, string path)
+        {
+            RunAdbCommand($"-s {serial} shell mkdir -p {Quote(path)}");
+        }
+
+        private static string Quote(string value)
+        {
+            return "\"" + value.Replace("\"", "\\\"") + "\"";
         }
 
         private static string _pairingPassword = "";
@@ -1001,6 +1234,7 @@ namespace Androlaunch.Core
                     var pairingResults = await ZeroconfResolver.ResolveAsync("_adb-tls-pairing._tcp.local.");
                     foreach (var result in pairingResults)
                     {
+                        if (!_isPairingActive || generation != _pairingGeneration) return;
                         var endpoint = $"{result.IPAddress}:{result.Services.Values.First().Port}";
                         if (processedEndpoints.Contains(endpoint)) continue;
                         processedEndpoints.Add(endpoint);
@@ -1010,6 +1244,7 @@ namespace Androlaunch.Core
                         try
                         {
                             var output = WirelessPair(result.IPAddress, result.Services.Values.First().Port.ToString(), _pairingPassword);
+                            if (!_isPairingActive || generation != _pairingGeneration) return;
                             if (output.Contains("Successfully paired to") || output.Contains("already paired"))
                             {
                                 OnPairingStatusChanged?.Invoke($"Paired with {result.IPAddress}. Connecting...");
@@ -1028,6 +1263,7 @@ namespace Androlaunch.Core
                     var connectResults = await ZeroconfResolver.ResolveAsync("_adb-tls-connect._tcp.local.");
                     foreach (var result in connectResults)
                     {
+                        if (!_isPairingActive || generation != _pairingGeneration) return;
                         var endpoint = $"{result.IPAddress}:{result.Services.Values.First().Port}";
                         if (processedConnectHosts.Contains(endpoint)) continue;
                         processedConnectHosts.Add(endpoint);
@@ -1035,6 +1271,7 @@ namespace Androlaunch.Core
                         try
                         {
                             var output = WirelessConnect(result.IPAddress, result.Services.Values.First().Port.ToString());
+                            if (!_isPairingActive || generation != _pairingGeneration) return;
                             if (output.Contains("connected to") || output.Contains("already connected"))
                             {
                                 OnPairingStatusChanged?.Invoke($"Connected to {result.IPAddress}!");

@@ -68,9 +68,20 @@ Homebrew 5+ asks you to trust a third-party tap the first time: accept the promp
 
     > **Note**: Requires scrcpy v4.0+ for all features.
 
-3.  **Launch**: download `v0.3.9-windows.zip` from [Releases](https://github.com/aman-senpai/AndroLaunch/releases/tag/v0.3.9), extract `Androlaunch.exe`, and run it. The executable is self-contained for Windows 10/11 x64 — no installer or separate .NET runtime is required.
+3.  **Launch**: download [`AndroLaunch-0.3.9-windows-x64-setup.exe`](https://github.com/aman-senpai/AndroLaunch/releases/download/v0.3.9/AndroLaunch-0.3.9-windows-x64-setup.exe) from [Releases](https://github.com/aman-senpai/AndroLaunch/releases/tag/v0.3.9). The per-user installer requires no administrator privileges. Alternatively, extract **all** of `v0.3.9-windows.zip` and run `AndroLaunch/AndroLaunch.WinUI.exe`; do not move the executable out of that folder.
 
-The Windows build uses native WinForms controls with Windows 11 light/dark theming, native window chrome and a native tray menu, and it uses the same monochrome Android mark as the macOS menu bar. On first run Windows 11 may put a new tray icon in the hidden-icons flyout; drag the AndroLaunch icon onto the taskbar to pin it.
+The Windows app uses **WinUI 3**: native navigation, menus, dialogs, system light/dark styling and a Mica backdrop. It includes device controls and mirroring configuration, app management and APK installation/export, a file browser, an Android emulator manager, QR/manual wireless pairing, saved commands, preferences and dependency onboarding. Android SDK command-line tools and the emulator are required only for AVD management; configure their paths in Settings.
+
+The Windows 10 (1809+) / Windows 11 x64 packages include .NET and Windows App SDK; neither runtime needs a separate installation. The notification-area icon is the same monochrome Android mark as the macOS menu bar, embedded in light/dark variants. Windows may initially put it under **Hidden icons**; drag it onto the taskbar to pin it. Closing the main window leaves AndroLaunch running in the tray; choose **Exit** to quit.
+
+**Build on Windows:** install the .NET 8 SDK, Visual Studio Windows App SDK/WinUI build prerequisites and Inno Setup 6. Then run:
+
+```powershell
+dotnet build windows/AndroLaunch.WinUI/AndroLaunch.WinUI.csproj -c Release
+./scripts/publish-windows.ps1 -Iscc 'C:/Program Files (x86)/Inno Setup 6/ISCC.exe'
+```
+
+Release outputs are written to `build/windows/`. The Windows release is unsigned; Windows SmartScreen may warn when launching it.
 
 ### Linux Installation (KDE Plasma 6)
 
