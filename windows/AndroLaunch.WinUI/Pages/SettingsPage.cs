@@ -6,6 +6,7 @@ using AndroLaunch.WinUI.Dialogs;
 using AndroLaunch.WinUI.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Media;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
@@ -26,12 +27,14 @@ namespace AndroLaunch.WinUI.Pages
             IsOpen = false,
             Margin = new Thickness(0, 0, 0, 4)
         };
+        private readonly InfoBar developerStatus = new() { IsClosable = false, IsOpen = true };
         private readonly ToggleSwitch startupSwitch = new()
         {
             Header = "Run at startup",
             OnContent = "Enabled",
             OffContent = "Disabled"
         };
+        private bool checkingTools;
 
         public SettingsPage()
         {
@@ -54,7 +57,8 @@ namespace AndroLaunch.WinUI.Pages
             });
             root.Children.Add(new TextBlock
             {
-                Text = "Tool paths, Android SDK discovery and Windows startup.",
+                Text = "Device connection, Windows startup and optional advanced tools.",
+                TextWrapping = TextWrapping.Wrap,
                 Opacity = 0.7
             });
 
@@ -62,23 +66,37 @@ namespace AndroLaunch.WinUI.Pages
             root.Children.Add(statusBar);
 
             var adbCard = new StackPanel { Spacing = 10 };
-            adbCard.Children.Add(SectionTitle("ADB status"));
+            adbCard.Children.Add(SectionTitle("Device tools"));
+            adbCard.Children.Add(new TextBlock
+            {
+                Text = "Everyday device use needs only adb and scrcpy 4.0 or newer. Use the setup guide to install tools, authorize a phone and try mirroring.",
+                TextWrapping = TextWrapping.Wrap
+            });
             var adbRow = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 Spacing = 8
             };
-            var checkAdb = new Button { Content = "Check ADB" };
+            var checkAdb = new Button { Content = "Check device tools" };
             checkAdb.Click += async (_, _) => await CheckToolsAsync();
             adbRow.Children.Add(checkAdb);
             var setup = new Button { Content = "Setup guide" };
-            setup.Click += async (_, _) => await OnboardingDialog.ShowAsync();
+            setup.Click += async (_, _) =>
+            {
+                await OnboardingDialog.ShowAsync();
+                await CheckToolsAsync();
+            };
             adbRow.Children.Add(setup);
             adbCard.Children.Add(adbRow);
             root.Children.Add(Card(adbCard));
 
             var sdkCard = new StackPanel { Spacing = 12 };
-            sdkCard.Children.Add(SectionTitle("Android SDK"));
+            sdkCard.Children.Add(new TextBlock
+            {
+                Text = "Optional: configure the Android SDK only to create and run emulators. A connected phone does not need Android Studio, command-line tools, system images or an emulator.",
+                TextWrapping = TextWrapping.Wrap
+            });
+            sdkCard.Children.Add(developerStatus);
             sdkCard.Children.Add(PathRow("Command-line tools", toolsPath, "Select the folder containing sdkmanager.bat and avdmanager.bat", isFolder: true));
             sdkCard.Children.Add(PathRow("AVD folder", avdPath, "Select the AVD storage folder", isFolder: true));
             sdkCard.Children.Add(PathRow("System images", imagesPath, "Select the SDK root for downloaded images", isFolder: true));
@@ -94,17 +112,41 @@ namespace AndroLaunch.WinUI.Pages
             var save = new Button { Content = "Save" };
             save.Click += async (_, _) => await SaveAsync();
             sdkActions.Children.Add(save);
-            var checkTools = new Button { Content = "Check tools" };
+            var checkTools = new Button { Content = "Check SDK tools" };
             checkTools.Click += async (_, _) => await CheckToolsAsync();
             sdkActions.Children.Add(checkTools);
             sdkCard.Children.Add(sdkActions);
-            root.Children.Add(Card(sdkCard));
+            var emulators = new Button { Content = "Emulator Manager" };
+            emulators.Click += (_, _) => App.ShowMainWindow("emulators");
+            sdkCard.Children.Add(emulators);
+            root.Children.Add(new Expander
+            {
+                Header = "Developer tools — optional Android SDK and emulator",
+                IsExpanded = false,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Content = sdkCard
+            });
 
             var toolsCard = new StackPanel { Spacing = 12 };
-            toolsCard.Children.Add(SectionTitle("Tool overrides"));
+            toolsCard.Children.Add(new TextBlock
+            {
+                Text = "Optional: tools are discovered automatically. Select an executable only for a portable or custom installation. Clear an override and save to return to automatic discovery.",
+                TextWrapping = TextWrapping.Wrap
+            });
             toolsCard.Children.Add(PathRow("adb", adbPath, "Optional override for adb.exe", isFolder: false));
             toolsCard.Children.Add(PathRow("scrcpy", scrcpyPath, "Optional override for scrcpy.exe", isFolder: false));
-            root.Children.Add(Card(toolsCard));
+            var saveOverrides = new Button { Content = "Save tool overrides" };
+            saveOverrides.Click += async (_, _) => await SaveAsync();
+            toolsCard.Children.Add(saveOverrides);
+            root.Children.Add(new Expander
+            {
+                Header = "Advanced tool overrides",
+                IsExpanded = false,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Content = toolsCard
+            });
 
             var windowsCard = new StackPanel { Spacing = 12 };
             windowsCard.Children.Add(SectionTitle("Windows"));
@@ -114,9 +156,6 @@ namespace AndroLaunch.WinUI.Pages
             root.Children.Add(Card(windowsCard));
 
             var footer = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            var emulators = new Button { Content = "Emulator Manager" };
-            emulators.Click += (_, _) => App.ShowMainWindow("emulators");
-            footer.Children.Add(emulators);
             var about = new Button { Content = "About AndroLaunch" };
             about.Click += async (_, _) => await AboutDialog.ShowAsync();
             footer.Children.Add(about);
@@ -164,6 +203,7 @@ namespace AndroLaunch.WinUI.Pages
         private UIElement PathRow(string label, TextBox textBox, string description, bool isFolder)
         {
             var panel = new StackPanel { Spacing = 4 };
+            AutomationProperties.SetName(textBox, label + " path");
             panel.Children.Add(new TextBlock { Text = label, Opacity = 0.8 });
             var row = new Grid { ColumnSpacing = 8 };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -171,6 +211,7 @@ namespace AndroLaunch.WinUI.Pages
             Grid.SetColumn(textBox, 0);
             row.Children.Add(textBox);
             var browse = new Button { Content = "Browse…" };
+            AutomationProperties.SetName(browse, "Browse for " + label);
             Grid.SetColumn(browse, 1);
             browse.Click += async (_, _) =>
             {
@@ -188,21 +229,13 @@ namespace AndroLaunch.WinUI.Pages
             panel.Children.Add(new TextBlock
             {
                 Text = description,
-                Opacity = 0.55,
-                FontSize = 12
+                Opacity = 0.7,
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap
             });
             return panel;
         }
 
-        private async Task PickPathAsync(TextBox box, bool folder, string description)
-        {
-            string? path = folder ? await PickFolderAsync(description) : await PickFileAsync(description);
-            if (!string.IsNullOrWhiteSpace(path))
-            {
-                box.Text = path;
-                await SaveAsync();
-            }
-        }
 
         private static async Task<string?> PickFolderAsync(string description)
         {
@@ -279,23 +312,38 @@ namespace AndroLaunch.WinUI.Pages
 
         private async Task CheckToolsAsync()
         {
-            string adbMessage = "";
-            bool adbOk = await Task.Run(() => AdbHelper.TestAdb(out adbMessage));
-            bool scrcpyOk = await Task.Run(() => AdbHelper.TestScrcpy(out _));
-            bool sdkOk = File.Exists(Path.Combine(toolsPath.Text.Trim(), "sdkmanager.bat"));
-            bool avdOk = File.Exists(Path.Combine(toolsPath.Text.Trim(), "avdmanager.bat"));
-            bool emulatorOk = File.Exists(emulatorPath.Text.Trim());
-
+            if (checkingTools) return;
+            checkingTools = true;
             statusBar.IsOpen = true;
-            statusBar.Severity = adbOk && scrcpyOk && sdkOk && avdOk && emulatorOk
-                ? InfoBarSeverity.Success
-                : InfoBarSeverity.Warning;
-            statusBar.Title = adbOk ? "ADB ready" : "ADB not available";
-            statusBar.Message =
-                $"{adbMessage}   scrcpy {(scrcpyOk ? "found" : "not found")} · " +
-                $"sdkmanager {(sdkOk ? "found" : "not found")} · " +
-                $"avdmanager {(avdOk ? "found" : "not found")} · " +
-                $"emulator {(emulatorOk ? "found" : "not found")}";
+            statusBar.Severity = InfoBarSeverity.Informational;
+            statusBar.Title = "Checking device tools…";
+            statusBar.Message = "Checking adb and the installed scrcpy version.";
+            try
+            {
+                bool sdkOk = File.Exists(Path.Combine(toolsPath.Text.Trim(), "sdkmanager.bat"));
+                bool avdOk = File.Exists(Path.Combine(toolsPath.Text.Trim(), "avdmanager.bat"));
+                bool emulatorOk = File.Exists(emulatorPath.Text.Trim());
+                developerStatus.Severity = sdkOk && avdOk && emulatorOk ? InfoBarSeverity.Success : InfoBarSeverity.Informational;
+                developerStatus.Title = "Optional developer tools";
+                developerStatus.Message = $"sdkmanager {(sdkOk ? "found" : "not found")} · avdmanager {(avdOk ? "found" : "not found")} · emulator {(emulatorOk ? "found" : "not found")}. " +
+                    "These do not affect connected-phone use. Auto-detect an existing SDK or select its paths below for emulator management.";
+                string adbMessage = "";
+                bool adbOk = await Task.Run(() => AdbHelper.TestAdb(out adbMessage));
+                ToolCompatibility.Status scrcpy = await ToolCompatibility.CheckScrcpyAsync();
+                statusBar.Severity = adbOk && scrcpy.IsCompatible ? InfoBarSeverity.Success : InfoBarSeverity.Warning;
+                statusBar.Title = adbOk && scrcpy.IsCompatible ? "Device tools ready" : "Device tools need attention";
+                statusBar.Message = $"{(adbOk ? adbMessage : "adb unavailable: " + adbMessage)}\n{scrcpy.Summary}\n" +
+                    (adbOk && scrcpy.IsCompatible
+                        ? "Connect a phone or reopen Setup guide to authorize and mirror it. The Android SDK and emulator are optional."
+                        : "Open Setup guide to install or update tools, or expand Advanced tool overrides for a custom executable. The Android SDK and emulator are not required.");
+            }
+            catch (Exception ex)
+            {
+                statusBar.Severity = InfoBarSeverity.Error;
+                statusBar.Title = "Could not check device tools";
+                statusBar.Message = $"{ex.Message} Open Setup guide for installation and connection recovery.";
+            }
+            finally { checkingTools = false; }
         }
     }
 }

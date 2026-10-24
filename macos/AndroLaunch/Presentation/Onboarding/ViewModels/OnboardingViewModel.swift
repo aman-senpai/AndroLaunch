@@ -177,12 +177,12 @@ final class OnboardingViewModel: ObservableObject {
         var items: [(String, String, Bool)] = []
 
         switch adbStatus {
-        case .found(let path):
-            items.append(("checkmark.circle.fill", "ADB found at \(abbreviatedPath(path))", true))
-        case .installed(let path):
-            items.append(("checkmark.circle.fill", "ADB installed at \(abbreviatedPath(path))", true))
+        case .found:
+            items.append(("checkmark.circle.fill", "ADB is ready for device connections", true))
+        case .installed:
+            items.append(("checkmark.circle.fill", "ADB installed for device connections", true))
         case .notFound:
-            items.append(("minus.circle.fill", "ADB skipped — install later in Settings", false))
+            items.append(("minus.circle.fill", "ADB not installed — device actions unavailable", false))
         case .failed(let error):
             items.append(("xmark.circle.fill", "ADB: \(error)", false))
         case .checking, .installing:
@@ -190,12 +190,12 @@ final class OnboardingViewModel: ObservableObject {
         }
 
         switch scrcpyStatus {
-        case .found(let path):
-            items.append(("checkmark.circle.fill", "scrcpy found at \(abbreviatedPath(path))", true))
-        case .installed(let path):
-            items.append(("checkmark.circle.fill", "scrcpy installed at \(abbreviatedPath(path))", true))
+        case .found:
+            items.append(("checkmark.circle.fill", "scrcpy is ready for screen mirroring", true))
+        case .installed:
+            items.append(("checkmark.circle.fill", "scrcpy installed for screen mirroring", true))
         case .notFound:
-            items.append(("minus.circle.fill", "scrcpy skipped — install later in Settings", false))
+            items.append(("minus.circle.fill", "scrcpy not installed — mirroring unavailable", false))
         case .failed(let error):
             items.append(("xmark.circle.fill", "scrcpy: \(error)", false))
         case .checking, .installing:
@@ -209,13 +209,4 @@ final class OnboardingViewModel: ObservableObject {
         return adbStatus.isInstalled && scrcpyStatus.isInstalled
     }
 
-    // MARK: - Helpers
-
-    private func abbreviatedPath(_ path: String) -> String {
-        let home = NSHomeDirectory()
-        if path.hasPrefix(home) {
-            return "~" + path.dropFirst(home.count)
-        }
-        return path
-    }
 }

@@ -22,6 +22,12 @@ TestCase {
         property bool adbMissing: false
         property string adbPath: "/usr/bin/adb"
         property string scrcpyPath: "/usr/bin/scrcpy"
+        property bool scrcpyCompatible: true
+        property bool canMirror: hasDevice
+        property string scrcpySummary: "Fixture scrcpy 4.0"
+        property string adbRepair: "Fixture dependency guidance"
+        property string connectionGuidance: "Fixture connection guidance"
+        property string targetLabel: "Pixel 8 [192.168.1.42:5555]"
         property var devices: ([{
             "id": "192.168.1.42:5555", "name": "Pixel 8", "model": "shiba", "status": "device",
             "connected": true, "wireless": true, "emulator": false, "mdns": false,

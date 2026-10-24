@@ -4,6 +4,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Androlaunch.Core;
 using AndroLaunch.WinUI.Dialogs;
+using AndroLaunch.WinUI.Services;
+using Microsoft.UI.Xaml.Automation;
+using System.Text.RegularExpressions;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -16,7 +19,7 @@ namespace AndroLaunch.WinUI.Pages
         private readonly StackPanel detailPanel = new() { Spacing = 14 };
         private readonly TextBlock emptyText = new()
         {
-            Text = "No devices connected.\nEnable USB debugging, then plug in a device or use Wireless pairing.",
+            Text = "Connect an Android device with a data-capable USB cable, unlock it, and enable Developer options → USB debugging. Accept the RSA permission prompt on the device. For Wi-Fi, use Wireless pairing on the same network.",
             TextWrapping = TextWrapping.Wrap,
             Opacity = 0.7,
             Margin = new Thickness(0, 12, 0, 0)
@@ -32,7 +35,8 @@ namespace AndroLaunch.WinUI.Pages
         private readonly TextBlock deviceTitle = new()
         {
             FontSize = 22,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap
         };
         private readonly TextBlock deviceInfo = new() { Opacity = 0.75, TextWrapping = TextWrapping.Wrap };
 
@@ -45,16 +49,16 @@ namespace AndroLaunch.WinUI.Pages
         private readonly ToggleSwitch autoRotate = Toggle("Auto-rotate");
         private readonly ToggleSwitch adaptiveBrightness = Toggle("Adaptive brightness");
         private readonly ToggleSwitch darkMode = Toggle("Dark mode");
-        private readonly ToggleSwitch clipboardSync = Toggle("Clipboard sync");
+        private readonly ToggleSwitch clipboardSync = Toggle("Background clipboard bridge");
         private readonly Slider volume = new()
         {
             Minimum = 0,
             Maximum = 15,
             StepFrequency = 1,
             Value = 7,
-            Width = 300
+            HorizontalAlignment = HorizontalAlignment.Stretch
         };
-        private readonly TextBlock volumeValue = new() { Text = "7 / 15", Opacity = 0.7 };
+        private readonly TextBlock volumeValue = new() { Text = "Not loaded", Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
 
         private readonly ComboBox appResolution = new() { MinWidth = 180 };
         private readonly ComboBox mirrorSize = new() { MinWidth = 180 };
@@ -68,7 +72,7 @@ namespace AndroLaunch.WinUI.Pages
         private readonly ToggleSwitch flex = Toggle("Flex display");
         private readonly ToggleSwitch borderless = Toggle("Borderless window");
         private readonly ToggleSwitch audio = Toggle("Audio forwarding");
-        private readonly ToggleSwitch clipboardConfig = Toggle("Clipboard auto-sync");
+        private readonly ToggleSwitch clipboardConfig = Toggle("Forward clipboard during a scrcpy session");
 
         private static readonly int[] appResolutions = { 360, 540, 720, 900, 1080, 1440, 1600 };
         private static readonly int[] mirrorSizes = { 0, 800, 1024, 1280, 1440, 1600, 1920 };
@@ -84,6 +88,33 @@ namespace AndroLaunch.WinUI.Pages
         private readonly AdbHelper.MirrorConfig fallbackConfig = new();
         private bool updatingToggles;
         private int selectionLoadVersion;
+        private bool refreshing;
+        private bool replacingDevices;
+        private bool settingPending;
+        private string? rememberedSerial = AppState.SelectedSerial;
+        private string currentPreset = "Balanced";
+        private readonly ComboBox preset = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
+        private readonly TextBlock presetDescription = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75 };
+        private readonly TextBlock clipboardStatus = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75 };
+        private readonly TextBlock settingsStatus = new() { TextWrapping = TextWrapping.Wrap, Opacity = 0.75 };
+        private readonly InfoBar connectionBar = new() { IsClosable = false };
+        private readonly StackPanel quickSettings = new() { Spacing = 10 };
+        private readonly Grid quickToggles = new() { ColumnSpacing = 12, RowSpacing = 2 };
+        private readonly ContentControl quickSettingsHost = new()
+        {
+            IsEnabled = false,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch
+        };
+        private readonly ContentControl quickTogglesHost = new()
+        {
+            IsEnabled = false,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch
+        };
+        private readonly List<Button> deviceActions = new();
+        private Button? cameraButton;
+        private Button? refreshButton;
+        private int confirmedVolume;
+        private bool volumeAvailable;
 
         public DevicesPage()
         {
@@ -93,178 +124,216 @@ namespace AndroLaunch.WinUI.Pages
 
         private UIElement BuildContent()
         {
-            var root = new Grid { Padding = new Thickness(28), RowSpacing = 14 };
+            var root = new Grid { Padding = new Thickness(24), RowSpacing = 14 };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-            var header = new Grid();
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var titleStack = new StackPanel { Spacing = 2 };
-            titleStack.Children.Add(new TextBlock
+            var header = new StackPanel { Spacing = 8 };
+            header.Children.Add(new TextBlock
             {
-                Text = "Devices",
-                FontSize = 30,
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+                Text = "Devices", FontSize = 30, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
             });
-            titleStack.Children.Add(new TextBlock
+            header.Children.Add(new TextBlock
             {
                 Text = "Mirror, manage and control connected Android devices.",
-                Opacity = 0.7
+                Opacity = 0.7, TextWrapping = TextWrapping.Wrap
             });
-            header.Children.Add(titleStack);
-            var headerActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            var refresh = new Button { Content = "Refresh" };
-            refresh.Click += async (_, _) => await RefreshDevicesAsync();
-            headerActions.Children.Add(refresh);
-            var pairing = new Button
+            refreshButton = new Button { Content = "Refresh devices" };
+            refreshButton.Click += async (_, _) => await RefreshDevicesAsync();
+            var pairing = new Button { Content = "Wireless pairing" };
+            pairing.Click += async (_, _) =>
             {
-                Content = "Wireless pairing",
-                Style = (Style)Application.Current.Resources["AccentButtonStyle"]
+                await PairingDialog.ShowAsync();
+                await RefreshDevicesAsync();
             };
-            pairing.Click += async (_, _) => await PairingDialog.ShowAsync();
-            headerActions.Children.Add(pairing);
-            Grid.SetColumn(headerActions, 1);
-            header.Children.Add(headerActions);
-            Grid.SetRow(header, 0);
+            header.Children.Add(ActionGrid(refreshButton, pairing));
             root.Children.Add(header);
-
-            statusBar.Margin = new Thickness(0, 0, 0, 4);
             Grid.SetRow(statusBar, 1);
             root.Children.Add(statusBar);
 
-            var content = new Grid { ColumnSpacing = 18 };
-            content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(330) });
+            var content = new Grid { ColumnSpacing = 18, RowSpacing = 12 };
+            content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(280) });
             content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
+            content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             var left = new StackPanel { Spacing = 8 };
+            AutomationProperties.SetName(deviceList, "Connected Android devices");
             deviceList.SelectionChanged += async (_, _) =>
             {
-                selected = (deviceList.SelectedItem as ListViewItem)?.Tag as AdbHelper.AdbDeviceInfo;
-                AppState.SelectedSerial = selected?.Serial;
+                if (replacingDevices || deviceList.SelectedItem is not ListViewItem item) return;
+                selected = item.Tag as AdbHelper.AdbDeviceInfo;
+                rememberedSerial = selected?.Serial;
+                AppState.SelectedSerial = rememberedSerial;
                 await LoadSelectedAsync();
             };
-            var leftCard = new Border
+            left.Children.Add(new Border
             {
+                Visibility = Visibility.Collapsed,
                 Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
                 BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(8),
-                Child = deviceList,
-                MinHeight = 300
-            };
-            left.Children.Add(leftCard);
+                BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(8), Child = deviceList
+            });
             left.Children.Add(emptyText);
-            Grid.SetColumn(left, 0);
             content.Children.Add(left);
-
             var scroll = new ScrollViewer
             {
-                Content = detailPanel,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+                Content = detailPanel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
             };
-            Grid.SetColumn(scroll, 1);
             content.Children.Add(scroll);
+            content.SizeChanged += (_, e) =>
+            {
+                bool narrow = e.NewSize.Width < 850;
+                content.ColumnDefinitions[0].Width = narrow ? new GridLength(1, GridUnitType.Star) : new GridLength(280);
+                content.ColumnDefinitions[1].Width = narrow ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+                Grid.SetColumn(scroll, narrow ? 0 : 1);
+                Grid.SetRow(scroll, narrow ? 1 : 0);
+                Grid.SetRowSpan(scroll, narrow ? 1 : 2);
+                Grid.SetRowSpan(left, narrow ? 1 : 2);
+                deviceList.MaxHeight = narrow ? 150 : double.PositiveInfinity;
+            };
             Grid.SetRow(content, 2);
             root.Children.Add(content);
-
             BuildDetails();
             return root;
         }
 
         private void BuildDetails()
         {
-            detailPanel.Children.Clear();
             detailPanel.Children.Add(deviceTitle);
             detailPanel.Children.Add(deviceInfo);
+            detailPanel.Children.Add(connectionBar);
 
-            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            actions.Children.Add(ActionButton("Mirror", () => RunAsync("Could not mirror", () => AdbHelper.MirrorScreen(RequireSerial()))));
-            actions.Children.Add(ActionButton("Camera", () => RunAsync("Could not open camera", () => AdbHelper.MirrorCamera(RequireSerial()))));
-            actions.Children.Add(ActionButton("Files", () => App.ShowMainWindow("files", selected?.Serial)));
-            actions.Children.Add(ActionButton("Apps", () => App.ShowMainWindow("apps", selected?.Serial)));
-            actions.Children.Add(ActionButton("Shell", () => RunAsync("Could not open shell", () => AdbHelper.OpenShell(RequireSerial()))));
-            actions.Children.Add(ActionButton("Logcat", () => RunAsync("Could not open logcat", () => AdbHelper.OpenLogcat(RequireSerial()))));
-            detailPanel.Children.Add(actions);
+            var mirror = ActionButton("Mirror device", () => StartMirrorAsync(false));
+            mirror.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
+            cameraButton = ActionButton("Camera", () => StartMirrorAsync(true));
+            detailPanel.Children.Add(ActionGrid(mirror,
+                ActionButton("Files", () => App.ShowMainWindow("files", RequireSerial())),
+                ActionButton("Apps", () => App.ShowMainWindow("apps", RequireSerial())),
+                ActionButton("Capture", () => CaptureDialog.ShowAsync(RequireSerial()))));
 
-            var quick = new StackPanel { Spacing = 10 };
-            quick.Children.Add(SectionTitle("Quick settings"));
-            var toggles = new Grid { ColumnSpacing = 18, RowSpacing = 2 };
-            toggles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            toggles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            for (int i = 0; i < 10; i++)
+            var presets = new StackPanel { Spacing = 8 };
+            presets.Children.Add(SectionTitle("Mirror preset"));
+            FillCombo(preset, MirrorPresetStore.Names);
+            AutomationProperties.SetName(preset, "Mirror quality preset for this device");
+            presets.Children.Add(preset);
+            presets.Children.Add(presetDescription);
+            preset.SelectionChanged += async (_, _) =>
             {
-                toggles.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            }
-            AddToggle(toggles, wifi, 0, 0, AdbHelper.ToggleWifi);
-            AddToggle(toggles, bluetooth, 0, 1, AdbHelper.ToggleBluetooth);
-            AddToggle(toggles, mobileData, 1, 0, AdbHelper.ToggleMobileData);
-            AddToggle(toggles, airplane, 1, 1, AdbHelper.ToggleAirplaneMode);
-            AddToggle(toggles, location, 2, 0, AdbHelper.ToggleLocation);
-            AddToggle(toggles, doNotDisturb, 2, 1, AdbHelper.ToggleDoNotDisturb);
-            AddToggle(toggles, autoRotate, 3, 0, AdbHelper.ToggleAutoRotate);
-            AddToggle(toggles, adaptiveBrightness, 3, 1, AdbHelper.ToggleAdaptiveBrightness);
-            AddToggle(toggles, darkMode, 4, 0, AdbHelper.ToggleDarkMode);
-            AddToggle(toggles, clipboardSync, 4, 1, ClipboardSyncService.Toggle);
-            quick.Children.Add(toggles);
-            detailPanel.Children.Add(Card(quick));
+                if (updatingToggles || selected is null || preset.SelectedIndex < 0) return;
+                currentPreset = MirrorPresetStore.Names[preset.SelectedIndex];
+                MirrorPresetStore.Apply(currentPreset, Config());
+                RefreshConfiguration();
+                await SaveConfigurationAsync();
+            };
+            detailPanel.Children.Add(Card(presets));
 
-            var volumePanel = new StackPanel { Spacing = 6 };
-            volumePanel.Children.Add(SectionTitle("Media volume"));
-            var volumeRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-            volumeRow.Children.Add(volume);
-            volumeRow.Children.Add(volumeValue);
-            volumePanel.Children.Add(volumeRow);
+            quickSettings.Children.Add(settingsStatus);
+            var toggles = quickToggles;
+            toggles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            toggles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            for (int i = 0; i < 9; i++) toggles.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            AddToggle(toggles, wifi, 0, 0, AdbHelper.ToggleWifi, s => s.Wifi);
+            AddToggle(toggles, bluetooth, 0, 1, AdbHelper.ToggleBluetooth, s => s.Bluetooth);
+            AddToggle(toggles, mobileData, 1, 0, AdbHelper.ToggleMobileData, s => s.MobileData);
+            AddToggle(toggles, airplane, 1, 1, AdbHelper.ToggleAirplaneMode, s => s.AirplaneMode);
+            AddToggle(toggles, location, 2, 0, AdbHelper.ToggleLocation, s => s.Location);
+            AddToggle(toggles, doNotDisturb, 2, 1, AdbHelper.ToggleDoNotDisturb, s => s.DoNotDisturb);
+            AddToggle(toggles, autoRotate, 3, 0, AdbHelper.ToggleAutoRotate, s => s.AutoRotate);
+            AddToggle(toggles, adaptiveBrightness, 3, 1, AdbHelper.ToggleAdaptiveBrightness, s => s.AdaptiveBrightness);
+            AddToggle(toggles, darkMode, 4, 0, AdbHelper.ToggleDarkMode, s => s.DarkMode);
+            toggles.SizeChanged += (_, e) =>
+            {
+                bool narrow = e.NewSize.Width < 420;
+                for (int i = 0; i < toggles.Children.Count; i++)
+                {
+                    if (toggles.Children[i] is FrameworkElement toggle)
+                    {
+                        Grid.SetRow(toggle, narrow ? i : i / 2);
+                        Grid.SetColumn(toggle, narrow ? 0 : i % 2);
+                    }
+                }
+                toggles.ColumnDefinitions[1].Width = narrow ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+            };
+            quickTogglesHost.Content = toggles;
+            quickSettings.Children.Add(quickTogglesHost);
+            quickSettings.Children.Add(SectionTitle("Media volume"));
+            AutomationProperties.SetName(volume, "Device media volume");
+            quickSettings.Children.Add(volume);
+            quickSettings.Children.Add(volumeValue);
             volume.ValueChanged += async (_, e) =>
             {
-                volumeValue.Text = $"{(int)e.NewValue} / 15";
-                if (!updatingToggles && selected is not null)
+                if (updatingToggles) return;
+                volumeValue.Text = $"{(int)e.NewValue} / {(int)volume.Maximum}";
+                if (selected is null || settingPending || !volumeAvailable) return;
+                string serial = RequireSerial();
+                int previous = confirmedVolume;
+                int requested = (int)e.NewValue;
+                settingPending = true;
+                quickSettingsHost.IsEnabled = false;
+                deviceList.IsEnabled = false;
+                try
                 {
-                    string serial = selected.Serial;
-                    int value = (int)e.NewValue;
-                    try { await Task.Run(() => AdbHelper.SetVolume(serial, value)); }
-                    catch { }
+                    var actual = await Task.Run(() => SetVolumeChecked(serial, requested));
+                    ApplyVolume(actual);
+                    if (actual.Value != requested)
+                        await Ui.ShowErrorAsync("Android limited the volume",
+                            $"{serial}\nRequested {requested}; the device reports {actual.Value}. The slider shows the actual device value. Check Android's media-volume limits or use the device volume buttons.");
+                }
+                catch (Exception ex)
+                {
+                    updatingToggles = true;
+                    volume.Value = previous;
+                    volumeValue.Text = $"{previous} / {(int)volume.Maximum} — change not confirmed";
+                    updatingToggles = false;
+                    await Ui.ShowErrorAsync("Media volume was not confirmed",
+                        $"{serial}\n{ex.Message}\nUse the device's volume buttons, or reconnect and Refresh devices to read the current volume.");
+                }
+                finally
+                {
+                    settingPending = false;
+                    quickSettingsHost.IsEnabled = selected?.Status == "device";
+                    deviceList.IsEnabled = true;
                 }
             };
-            detailPanel.Children.Add(Card(volumePanel));
-
-            var control = new StackPanel { Spacing = 8 };
-            control.Children.Add(SectionTitle("Device control"));
-            var controlRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            controlRow.Children.Add(ActionButton("Reboot", async () => await ConfirmAndRunAsync("Reboot device?", "Reboot", () => AdbHelper.Reboot(RequireSerial()))));
-            controlRow.Children.Add(ActionButton("Bootloader", async () => await ConfirmAndRunAsync("Reboot to bootloader?", "Reboot", () => AdbHelper.Reboot(RequireSerial(), "bootloader"))));
-            controlRow.Children.Add(ActionButton("Recovery", async () => await ConfirmAndRunAsync("Reboot to recovery?", "Reboot", () => AdbHelper.Reboot(RequireSerial(), "recovery"))));
-            controlRow.Children.Add(ActionButton("Power off", async () => await ConfirmAndRunAsync("Power off the device?", "Power off", () => AdbHelper.RunAdbCommand($"-s {RequireSerial()} shell reboot -p"))));
-            controlRow.Children.Add(ActionButton("Disconnect", async () =>
+            quickSettingsHost.Content = quickSettings;
+            detailPanel.Children.Add(new Expander
             {
-                if (selected is not null && await Ui.ConfirmAsync("Disconnect", $"Disconnect {selected.Name}?", "Disconnect"))
-                {
-                    await RunAsync("Could not disconnect", () => AdbHelper.Disconnect(selected.Serial));
-                    await RefreshDevicesAsync();
-                }
-            }));
-            control.Children.Add(controlRow);
-            detailPanel.Children.Add(Card(control));
+                Header = "Quick device settings", Content = quickSettingsHost,
+                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch
+            });
+
+            var clipboard = new StackPanel { Spacing = 8 };
+            clipboard.Children.Add(clipboardSync);
+            clipboard.Children.Add(clipboardStatus);
+            clipboard.Children.Add(new TextBlock
+            {
+                Text = "Separate from clipboard forwarding in an open Mirror session. Background PC → Android delivery requires the ADB Clipboard companion (ch.pete.adbclipboard) installed and allowed on the device. Android → PC depends on scrcpy clipboard support and Android policy; delivery is not guaranteed.",
+                TextWrapping = TextWrapping.Wrap, Opacity = 0.75
+            });
+            clipboardSync.OnContent = "Enabled — pause to stop";
+            clipboardSync.OffContent = "Paused";
+            clipboardSync.Toggled += async (_, _) => await ToggleClipboardAsync();
+            detailPanel.Children.Add(new Expander
+            {
+                Header = "Background clipboard bridge", Content = clipboard,
+                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch
+            });
 
             var config = new StackPanel { Spacing = 8 };
-            config.Children.Add(SectionTitle("Configuration"));
             FillCombo(appResolution, new[] { "360p", "540p", "720p", "900p", "1080p", "1440p", "1600p" });
             config.Children.Add(ComboRow("App resolution", appResolution, index =>
             {
-                var mirrorConfig = Config();
-                mirrorConfig.AppResolution = appResolutions[index];
-                mirrorConfig.FlexDisplay = false;
-                RefreshConfiguration();
+                Config().AppResolution = appResolutions[index];
+                Config().FlexDisplay = false;
             }));
             FillCombo(mirrorSize, new[] { "Original", "800", "1024", "1280", "1440", "1600", "1920" });
-            config.Children.Add(ComboRow("Mirroring size", mirrorSize, index =>
+            config.Children.Add(ComboRow("Mirror size", mirrorSize, index =>
             {
-                var mirrorConfig = Config();
-                mirrorConfig.MaxSize = mirrorSizes[index];
-                mirrorConfig.FlexDisplay = false;
-                RefreshConfiguration();
+                Config().MaxSize = mirrorSizes[index];
+                Config().FlexDisplay = false;
             }));
             FillCombo(frameRate, new[] { "Unlimited", "30 fps", "60 fps", "90 fps", "120 fps" });
             config.Children.Add(ComboRow("Frame rate", frameRate, index => Config().MaxFps = frameRates[index]));
@@ -272,65 +341,120 @@ namespace AndroLaunch.WinUI.Pages
             config.Children.Add(ComboRow("Bit rate", bitRate, index => Config().BitRate = bitRates[index]));
             FillCombo(orientation, new[] { "Auto", "Portrait", "90° left", "180°", "90° right" });
             config.Children.Add(ComboRow("Rotation", orientation, index => Config().Orientation = orientations[index]));
-            flex.Toggled += (_, _) =>
-            {
-                if (!updatingToggles && selected is not null)
-                    Config().FlexDisplay = flex.IsOn;
-            };
-            borderless.Toggled += (_, _) =>
-            {
-                if (!updatingToggles && selected is not null)
-                    Config().Borderless = borderless.IsOn;
-            };
-            audio.Toggled += (_, _) =>
-            {
-                if (!updatingToggles && selected is not null)
-                    Config().AudioEnabled = audio.IsOn;
-            };
-            clipboardConfig.Toggled += (_, _) =>
-            {
-                if (!updatingToggles && selected is not null)
-                    Config().ClipboardEnabled = clipboardConfig.IsOn;
-            };
+            BindConfigurationToggle(flex, value => Config().FlexDisplay = value);
+            BindConfigurationToggle(borderless, value => Config().Borderless = value);
+            BindConfigurationToggle(audio, value => Config().AudioEnabled = value);
+            BindConfigurationToggle(clipboardConfig, value => Config().ClipboardEnabled = value);
             config.Children.Add(flex);
             config.Children.Add(borderless);
             config.Children.Add(audio);
             config.Children.Add(clipboardConfig);
+            config.Children.Add(new TextBlock
+            {
+                Text = "Session forwarding applies only while scrcpy is running. It does not enable the separate background bridge.",
+                TextWrapping = TextWrapping.Wrap, Opacity = 0.75
+            });
+            detailPanel.Children.Add(new Expander
+            {
+                Header = "Advanced mirror settings", Content = config,
+                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch
+            });
 
+            var camera = new StackPanel { Spacing = 8 };
+            camera.Children.Add(cameraButton);
+            camera.Children.Add(new TextBlock
+            {
+                Text = "Requires Android 12 or newer and scrcpy 4.0 or newer. Available sizes and frame rates depend on the camera.",
+                TextWrapping = TextWrapping.Wrap, Opacity = 0.75
+            });
             FillCombo(cameraFacing, new[] { "Auto", "Front", "Back", "External" });
-            config.Children.Add(ComboRow("Camera facing", cameraFacing, index => Config().CameraFacing = cameraFacings[index]));
+            camera.Children.Add(ComboRow("Camera facing", cameraFacing, index => Config().CameraFacing = cameraFacings[index]));
             FillCombo(cameraFps, new[] { "Default", "30 fps", "60 fps", "120 fps", "240 fps" });
-            config.Children.Add(ComboRow("Camera frame rate", cameraFps, index => Config().CameraFps = cameraFrameRates[index]));
+            camera.Children.Add(ComboRow("Camera frame rate", cameraFps, index => Config().CameraFps = cameraFrameRates[index]));
             FillCombo(cameraSize, new[] { "Original", "3840 (4K)", "2560 (2K)", "1920 (1080p)", "1280 (720p)", "1024", "800 (480p)", "640 (VGA)" });
-            config.Children.Add(ComboRow("Camera size", cameraSize, index => Config().CameraSize = cameraSizes[index]));
+            camera.Children.Add(ComboRow("Camera size", cameraSize, index => Config().CameraSize = cameraSizes[index]));
             FillCombo(cameraAr, new[] { "Auto", "4:3", "16:9", "1:1", "Sensor" });
-            config.Children.Add(ComboRow("Camera aspect ratio", cameraAr, index => Config().CameraAr = cameraAspectRatios[index]));
-            detailPanel.Children.Add(Card(config));
+            camera.Children.Add(ComboRow("Aspect ratio", cameraAr, index => Config().CameraAr = cameraAspectRatios[index]));
+            detailPanel.Children.Add(new Expander
+            {
+                Header = "Camera and advanced camera settings", Content = camera,
+                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch
+            });
+
+            var developer = new StackPanel { Spacing = 8 };
+            developer.Children.Add(new TextBlock
+            {
+                Text = "These actions can interrupt work on the selected device. Save device work first.",
+                TextWrapping = TextWrapping.Wrap, Opacity = 0.75
+            });
+            developer.Children.Add(ActionGrid(
+                ActionButton("Shell", () => RunAsync("Could not open shell", () => AdbHelper.OpenShell(RequireSerial()))),
+                ActionButton("Logcat", () => RunAsync("Could not open logcat", () => AdbHelper.OpenLogcat(RequireSerial()))),
+                ActionButton("Reboot", () => ConfirmDeviceActionAsync("Reboot", "Restart Android? Open device work may be lost.", serial => AdbHelper.Reboot(serial))),
+                ActionButton("Bootloader", () => ConfirmDeviceActionAsync("Bootloader", "Restart into the bootloader? Android apps will stop.", serial => AdbHelper.Reboot(serial, "bootloader"))),
+                ActionButton("Recovery", () => ConfirmDeviceActionAsync("Recovery", "Restart into recovery? Android apps will stop.", serial => AdbHelper.Reboot(serial, "recovery"))),
+                ActionButton("Power off", () => ConfirmDeviceActionAsync("Power off", "Turn off this device? You will need to turn it back on physically.", serial => AdbHelper.RunAdbCommand($"-s {Quote(serial)} shell reboot -p"))),
+                ActionButton("Disconnect Wi-Fi", async () =>
+                {
+                    string serial = RequireSerial();
+                    if (selected?.IsWireless != true)
+                    {
+                        await Ui.ShowErrorAsync("USB device", "To disconnect this USB device, unplug its cable. No ADB disconnect command was sent.");
+                        return;
+                    }
+                    await ConfirmDeviceActionAsync("Disconnect", "End this wireless connection? Reconnect with Wireless pairing.", target => AdbHelper.Disconnect(target));
+                })));
+            detailPanel.Children.Add(new Expander
+            {
+                Header = "Developer and power actions", Content = developer,
+                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch
+            });
             RefreshConfiguration();
             detailPanel.Visibility = Visibility.Collapsed;
         }
 
-        private void AddToggle(Grid grid, ToggleSwitch toggle, int row, int column, Action<string, bool> action)
+        private void AddToggle(Grid grid, ToggleSwitch toggle, int row, int column,
+            Action<string, bool> action, Func<AdbHelper.DeviceState, bool> read)
         {
             Grid.SetRow(toggle, row);
             Grid.SetColumn(toggle, column);
             grid.Children.Add(toggle);
             toggle.Toggled += async (_, _) =>
             {
-                if (updatingToggles || selected is null)
-                {
-                    return;
-                }
-                string serial = selected.Serial;
-                bool value = toggle.IsOn;
-
+                if (updatingToggles || selected is null || settingPending) return;
+                string serial = RequireSerial();
+                bool requested = toggle.IsOn;
+                bool previous = !requested;
+                settingPending = true;
+                quickSettingsHost.IsEnabled = false;
+                deviceList.IsEnabled = false;
+                settingsStatus.Text = $"Applying {toggle.Header}…";
                 try
                 {
-                    await Task.Run(() => action(serial, value));
+                    var state = await Task.Run(() =>
+                    {
+                        action(serial, requested);
+                        return ReadDeviceStateChecked(serial);
+                    });
+                    ApplyState(state);
+                    if (read(state) != requested)
+                        throw new InvalidOperationException("Android did not apply the requested value. The current device value has been restored.");
+                    settingsStatus.Text = "Settings read back from the device. Some Android versions restrict these controls.";
                 }
                 catch (Exception ex)
                 {
-                    await Ui.ShowErrorAsync("Device setting", ex.Message);
+                    updatingToggles = true;
+                    toggle.IsOn = previous;
+                    updatingToggles = false;
+                    settingsStatus.Text = "Change not confirmed. Refresh devices to reload settings, or use Android Settings.";
+                    await Ui.ShowErrorAsync($"{toggle.Header} was not confirmed",
+                        $"{serial}\n{ex.Message}\nIf the connection dropped, reconnect and Refresh devices. Otherwise change this setting directly on Android.");
+                }
+                finally
+                {
+                    settingPending = false;
+                    quickSettingsHost.IsEnabled = selected?.Status == "device";
+                    deviceList.IsEnabled = true;
                 }
             };
         }
@@ -371,38 +495,52 @@ namespace AndroLaunch.WinUI.Pages
 
         private Button ActionButton(string text, Func<Task> action)
         {
-            var button = new Button { Content = text };
-            button.Click += async (_, _) => await action();
+            var button = new Button { Content = text, HorizontalAlignment = HorizontalAlignment.Stretch };
+            AutomationProperties.SetName(button, text);
+            deviceActions.Add(button);
+            button.Click += async (_, _) =>
+            {
+                button.IsEnabled = false;
+                deviceList.IsEnabled = false;
+                try
+                {
+                    RequireSerial();
+                    await action();
+                }
+                catch (Exception ex)
+                {
+                    await Ui.ShowErrorAsync(text, $"{selected?.Serial}\n{ex.Message}\nReconnect and Refresh devices if the device is no longer available.");
+                }
+                finally
+                {
+                    button.IsEnabled = selected?.Status == "device";
+                    deviceList.IsEnabled = true;
+                }
+            };
             return button;
         }
 
-        private Button ActionButton(string text, Action action)
+        private Button ActionButton(string text, Action action) => ActionButton(text, () =>
         {
-            var button = new Button { Content = text };
-            button.Click += (_, _) => action();
-            return button;
-        }
+            action();
+            return Task.CompletedTask;
+        });
 
         private FrameworkElement ComboRow(string label, ComboBox combo, Action<int> changed)
         {
-            var panel = new Grid { ColumnSpacing = 12 };
-            panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(190) });
-            panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var text = new TextBlock
-            {
-                Text = label,
-                VerticalAlignment = VerticalAlignment.Center,
-                Opacity = 0.8
-            };
-            panel.Children.Add(text);
-            Grid.SetColumn(combo, 1);
+            var panel = new StackPanel { Spacing = 4 };
+            panel.Children.Add(new TextBlock { Text = label, Opacity = 0.8, TextWrapping = TextWrapping.Wrap });
+            combo.MinWidth = 0;
+            combo.HorizontalAlignment = HorizontalAlignment.Stretch;
+            AutomationProperties.SetName(combo, label);
             panel.Children.Add(combo);
-            combo.SelectionChanged += (_, _) =>
+            combo.SelectionChanged += async (_, _) =>
             {
-                if (!updatingToggles && selected is not null && combo.SelectedIndex >= 0)
-                {
-                    changed(combo.SelectedIndex);
-                }
+                if (updatingToggles || selected is null || combo.SelectedIndex < 0) return;
+                changed(combo.SelectedIndex);
+                currentPreset = "Custom";
+                RefreshConfiguration();
+                await SaveConfigurationAsync();
             };
             return panel;
         }
@@ -421,6 +559,8 @@ namespace AndroLaunch.WinUI.Pages
             updatingToggles = true;
             try
             {
+                preset.SelectedIndex = Array.IndexOf(MirrorPresetStore.Names, currentPreset);
+                presetDescription.Text = MirrorPresetStore.Descriptions[Math.Max(0, preset.SelectedIndex)];
                 appResolution.SelectedIndex = Array.IndexOf(appResolutions, cfg.AppResolution);
                 mirrorSize.SelectedIndex = Array.IndexOf(mirrorSizes, cfg.MaxSize);
                 frameRate.SelectedIndex = Array.IndexOf(frameRates, cfg.MaxFps);
@@ -443,48 +583,65 @@ namespace AndroLaunch.WinUI.Pages
 
         private async Task RefreshDevicesAsync()
         {
+            if (refreshing || settingPending) return;
+            refreshing = true;
+            if (refreshButton is not null) refreshButton.IsEnabled = false;
+            deviceList.IsEnabled = false;
+            SetActionsEnabled(false);
             statusBar.IsOpen = true;
             statusBar.Severity = InfoBarSeverity.Informational;
             statusBar.Title = "Refreshing devices";
             statusBar.Message = "Looking for adb devices…";
             try
             {
-                List<AdbHelper.AdbDeviceInfo> devices = await Task.Run(AdbHelper.GetDevices);
-                string? previous = AppState.SelectedSerial;
-                deviceList.Items.Clear();
-                foreach (AdbHelper.AdbDeviceInfo device in devices)
+                var devices = await Task.Run(AdbHelper.GetDevices);
+                replacingDevices = true;
+                try
                 {
-                    deviceList.Items.Add(new ListViewItem
+                    deviceList.Items.Clear();
+                    foreach (var device in devices)
                     {
-                        Tag = device,
-                        Content = DeviceRow(device)
-                    });
+                        var item = new ListViewItem { Tag = device, Content = DeviceRow(device) };
+                        AutomationProperties.SetName(item, $"{device.Name}, {device.Serial}, {device.Status}");
+                        deviceList.Items.Add(item);
+                    }
+                    var match = deviceList.Items.Cast<ListViewItem>().FirstOrDefault(
+                        item => (item.Tag as AdbHelper.AdbDeviceInfo)?.Serial == rememberedSerial);
+                    if (rememberedSerial is null)
+                        match = deviceList.Items.Cast<ListViewItem>().FirstOrDefault();
+                    deviceList.SelectedItem = match;
+                    selected = match?.Tag as AdbHelper.AdbDeviceInfo;
+                    if (selected is not null)
+                    {
+                        rememberedSerial = selected.Serial;
+                        AppState.SelectedSerial = rememberedSerial;
+                    }
                 }
+                finally { replacingDevices = false; }
 
                 emptyText.Visibility = devices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-                ListViewItem? match = deviceList.Items.Cast<ListViewItem>()
-                    .FirstOrDefault(item => (item.Tag as AdbHelper.AdbDeviceInfo)?.Serial == previous)
-                    ?? deviceList.Items.Cast<ListViewItem>().FirstOrDefault();
-                if (match is not null)
-                {
-                    deviceList.SelectedItem = match;
-                }
-                else
-                {
-                    selected = null;
-                    AppState.SelectedSerial = null;
-                    await LoadSelectedAsync();
-                }
-
-                statusBar.Severity = devices.Count > 0 ? InfoBarSeverity.Success : InfoBarSeverity.Warning;
-                statusBar.Title = devices.Count > 0 ? $"{devices.Count} device{(devices.Count == 1 ? "" : "s")} connected" : "No devices connected";
-                statusBar.Message = devices.Count > 0 ? "Select a device to manage it." : "Enable USB debugging or use Wireless pairing.";
+                bool ready = devices.Any(device => device.Status == "device");
+                statusBar.Severity = ready ? InfoBarSeverity.Success : InfoBarSeverity.Warning;
+                statusBar.Title = devices.Count == 0 ? "No devices connected" : $"{devices.Count} device{(devices.Count == 1 ? "" : "s")} found";
+                statusBar.Message = selected is null && rememberedSerial is not null
+                    ? $"Waiting for {rememberedSerial}. Its selection is remembered. Reconnect it and Refresh devices, or explicitly select another device."
+                    : ready ? "Select a device to manage it. Refresh reloads its connection and settings."
+                    : "Unlock the device and accept USB debugging. For offline devices, reconnect the cable or pair again on Wi-Fi, then Refresh devices.";
+                await LoadSelectedAsync();
             }
             catch (Exception ex)
             {
                 statusBar.Severity = InfoBarSeverity.Error;
                 statusBar.Title = "Could not list devices";
-                statusBar.Message = ex.Message;
+                statusBar.Message = $"{ex.Message}\nCheck ADB in Setup, reconnect the device, then Refresh devices. Your selected device has not been forgotten.";
+            }
+            finally
+            {
+                if (deviceList.Parent is Border deviceCard)
+                    deviceCard.Visibility = deviceList.Items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+                refreshing = false;
+                deviceList.IsEnabled = true;
+                if (refreshButton is not null) refreshButton.IsEnabled = true;
             }
         }
 
@@ -498,7 +655,7 @@ namespace AndroLaunch.WinUI.Pages
             });
             stack.Children.Add(new TextBlock
             {
-                Text = device.Status == "device" ? (device.IsWireless ? "Wireless" : "USB") : device.Status,
+                Text = $"{device.Serial}\n{(device.Status == "device" ? (device.IsWireless ? "Wireless · ready" : "USB · ready") : device.Status)}",
                 Opacity = 0.6,
                 FontSize = 12
             });
@@ -509,62 +666,111 @@ namespace AndroLaunch.WinUI.Pages
         {
             int version = ++selectionLoadVersion;
             var device = selected;
-            detailPanel.Visibility = Visibility.Collapsed;
-            RefreshConfiguration();
+            SetActionsEnabled(false);
+            quickSettingsHost.IsEnabled = false;
+            quickTogglesHost.IsEnabled = false;
+            volumeAvailable = false;
+            volume.IsEnabled = false;
             if (device is null)
             {
                 detailPanel.Visibility = Visibility.Collapsed;
                 return;
             }
-
-            // Keep the previous device's live settings hidden until this device is loaded.
-            detailPanel.Visibility = Visibility.Collapsed;
-            deviceTitle.Text = device.Name;
-            deviceInfo.Text = device.Serial;
             string serial = device.Serial;
+            deviceTitle.Text = device.Name;
+            deviceInfo.Text = $"{serial} · {(device.IsWireless ? "Wireless" : "USB")} · {device.Status}";
+            detailPanel.Visibility = Visibility.Visible;
             try
             {
-                var state = await Task.Run(() => AdbHelper.GetDeviceState(serial));
-                var info = await Task.Run(() => AdbHelper.GetDeviceInfo(serial));
-                if (version != selectionLoadVersion || selected?.Serial != serial)
-                {
-                    return;
-                }
-
-                deviceInfo.Text = $"{serial}\n{info.Summary}";
-                updatingToggles = true;
-                try
-                {
-                    wifi.IsOn = state.Wifi;
-                    bluetooth.IsOn = state.Bluetooth;
-                    mobileData.IsOn = state.MobileData;
-                    airplane.IsOn = state.AirplaneMode;
-                    location.IsOn = state.Location;
-                    doNotDisturb.IsOn = state.DoNotDisturb;
-                    autoRotate.IsOn = state.AutoRotate;
-                    adaptiveBrightness.IsOn = state.AdaptiveBrightness;
-                    darkMode.IsOn = state.DarkMode;
-                    clipboardSync.IsOn = ClipboardSyncService.IsActive(serial);
-                }
-                finally
-                {
-                    updatingToggles = false;
-                }
-
-                detailPanel.Visibility = Visibility.Visible;
+                currentPreset = MirrorPresetStore.Load(serial, Config());
+                RefreshConfiguration();
             }
             catch (Exception ex)
             {
-                if (version == selectionLoadVersion && selected?.Serial == serial)
+                currentPreset = "Custom";
+                RefreshConfiguration();
+                statusBar.IsOpen = true;
+                statusBar.Severity = InfoBarSeverity.Warning;
+                statusBar.Title = "Could not load mirror preferences";
+                statusBar.Message = $"{ex.Message} Current settings remain available; check access to {AppSettingsStore.SettingsDirectory}.";
+            }
+            UpdateClipboardStatus();
+            connectionBar.IsOpen = device.Status != "device";
+            connectionBar.Severity = InfoBarSeverity.Warning;
+            connectionBar.Title = device.Status == "unauthorized" ? "Authorize this computer on Android" : "Device is not ready";
+            connectionBar.Message = device.Status == "unauthorized"
+                ? "Unlock this device and accept the RSA fingerprint prompt for USB debugging. If no prompt appears, reconnect USB; you can revoke USB debugging authorizations in Android Developer options and authorize again."
+                : $"ADB reports “{device.Status}”. Reconnect the USB data cable, or use Wireless pairing again on the same network. No device actions will run until it is ready.";
+            var reconnect = new Button { Content = "Reconnect and refresh" };
+            reconnect.Click += async (_, _) =>
+            {
+                reconnect.IsEnabled = false;
+                try { await Task.Run(() => AdbHelper.RunAdbCommand($"-s {Quote(serial)} reconnect")); }
+                catch (Exception ex)
                 {
-                    await Ui.ShowErrorAsync("Device", ex.Message);
+                    connectionBar.Message = $"{ex.Message}\nReconnect physically or pair again, then Refresh devices.";
                 }
+                finally
+                {
+                    await RefreshDevicesAsync();
+                    reconnect.IsEnabled = true;
+                }
+            };
+            connectionBar.ActionButton = reconnect;
+            if (device.Status != "device")
+            {
+                clipboardSync.IsEnabled = ClipboardSyncService.IsActive(serial);
+                return;
+            }
+            SetActionsEnabled(true);
+            if (cameraButton is not null) cameraButton.IsEnabled = false;
+            clipboardSync.IsEnabled = true;
+            quickSettingsHost.IsEnabled = true;
+            settingsStatus.Text = "Reading settings from the device…";
+            volumeValue.Text = "Reading media volume…";
+            var info = await Task.Run(() => AdbHelper.GetDeviceInfo(serial));
+            if (version != selectionLoadVersion || selected?.Serial != serial) return;
+            deviceInfo.Text = $"{serial} · {(device.IsWireless ? "Wireless" : "USB")} · ready\n{info.Summary}";
+            if (cameraButton is not null)
+            {
+                cameraButton.IsEnabled = info.ApiLevel >= 31;
+                ToolTipService.SetToolTip(cameraButton, info.ApiLevel >= 31
+                    ? "Open the device camera through scrcpy." : "Camera mirroring requires Android 12 (API 31) or newer.");
+            }
+            try
+            {
+                var state = await Task.Run(() => ReadDeviceStateChecked(serial));
+                if (version != selectionLoadVersion || selected?.Serial != serial) return;
+                ApplyState(state);
+                quickTogglesHost.IsEnabled = true;
+                settingsStatus.Text = "Settings read from the device. Android may restrict changes; each change is checked.";
+            }
+            catch (Exception ex)
+            {
+                if (version != selectionLoadVersion || selected?.Serial != serial) return;
+                settingsStatus.Text = $"Quick settings unavailable: {ex.Message}\nUse Android Settings, or reconnect and Refresh devices to retry.";
+            }
+            try
+            {
+                var actual = await Task.Run(() => ReadVolumeChecked(serial));
+                if (version != selectionLoadVersion || selected?.Serial != serial) return;
+                ApplyVolume(actual);
+                volumeAvailable = true;
+                volume.IsEnabled = true;
+            }
+            catch (Exception ex)
+            {
+                if (version != selectionLoadVersion || selected?.Serial != serial) return;
+                volumeValue.Text = $"Media volume unavailable: {ex.Message}\nUse device volume buttons. Refresh devices retries the read.";
             }
         }
 
         private string RequireSerial()
         {
-            return selected?.Serial ?? throw new InvalidOperationException("No device selected.");
+            if (selected is null) throw new InvalidOperationException("Select a connected device first.");
+            if (selected.Status != "device")
+                throw new InvalidOperationException($"Device {selected.Serial} is {selected.Status}. Unlock and authorize it, or reconnect and Refresh devices.");
+            return selected.Serial;
         }
 
         private AdbHelper.MirrorConfig Config() => selected is not null ? AdbHelper.GetConfig(selected.Serial) : fallbackConfig;
@@ -581,12 +787,232 @@ namespace AndroLaunch.WinUI.Pages
             }
         }
 
-        private async Task ConfirmAndRunAsync(string message, string primary, Action action)
+        private async Task ConfirmDeviceActionAsync(string title, string warning, Action<string> action)
         {
-            if (await Ui.ConfirmAsync("Confirm", message, primary))
+            string serial = RequireSerial();
+            string name = selected!.Name;
+            if (await Ui.ConfirmAsync($"{title} — {name}", $"{name}\nDevice: {serial}\n\n{warning}", title))
             {
-                await RunAsync(primary, action);
+                await RunAsync($"Could not {title.ToLowerInvariant()} {name} ({serial})", () => action(serial));
+                await RefreshDevicesAsync();
             }
         }
+
+        private static Grid ActionGrid(params Button[] buttons)
+        {
+            var grid = new Grid { ColumnSpacing = 8, RowSpacing = 8 };
+            for (int i = 0; i < 4; i++) grid.ColumnDefinitions.Add(new ColumnDefinition());
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                buttons[i].HorizontalAlignment = HorizontalAlignment.Stretch;
+                grid.Children.Add(buttons[i]);
+            }
+            void Arrange(double width)
+            {
+                int columns = Math.Max(1, Math.Min(4, (int)(width / 140)));
+                for (int i = 0; i < 4; i++)
+                    grid.ColumnDefinitions[i].Width = i < columns ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+                for (int i = 0; i < buttons.Length; i++)
+                {
+                    Grid.SetRow(buttons[i], i / columns);
+                    Grid.SetColumn(buttons[i], i % columns);
+                }
+            }
+            grid.SizeChanged += (_, e) => Arrange(e.NewSize.Width);
+            Arrange(280);
+            return grid;
+        }
+
+        private void BindConfigurationToggle(ToggleSwitch toggle, Action<bool> changed)
+        {
+            toggle.Toggled += async (_, _) =>
+            {
+                if (updatingToggles || selected is null) return;
+                changed(toggle.IsOn);
+                currentPreset = "Custom";
+                RefreshConfiguration();
+                await SaveConfigurationAsync();
+            };
+        }
+
+        private async Task SaveConfigurationAsync()
+        {
+            if (selected is null) return;
+            try { MirrorPresetStore.Save(selected.Serial, currentPreset, Config()); }
+            catch (Exception ex)
+            {
+                await Ui.ShowErrorAsync("Mirror preferences were not saved",
+                    $"{selected.Serial}\n{ex.Message}\nThe settings work for this session. Check access to {AppSettingsStore.SettingsDirectory} and select the preset again to retry saving.");
+            }
+        }
+
+        private async Task StartMirrorAsync(bool camera)
+        {
+            string serial = RequireSerial();
+            var compatibility = await ToolCompatibility.CheckScrcpyAsync();
+            if (!compatibility.IsCompatible)
+            {
+                await Ui.ShowErrorAsync("scrcpy needs attention", $"{compatibility.Summary}\nOpen Setup to install a supported version, then try again.");
+                return;
+            }
+            await RunAsync(camera ? "Could not open camera" : "Could not mirror", () =>
+            {
+                if (camera) AdbHelper.MirrorCamera(serial);
+                else AdbHelper.MirrorScreen(serial);
+            });
+        }
+
+        private void SetActionsEnabled(bool enabled)
+        {
+            foreach (var button in deviceActions) button.IsEnabled = enabled;
+            clipboardSync.IsEnabled = enabled;
+        }
+
+        private void UpdateClipboardStatus()
+        {
+            updatingToggles = true;
+            bool enabled = selected is not null && ClipboardSyncService.IsActive(selected.Serial);
+            clipboardSync.IsOn = enabled;
+            clipboardStatus.Text = enabled
+                ? "Background bridge enabled (requested). Delivery and helper-process health are not verified. Pause stops this device's background bridge."
+                : "Paused. No background clipboard bridge is requested for this device.";
+            updatingToggles = false;
+        }
+
+        private async Task ToggleClipboardAsync()
+        {
+            if (updatingToggles || selected is null) return;
+            if (settingPending)
+            {
+                UpdateClipboardStatus();
+                return;
+            }
+            string serial = selected.Serial;
+            bool enable = clipboardSync.IsOn;
+            settingPending = true;
+            quickSettingsHost.IsEnabled = false;
+            clipboardSync.IsEnabled = false;
+            deviceList.IsEnabled = false;
+            clipboardStatus.Text = enable ? "Checking scrcpy and the Android companion…" : "Pausing the background bridge…";
+            try
+            {
+                if (enable)
+                {
+                    RequireSerial();
+                    var compatibility = await ToolCompatibility.CheckScrcpyAsync();
+                    if (!compatibility.IsCompatible) throw new InvalidOperationException(compatibility.Summary);
+                    string companion = await Task.Run(() => AdbHelper.RunAdbCommand($"-s {Quote(serial)} shell pm path ch.pete.adbclipboard"));
+                    if (!companion.Contains("package:", StringComparison.Ordinal))
+                        throw new InvalidOperationException("Install and allow the ADB Clipboard companion (ch.pete.adbclipboard) on this device before enabling PC → Android background delivery. Session forwarding in Mirror does not need this companion.");
+                }
+                await Task.Run(() => ClipboardSyncService.Toggle(serial, enable));
+            }
+            catch (Exception ex)
+            {
+                await Ui.ShowErrorAsync("Background clipboard bridge", $"{serial}\n{ex.Message}\nThe separate Mirror-session clipboard setting is unchanged.");
+            }
+            finally
+            {
+                settingPending = false;
+                quickSettingsHost.IsEnabled = selected?.Status == "device";
+                UpdateClipboardStatus();
+                clipboardSync.IsEnabled = selected?.Status == "device" || ClipboardSyncService.IsActive(serial);
+                deviceList.IsEnabled = true;
+            }
+        }
+
+        private void ApplyState(AdbHelper.DeviceState state)
+        {
+            updatingToggles = true;
+            try
+            {
+                wifi.IsOn = state.Wifi;
+                bluetooth.IsOn = state.Bluetooth;
+                mobileData.IsOn = state.MobileData;
+                airplane.IsOn = state.AirplaneMode;
+                location.IsOn = state.Location;
+                doNotDisturb.IsOn = state.DoNotDisturb;
+                autoRotate.IsOn = state.AutoRotate;
+                adaptiveBrightness.IsOn = state.AdaptiveBrightness;
+                darkMode.IsOn = state.DarkMode;
+            }
+            finally { updatingToggles = false; }
+        }
+
+        private static AdbHelper.DeviceState ReadDeviceStateChecked(string serial)
+        {
+            string command = "shell \"settings get global wifi_on; settings get global bluetooth_on; " +
+                "settings get global mobile_data; cmd uimode night; settings get global airplane_mode_on; " +
+                "settings get secure location_mode; settings get global zen_mode; " +
+                "settings get system accelerometer_rotation; settings get system screen_brightness_mode\"";
+            string[] lines = AdbHelper.RunAdbCommand($"-s {Quote(serial)} {command}")
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            if (lines.Length != 9) throw new InvalidOperationException("Android did not return all requested settings.");
+            int Number(int index)
+            {
+                if (!int.TryParse(lines[index].Trim(), out int value))
+                    throw new InvalidOperationException("This Android version does not expose all quick settings over ADB.");
+                return value;
+            }
+            Match night = Regex.Match(lines[3], @"\b(yes|no|auto)\b", RegexOptions.IgnoreCase);
+            if (!night.Success) throw new InvalidOperationException("Android did not report its dark-mode setting.");
+            return new AdbHelper.DeviceState
+            {
+                Wifi = Number(0) == 1, Bluetooth = Number(1) == 1, MobileData = Number(2) == 1,
+                DarkMode = night.Groups[1].Value.Equals("yes", StringComparison.OrdinalIgnoreCase),
+                AirplaneMode = Number(4) == 1, Location = Number(5) > 0,
+                DoNotDisturb = Number(6) > 0, AutoRotate = Number(7) == 1, AdaptiveBrightness = Number(8) == 1
+            };
+        }
+
+        private static (int Value, int Minimum, int Maximum) ReadVolumeChecked(string serial)
+        {
+            try { return Read("cmd media_session"); }
+            catch { return Read("media"); }
+
+            (int Value, int Minimum, int Maximum) Read(string command)
+            {
+                string output = AdbHelper.RunAdbCommand($"-s {Quote(serial)} shell {command} volume --stream 3 --get");
+                Match match = Regex.Match(output, @"volume is\s+(\d+)\s+in range\s+\[(\d+)\.\.(\d+)\]", RegexOptions.IgnoreCase);
+                if (!match.Success) throw new InvalidOperationException("Android did not return a readable media-volume value and range.");
+                int value = int.Parse(match.Groups[1].Value);
+                int minimum = int.Parse(match.Groups[2].Value);
+                int maximum = int.Parse(match.Groups[3].Value);
+                if (maximum <= minimum || value < minimum || value > maximum)
+                    throw new InvalidOperationException("Android returned an invalid media-volume range.");
+                return (value, minimum, maximum);
+            }
+        }
+
+        private static (int Value, int Minimum, int Maximum) SetVolumeChecked(string serial, int value)
+        {
+            try
+            {
+                AdbHelper.RunAdbCommand($"-s {Quote(serial)} shell cmd media_session volume --stream 3 --set {value}");
+            }
+            catch
+            {
+                AdbHelper.RunAdbCommand($"-s {Quote(serial)} shell media volume --stream 3 --set {value}");
+            }
+            var actual = ReadVolumeChecked(serial);
+            return actual;
+        }
+
+        private void ApplyVolume((int Value, int Minimum, int Maximum) actual)
+        {
+            updatingToggles = true;
+            try
+            {
+                volume.Minimum = actual.Minimum;
+                volume.Maximum = actual.Maximum;
+                volume.Value = actual.Value;
+                confirmedVolume = actual.Value;
+                volumeValue.Text = $"{actual.Value} / {actual.Maximum}";
+            }
+            finally { updatingToggles = false; }
+        }
+
+        private static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
     }
 }

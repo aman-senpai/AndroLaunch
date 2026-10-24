@@ -25,6 +25,14 @@ Item {
 
     property int visitedTab: 0
     readonly property int tabCount: 6
+    property int selectedTab: 0
+    property bool developerToolsVisible: false
+
+    function selectTab(index) {
+        selectedTab = index;
+        visitedTab = Math.max(visitedTab, index);
+        tabBar.currentIndex = index < 4 ? index : -1;
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -67,6 +75,7 @@ Item {
             PlasmaComponents3.ToolButton {
                 icon.name: "view-refresh"
                 display: PlasmaComponents3.AbstractButton.IconOnly
+                Accessible.name: "Refresh device state"
                 onClicked: full.backend.refresh()
                 PlasmaComponents3.ToolTip {
                     text: "Refresh device state"
@@ -94,7 +103,7 @@ Item {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
                     font.pointSize: Kirigami.Theme.smallFont.pointSize
-                    text: "adb not found. Install it with: sudo dnf install android-tools scrcpy"
+                    text: full.backend.adbRepair
                 }
             }
         }
@@ -121,12 +130,13 @@ Item {
                     font.pointSize: Kirigami.Theme.smallFont.pointSize
                     text: full.backend.helperError.length > 0
                           ? full.backend.helperError
-                          : "The androlaunch helper was not found. Run: curl -fsSL https://raw.githubusercontent.com/aman-senpai/AndroLaunch/master/install.sh | bash"
+                          : "The androlaunch helper was not found. Re-run the AndroLaunch installer or set its executable path in Configure AndroLaunch, then Retry."
                 }
 
                 PlasmaComponents3.ToolButton {
                     icon.name: "view-refresh"
                     display: PlasmaComponents3.AbstractButton.IconOnly
+                    Accessible.name: "Retry backend connection"
                     onClicked: full.backend.bootstrap()
                     PlasmaComponents3.ToolTip {
                         text: "Retry"
@@ -161,30 +171,76 @@ Item {
                 PlasmaComponents3.ToolButton {
                     icon.name: "window-close"
                     display: PlasmaComponents3.AbstractButton.IconOnly
+                    Accessible.name: "Dismiss message"
                     onClicked: full.backend.dismissMessage()
                 }
             }
         }
 
-        // ---- tabs ----------------------------------------------------------
-        PlasmaComponents3.TabBar {
-            id: tabBar
+        PlasmaComponents3.Label {
+            Layout.fillWidth: true
+            visible: full.backend.helperReady && !full.backend.adbMissing && !full.backend.scrcpyCompatible
+            wrapMode: Text.Wrap
+            text: full.backend.scrcpySummary + " Apps, files and device controls remain available with an authorized device."
+            font.pointSize: Kirigami.Theme.smallFont.pointSize
+        }
 
+        PlasmaComponents3.Button {
+            visible: full.backend.helperReady && (full.backend.adbMissing || !full.backend.scrcpyCompatible)
+            text: "Retry dependencies"
+            icon.name: "view-refresh"
+            onClicked: full.backend.bootstrap()
+        }
+
+        // ---- tabs ----------------------------------------------------------
+        RowLayout {
             Layout.fillWidth: true
 
-            Repeater {
-                // Plain-language names: "Quick"/"Pair"/"AVDs" were too vague to
-                // guess from the tab bar alone. Text only: icon-plus-label tabs
-                // need more width than the popup has at this font size, which
-                // clipped "Emulators" at the right edge.
-                model: ["Device", "Apps", "Wireless", "Files", "Console", "Emulators"]
+            PlasmaComponents3.TabBar {
+                id: tabBar
+                Layout.fillWidth: true
 
-                PlasmaComponents3.TabButton {
-                    text: modelData
+                Repeater {
+                    model: ["Device", "Apps", "Wireless", "Files"]
+                    PlasmaComponents3.TabButton {
+                        required property string modelData
+                        text: modelData
+                    }
+                }
+                onCurrentIndexChanged: {
+                    if (currentIndex >= 0)
+                        full.selectTab(currentIndex);
                 }
             }
 
-            onCurrentIndexChanged: full.visitedTab = Math.max(full.visitedTab, currentIndex)
+            PlasmaComponents3.ToolButton {
+                icon.name: "applications-development"
+                checkable: true
+                checked: full.developerToolsVisible
+                Accessible.name: "Show developer tools"
+                PlasmaComponents3.ToolTip.text: "Developer tools: Console and Emulators"
+                onClicked: full.developerToolsVisible = !full.developerToolsVisible
+            }
+        }
+
+        RowLayout {
+            visible: full.developerToolsVisible
+            Layout.fillWidth: true
+            PlasmaComponents3.Label {
+                text: "Developer tools"
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                Layout.fillWidth: true
+            }
+            PlasmaComponents3.Button {
+                text: "Console"
+                checked: full.selectedTab === 4
+                onClicked: full.selectTab(4)
+            }
+            PlasmaComponents3.Button {
+                text: "Emulators"
+                checked: full.selectedTab === 5
+                onClicked: full.selectTab(5)
+            }
         }
 
         StackLayout {
@@ -196,7 +252,7 @@ Item {
             // made the toggle tiles and the action rows look crammed.
             Layout.leftMargin: Kirigami.Units.smallSpacing
             Layout.rightMargin: Kirigami.Units.smallSpacing
-            currentIndex: tabBar.currentIndex
+            currentIndex: full.selectedTab
 
             Loader {
                 active: full.visitedTab >= 0

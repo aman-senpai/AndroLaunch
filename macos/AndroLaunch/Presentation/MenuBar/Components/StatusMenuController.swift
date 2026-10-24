@@ -39,6 +39,9 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
             button.imagePosition = .imageOnly
             button.title = ""
             button.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+            button.setAccessibilityLabel("AndroLaunch")
+            button.setAccessibilityHelp("Manage connected Android devices, mirror screens, and browse files.")
+            button.toolTip = "AndroLaunch — Android devices"
         }
         refreshDevices()
         updateMenu()
@@ -144,8 +147,8 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         
         // Update Error Item if needed
         if viewModel.devices.isEmpty {
-            if let item = menu.items.first, item.action == nil, item.representedObject == nil {
-                 item.title = viewModel.error ?? "No devices found"
+            if let item = menu.items.first(where: { $0.identifier?.rawValue == "DeviceConnectionStatus" }) {
+                 item.title = viewModel.error ?? "No authorized devices connected"
             }
         }
     }
@@ -260,11 +263,12 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         // Device List
         if viewModel.devices.isEmpty {
             let item = NSMenuItem(
-                title: viewModel.error ?? "No devices found",
+                title: viewModel.error ?? "No authorized devices connected",
                 action: nil,
                 keyEquivalent: ""
             )
             item.isEnabled = false
+            item.identifier = NSUserInterfaceItemIdentifier("DeviceConnectionStatus")
             menu.addItem(item)
         } else {
             for device in viewModel.devices {
@@ -279,6 +283,7 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
                     keyEquivalent: ""
                 )
                 deviceItem.representedObject = device.id
+                deviceItem.toolTip = "\(device.name) is ready. Device ID: \(device.id)"
                 
                 // Create a custom view for the device item with connection indicator and hover effect
                 let itemView = DeviceMenuItemView(
@@ -294,6 +299,11 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
                 menu.addItem(deviceItem)
             }
         }
+
+        let connectionHelp = NSMenuItem(title: "USB Connection Help…", action: #selector(showUSBConnectionHelp), keyEquivalent: "")
+        connectionHelp.target = self
+        connectionHelp.image = NSImage(systemSymbolName: "cable.connector", accessibilityDescription: "USB connection help")
+        menu.addItem(connectionHelp)
 
         // Previous Devices Section
         if !viewModel.previousDevices.isEmpty {
@@ -396,6 +406,15 @@ final class StatusMenuController: NSObject, NSSearchFieldDelegate {
         menu.addItem(quitItem)
         
         statusItem.menu = menu
+    }
+
+    @objc private func showUSBConnectionHelp() {
+        let alert = NSAlert()
+        alert.messageText = "Connect and authorize your Android device"
+        alert.informativeText = "1. Enable Developer options and USB debugging on Android.\n2. Connect a data-capable USB cable and keep the device unlocked.\n3. On Android, approve “Allow USB debugging?” for this Mac. Only choose “Always allow” if you trust this Mac.\n4. Choose Refresh Devices in AndroLaunch.\n\nSuccess: your device appears by name. Open its menu and choose Mirror Screen or Browse Files.\n\nNo authorization prompt? Check the cable and USB connection mode. In Android Developer options, revoke USB debugging authorizations, reconnect, and approve again. This revokes trust for previously authorized computers.\n\nADB must be installed. scrcpy is also required for screen mirroring and clipboard sharing. Wireless pairing is available for Android 11 and later."
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
     
     func menuWillOpen(_ menu: NSMenu) {

@@ -22,7 +22,7 @@ PlasmaComponents3.ScrollView {
     // a glance cannot be mistaken for another device's popup.
     readonly property string rebootConfirmationText: {
         const device = root.backend.activeDevice;
-        const target = device ? (device.name || device.id) : "";
+        const target = device ? (device.name || device.id) + " [" + device.id + "]" : "";
         if (root.pendingReboot === "normal")
             return target.length > 0 ? "Restart Android on " + target + "?" : "Restart Android?";
         const mode = root.pendingReboot;
@@ -36,7 +36,7 @@ PlasmaComponents3.ScrollView {
     function confirmReboot() {
         const mode = root.pendingReboot;
         root.pendingReboot = "";
-        if (mode !== "")
+        if (mode !== "" && root.backend.hasDevice)
             root.backend.reboot(mode);
     }
 
@@ -69,51 +69,13 @@ PlasmaComponents3.ScrollView {
             visible: root.backend.uiDevices.length === 0
             iconName: "smartphone"
             message: "No Android device connected"
-            hint: "Connect over USB or pair over Wi-Fi. Enable USB debugging on the device."
+            hint: root.backend.connectionGuidance
         }
 
         ColumnLayout {
             visible: root.backend.uiDevices.length === 0
             Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
-
-                ActionButton {
-                    iconName: "video-display"
-                    text: "Mirror Screen"
-                    enabled: false
-                }
-
-                PlasmaComponents3.ToolButton {
-                    icon.name: "camera-web"
-                    enabled: false
-
-                    PlasmaComponents3.ToolTip {
-                        text: "Open camera"
-                    }
-                }
-
-                PlasmaComponents3.ToolButton {
-                    icon.name: "utilities-terminal"
-                    enabled: false
-
-                    PlasmaComponents3.ToolTip {
-                        text: "Open terminal"
-                    }
-                }
-
-                PlasmaComponents3.ToolButton {
-                    icon.name: "view-list-details"
-                    enabled: false
-
-                    PlasmaComponents3.ToolTip {
-                        text: "Open logcat"
-                    }
-                }
-            }
 
             ActionButton {
                 iconName: "view-refresh"
@@ -178,7 +140,7 @@ PlasmaComponents3.ScrollView {
                                     parts.push(Util.statusLabel(device));
                                 return parts.join(" • ");
                             }
-                            elide: Text.ElideRight
+                            wrapMode: Text.Wrap
                             opacity: 0.7
                             font.pointSize: Kirigami.Theme.smallFont.pointSize
                         }
@@ -205,6 +167,7 @@ PlasmaComponents3.ScrollView {
                     PlasmaComponents3.ToolButton {
                         Layout.alignment: Qt.AlignVCenter
                         icon.name: "view-refresh"
+                        Accessible.name: "Refresh device state"
                         onClicked: root.backend.refresh()
 
                         PlasmaComponents3.ToolTip {
@@ -215,8 +178,9 @@ PlasmaComponents3.ScrollView {
 
                 PlasmaComponents3.ComboBox {
                     Layout.fillWidth: true
-                    visible: root.backend.connectedCount > 1
-                    model: root.backend.uiDevices.map(d => d.name || d.id)
+                    visible: root.backend.uiDevices.length > 1
+                    Accessible.name: "Selected Android device"
+                    model: root.backend.uiDevices.map(d => (d.name || d.id) + " [" + d.id + "] · " + Util.statusLabel(d))
                     currentIndex: {
                         for (let i = 0; i < root.backend.uiDevices.length; ++i) {
                             if (root.backend.uiDevices[i].id === root.backend.activeId)
@@ -229,6 +193,14 @@ PlasmaComponents3.ScrollView {
             }
         }
 
+        PlasmaComponents3.Label {
+            Layout.fillWidth: true
+            visible: root.backend.activeDevice !== null && !root.backend.hasDevice
+            text: root.backend.connectionGuidance
+            wrapMode: Text.Wrap
+            color: Kirigami.Theme.neutralTextColor
+        }
+
         // ---- 3. action row --------------------------------------------------
         RowLayout {
             visible: root.backend.hasDevice
@@ -239,13 +211,14 @@ PlasmaComponents3.ScrollView {
                 iconName: "video-display"
                 text: "Mirror Screen"
                 fillWidth: false
-                enabled: root.backend.hasDevice
+                enabled: root.backend.canMirror
                 onClicked: root.backend.mirror()
             }
 
             PlasmaComponents3.ToolButton {
                 icon.name: "camera-web"
-                enabled: root.backend.hasDevice
+                Accessible.name: "Open device camera"
+                enabled: root.backend.canMirror
                 onClicked: root.backend.camera()
 
                 PlasmaComponents3.ToolTip {
@@ -253,25 +226,6 @@ PlasmaComponents3.ScrollView {
                 }
             }
 
-            PlasmaComponents3.ToolButton {
-                icon.name: "utilities-terminal"
-                enabled: root.backend.hasDevice
-                onClicked: root.backend.openTerminal()
-
-                PlasmaComponents3.ToolTip {
-                    text: "Open terminal"
-                }
-            }
-
-            PlasmaComponents3.ToolButton {
-                icon.name: "view-list-details"
-                enabled: root.backend.hasDevice
-                onClicked: root.backend.openLogcat()
-
-                PlasmaComponents3.ToolTip {
-                    text: "Open logcat"
-                }
-            }
 
             Item {
                 Layout.fillWidth: true
@@ -279,6 +233,7 @@ PlasmaComponents3.ScrollView {
 
             PlasmaComponents3.ToolButton {
                 icon.name: "network-disconnect"
+                Accessible.name: "Disconnect wireless device"
                 visible: root.backend.activeDevice !== null && root.backend.activeDevice.wireless === true
                 onClicked: root.backend.disconnectDevice(root.backend.activeId)
 
@@ -289,6 +244,7 @@ PlasmaComponents3.ScrollView {
 
             PlasmaComponents3.ToolButton {
                 icon.name: "window-close"
+                Accessible.name: "Stop all mirroring windows"
                 visible: root.backend.mirrors.length > 0
                 onClicked: root.backend.stopMirrors()
 
@@ -309,7 +265,7 @@ PlasmaComponents3.ScrollView {
         // look like one continuous bar.
         GridLayout {
             Layout.fillWidth: true
-            columns: 2
+            columns: root.availableWidth < Kirigami.Units.gridUnit * 22 ? 1 : 2
             columnSpacing: Kirigami.Units.smallSpacing * 2
             rowSpacing: Kirigami.Units.smallSpacing
 
@@ -459,7 +415,8 @@ PlasmaComponents3.ScrollView {
 
             PlasmaComponents3.Label {
                 Layout.fillWidth: true
-                elide: Text.ElideRight
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
                 color: root.rebootIsDestructive ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor
                 text: root.rebootConfirmationText
             }
@@ -520,6 +477,7 @@ PlasmaComponents3.ScrollView {
 
                 PlasmaComponents3.ToolButton {
                     icon.name: "window-close"
+                    Accessible.name: "Close mirroring window"
                     onClicked: root.backend.stopMirror(windowRow.modelData.pid)
 
                     PlasmaComponents3.ToolTip {
@@ -574,6 +532,7 @@ PlasmaComponents3.ScrollView {
 
                 PlasmaComponents3.ToolButton {
                     icon.name: "network-connect"
+                    Accessible.name: "Reconnect " + (previousRow.modelData.name || previousRow.modelData.id)
                     onClicked: root.backend.connectPrevious(previousRow.modelData.id)
 
                     PlasmaComponents3.ToolTip {

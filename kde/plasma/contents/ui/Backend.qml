@@ -50,6 +50,10 @@ Item {
     property string scrcpyPath: ""
     property string helperError: ""
     readonly property bool adbMissing: helperReady && adbPath === ""
+    property bool scrcpyCompatible: false
+    property string scrcpySummary: "Checking scrcpy compatibility…"
+    readonly property bool canMirror: hasDevice && scrcpyCompatible
+    readonly property string adbRepair: "Install Android SDK Platform-Tools (adb) using your distribution's package manager or developer.android.com/tools/releases/platform-tools. Add adb to PATH, then Retry dependencies."
 
     // ---- devices -----------------------------------------------------------
     property var devices: []
@@ -70,6 +74,13 @@ Item {
     property double localBrightnessAt: 0
     property double localVolumeAt: 0
 
+    onActiveIdChanged: {
+        pendingBrightness = -1;
+        pendingVolume = -1;
+        localBrightness = -1;
+        localVolume = -1;
+    }
+
     readonly property var activeDevice: {
         if (!activeId)
             return null;
@@ -79,7 +90,25 @@ Item {
         }
         return null;
     }
-    readonly property bool hasDevice: !!activeDevice && activeDevice.connected
+    readonly property bool hasDevice: helperReady && !adbMissing && !!activeDevice
+        && activeDevice.connected === true && activeDevice.status === "device"
+    readonly property string targetLabel: activeDevice
+        ? (activeDevice.name || activeId) + " [" + activeId + "]" : "No device selected"
+    readonly property string connectionGuidance: {
+        if (!helperReady)
+            return "Retry dependencies or check the helper path in Configure AndroLaunch.";
+        if (adbMissing)
+            return adbRepair;
+        if (!activeDevice)
+            return "Connect a data-capable USB cable, enable Developer options → USB debugging, then unlock Android and accept this computer's RSA prompt. Or use the Wireless tab (Android 11+).";
+        if (activeDevice.status === "unauthorized")
+            return "Unlock " + targetLabel + " and allow USB debugging for this computer. If no RSA prompt appears, revoke USB debugging authorizations in Android Developer options, reconnect and authorize again.";
+        if (activeDevice.status === "offline")
+            return targetLabel + " is offline. Unlock it and reconnect the USB cable. For Wi-Fi, check the same network and the current Wireless debugging address/port, then reconnect in Wireless.";
+        if (!hasDevice)
+            return targetLabel + " is in " + (activeDevice.status || "an unavailable state") + ". Device controls require an authorized Android debugging connection.";
+        return "Authorized · " + targetLabel;
+    }
     // The backend collapses the Android 11+ duplicate transports (mDNS alias +
     // host:port) into one entry per phone, so every entry here is addressable.
     readonly property var uiDevices: devices
@@ -240,7 +269,22 @@ Item {
 
     function call(action, args, callback) {
         const token = String(++exec.seq);
-        const payload = toBase64(JSON.stringify(args || {}));
+        const scoped = ["toggle", "brightness", "volume", "ringer", "reboot", "mirror", "camera",
+            "app_mirror", "app_screen", "apps", "app_launch", "app_uninstall", "app_clear",
+            "apk_install", "files", "file_push", "file_pull", "file_delete", "file_mkdir",
+            "tcpip", "shell", "open_terminal", "open_logcat", "clipboard_send", "clipboard_get"];
+        const request = Object.assign({}, args || {});
+        if (scoped.indexOf(action) >= 0) {
+            if (!hasDevice) {
+                const failure = { ok: false, message: connectionGuidance };
+                surface(failure.message, true);
+                if (callback)
+                    callback(failure);
+                return;
+            }
+            request.device = request.device || activeId;
+        }
+        const payload = toBase64(JSON.stringify(request));
         exec.callbacks[token] = callback;
         exec.connectSource(helperPath + " call " + action + " " + payload + " --token " + token);
     }
@@ -279,6 +323,10 @@ Item {
             backend.helperError = "";
             backend.adbPath = envelope.adb || "";
             backend.scrcpyPath = envelope.scrcpy || "";
+            const compatibility = envelope.data ? envelope.data.scrcpyCompatibility : null;
+            backend.scrcpyCompatible = !!compatibility && compatibility.compatible === true;
+            backend.scrcpySummary = compatibility ? compatibility.summary
+                : "Update the androlaunch helper to check scrcpy compatibility.";
             console.info("AndroLaunch: backend ready (adb=" + (backend.adbPath || "missing")
                 + ", scrcpy=" + (backend.scrcpyPath || "missing") + ")");
             backend.refresh();
@@ -296,8 +344,8 @@ Item {
                 notify(null, stderr);
                 return;
             }
-            adbPath = envelope.adb || adbPath;
-            scrcpyPath = envelope.scrcpy || scrcpyPath;
+            adbPath = envelope.adb || "";
+            scrcpyPath = envelope.scrcpy || "";
             const data = envelope.data || {};
             devices = data.devices || [];
             activeId = data.active || "";
@@ -313,8 +361,10 @@ Item {
 
     function selectDevice(id) {
         activeId = id;
-        call("select", { device: id }, envelope => notify(envelope));
-        refresh();
+        call("select", { device: id }, envelope => {
+            notify(envelope);
+            refresh();
+        });
     }
 
     function toggle(what, on) {
@@ -441,15 +491,18 @@ Item {
         if (!force && appsLoadedFor === activeId && apps.length > 0)
             return;
         appsLoading = true;
-        call("apps", { device: activeId, system: false, refresh: force === true }, envelope => {
+        const requestedDevice = activeId;
+        call("apps", { device: requestedDevice, system: false, refresh: force === true }, envelope => {
             appsLoading = false;
+            if (requestedDevice !== activeId || !hasDevice)
+                return;
             if (!envelope) {
                 notify(null);
                 return;
             }
             if (envelope.ok) {
                 apps = envelope.data || [];
-                appsLoadedFor = activeId;
+                appsLoadedFor = requestedDevice;
                 appsSource = envelope.source || "";
             } else {
                 apps = [];
@@ -486,8 +539,11 @@ Item {
             return;
         filesLoading = true;
         currentPath = path;
+        const requestedDevice = activeId;
         call("files", { path: path }, envelope => {
             filesLoading = false;
+            if (requestedDevice !== activeId || !hasDevice)
+                return;
             if (!envelope) {
                 notify(null);
                 return;
@@ -617,11 +673,14 @@ Item {
     }
 
     function getClipboard(callback) {
+        const requestedDevice = activeId;
         call("clipboard_get", {}, envelope => {
-            if (callback)
-                callback(envelope && envelope.data ? envelope.data.text : "");
-            else
-                notify(envelope);
+            if (requestedDevice !== activeId || !hasDevice)
+                return;
+            if (!notify(envelope))
+                return;
+            if (callback && envelope.data && typeof envelope.data.text === "string")
+                callback(envelope.data.text);
         });
     }
 

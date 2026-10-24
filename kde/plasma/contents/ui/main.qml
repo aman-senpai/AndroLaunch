@@ -44,13 +44,15 @@ PlasmoidItem {
         if (!backendItem.helperReady)
             return backendItem.helperError || "Backend not available";
         if (backendItem.adbMissing)
-            return "adb not installed (sudo dnf install android-tools scrcpy)";
+            return "adb not found — open AndroLaunch for installation steps";
         const device = backendItem.activeDevice;
         if (!device)
             return backendItem.devices.length === 0 ? "No device connected" : "No device selected";
         const parts = [device.name || device.id];
         if (device.connected)
             parts.push(device.wireless ? "Wi-Fi" : "USB");
+        else
+            parts.push(device.status || "Unavailable");
         if (backendItem.activeBattery >= 0)
             parts.push(backendItem.activeBattery + "%" + (backendItem.activeCharging ? " ⚡" : ""));
         if (device.android)

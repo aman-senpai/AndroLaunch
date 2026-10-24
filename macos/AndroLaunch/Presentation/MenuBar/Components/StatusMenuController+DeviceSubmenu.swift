@@ -107,44 +107,24 @@ extension StatusMenuController {
         
         submenu.addItem(NSMenuItem.separator())
         
-        // Controls Section (Audio, Camera, Mirror, Disconnect)
-        let controlsItem = NSMenuItem()
-        
-        // Determine if device is wireless for disconnect button
-        let isWireless = device.id.contains(":") ||
-                        device.id.contains("_tcp") ||
-                        device.id.contains("_udp")
-        
-        let controlsView = ControlsMenuItemView(
-            deviceID: device.id,
-            isWireless: isWireless,
-            target: self,
-            mirrorCameraAction: #selector(mirrorCamera(_:)),
-            installAction: #selector(installAPK(_:)),
-            shellAction: #selector(launchShell(_:)),
-            logcatAction: #selector(launchLogcat(_:)),
-            disconnectAction: #selector(disconnectDevice(_:))
-        )
-        controlsItem.view = controlsView
-        submenu.addItem(controlsItem)
-        
-        submenu.addItem(NSMenuItem.separator())
-        
-        // File Explorer
-        let explorerItem = NSMenuItem(title: "File Explorer", action: #selector(openFileExplorer(_:)), keyEquivalent: "f")
-        explorerItem.target = self
-        explorerItem.image = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: "File Explorer")
-        explorerItem.image?.size = NSSize(width: 16, height: 16)
-        explorerItem.representedObject = device.id
-        submenu.addItem(explorerItem)
-        
-        // Mirror Screen
-        let mirrorItem = NSMenuItem(title: "Mirror Screen", action: #selector(mirrorDevice(_:)), keyEquivalent: "m")
-        mirrorItem.target = self
-        mirrorItem.image = NSImage(systemSymbolName: "display", accessibilityDescription: "Mirror Screen")
-        mirrorItem.image?.size = NSSize(width: 16, height: 16)
-        mirrorItem.representedObject = device.id
-        submenu.addItem(mirrorItem)
+        func addAction(to menu: NSMenu, title: String, symbol: String, action: Selector, key: String = "") {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.target = self
+            item.representedObject = device.id
+            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+            item.image?.size = NSSize(width: 16, height: 16)
+            item.toolTip = "\(title) on \(device.name) (\(device.id))"
+            menu.addItem(item)
+        }
+
+        // Everyday actions stay visible and keyboard-accessible.
+        addAction(to: submenu, title: "Mirror Screen", symbol: "display", action: #selector(mirrorDevice(_:)), key: "m")
+        addAction(to: submenu, title: "Browse Files", symbol: "folder.fill", action: #selector(openFileExplorer(_:)), key: "f")
+        addAction(to: submenu, title: "Install APK…", symbol: "shippingbox", action: #selector(installAPK(_:)))
+        addAction(to: submenu, title: "Mirror Camera", symbol: "camera", action: #selector(mirrorCamera(_:)))
+        if device.id.contains(":") || device.id.contains("_tcp") || device.id.contains("_udp") {
+            addAction(to: submenu, title: "Disconnect Wireless Connection", symbol: "wifi.slash", action: #selector(disconnectDevice(_:)))
+        }
         
         // Quick Actions
         let quickActionsItem = NSMenuItem(title: "Quick Actions", action: nil, keyEquivalent: "")
@@ -162,7 +142,14 @@ extension StatusMenuController {
 
         submenu.addItem(NSMenuItem.separator())
         
-        // Shell Commands
+        let developerItem = NSMenuItem(title: "Developer Tools", action: nil, keyEquivalent: "")
+        developerItem.image = NSImage(systemSymbolName: "hammer", accessibilityDescription: "Developer Tools")
+        let developerMenu = NSMenu()
+        addAction(to: developerMenu, title: "Open ADB Shell", symbol: "terminal", action: #selector(launchShell(_:)))
+        addAction(to: developerMenu, title: "Open Logcat", symbol: "text.alignleft", action: #selector(launchLogcat(_:)))
+        developerMenu.addItem(.separator())
+
+        // Saved commands retain their existing target-device behavior.
         let shellItem = NSMenuItem(title: "Commands", action: nil, keyEquivalent: "")
         shellItem.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Commands")
         shellItem.image?.size = NSSize(width: 16, height: 16)
@@ -192,9 +179,16 @@ extension StatusMenuController {
 
         
         shellItem.submenu = shellMenu
-        submenu.addItem(shellItem)
+        developerMenu.addItem(shellItem)
 
-        submenu.addItem(NSMenuItem.separator())
+        developerMenu.addItem(.separator())
+        let restartItem = NSMenuItem(title: "Restart Device…", action: nil, keyEquivalent: "")
+        let restartMenu = NSMenu()
+        configureRestartMenu(restartMenu, deviceID: device.id)
+        restartItem.submenu = restartMenu
+        developerMenu.addItem(restartItem)
+        developerItem.submenu = developerMenu
+        submenu.addItem(developerItem)
         
         // Configuration Section
         let configItem = NSMenuItem(title: "Configuration", action: nil, keyEquivalent: "")

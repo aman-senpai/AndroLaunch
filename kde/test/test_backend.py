@@ -11,6 +11,7 @@ import json
 import os
 import pathlib
 import sys
+import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 HELPER = pathlib.Path(__file__).resolve().parents[1] / "bin" / "androlaunch"
@@ -99,9 +100,9 @@ check("percent_to_index.offset", al.percent_to_index(50, 1, 15), 8)
 
 # ------------------------------------------------------- app list sources ----
 cache = al.APPS_CACHE
-backup = cache.read_text() if cache.exists() else None
+temporary_cache = tempfile.TemporaryDirectory(prefix="androlaunch-backend-test-")
 try:
-    al.APPS_CACHE = pathlib.Path("/tmp/androlaunch-apps-test.json")
+    al.APPS_CACHE = pathlib.Path(temporary_cache.name) / "apps-cache.json"
     al.APPS_CACHE.unlink(missing_ok=True)
 
     good = [{"package": "com.spotify.music", "name": "Spotify", "system": False}]
@@ -128,8 +129,8 @@ try:
 finally:
     os.environ.pop("ANDROLAUNCH_SCRCPY", None)
     al.APPS_CACHE.unlink(missing_ok=True)
-    if backup is not None:
-        cache.write_text(backup)
+    al.APPS_CACHE = cache
+    temporary_cache.cleanup()
 
 print("\n".join(FAILURES) if FAILURES else "ALL BACKEND TESTS PASSED")
 sys.exit(1 if FAILURES else 0)

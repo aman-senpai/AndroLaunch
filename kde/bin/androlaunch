@@ -158,6 +158,19 @@ def find_scrcpy() -> str:
     return _first_existing([Path.home() / ".local/bin/scrcpy", "/usr/local/bin/scrcpy"])
 
 
+def scrcpy_compatibility() -> dict:
+    if not SCRCPY:
+        return {"compatible": False, "summary": "scrcpy not found. Install scrcpy 4.0 or newer from your distribution or github.com/Genymobile/scrcpy, add it to PATH, then Retry dependencies."}
+    result = run([SCRCPY, "--version"], timeout=10)
+    match = re.search(r"\bscrcpy\s+(\d+)\.(\d+)(?:\.(\d+))?", result.out + result.err)
+    if not result.ok or not match:
+        return {"compatible": False, "summary": "Cannot determine the scrcpy version. Check scrcpy --version in a terminal, install scrcpy 4.0 or newer, then Retry dependencies."}
+    version = tuple(int(part or 0) for part in match.groups())
+    compatible = version >= (4, 0, 0)
+    return {"compatible": compatible, "summary": f"scrcpy {'.'.join(str(part) for part in version)}"
+            + (" · compatible" if compatible else " is unsupported. Install scrcpy 4.0 or newer, then Retry dependencies.")}
+
+
 ADB = find_adb()
 SCRCPY = find_scrcpy()
 
@@ -207,7 +220,7 @@ def detached(cmd: list[str]) -> int:
 
 def adb(args: list[str], device: str = "", timeout: int = 30) -> Result:
     if not ADB:
-        return Result(False, "", "adb not installed (Fedora: sudo dnf install android-tools)")
+        return Result(False, "", "adb not found. Install Android SDK Platform-Tools with your distribution's package manager or from developer.android.com/tools/releases/platform-tools, then add adb to PATH.")
     cmd = [ADB]
     if device and args and not args[0].startswith(UNSCOPED):
         cmd += ["-s", device]
@@ -270,9 +283,9 @@ def dedupe_devices(devices: list[dict]) -> list[dict]:
     """Android 11+ exposes one phone twice: as `ip:port` and as
     `adb-<hash>-<name>._adb-tls-connect._tcp`.
 
-    Keep a single entry whose serial works for both adb and scrcpy — the mDNS alias,
-    because scrcpy refuses the `ip:port` serial while the alias transport exists — and
-    carry the network address along for display and for reconnecting later.
+    Prefer an authorized mDNS alias, because scrcpy refuses the `ip:port` serial while
+    that alias transport is live. Never promote an offline/unauthorized alias to
+    authorized just because the other transport is ready.
     """
     result: list[dict] = []
     for device in devices:
@@ -280,7 +293,7 @@ def dedupe_devices(devices: list[dict]) -> list[dict]:
             (
                 other
                 for other in result
-                if other["mdns"] != device["mdns"]
+                if other["wireless"] and device["wireless"] and other["mdns"] != device["mdns"]
                 and other["model"]
                 and other["model"] == device["model"]
             ),
@@ -294,12 +307,10 @@ def dedupe_devices(devices: list[dict]) -> list[dict]:
 
         mdns_entry, address_entry = (device, twin) if device["mdns"] else (twin, device)
         address = address_entry["id"] if ":" in address_entry["id"] else mdns_entry.get("address", "")
-        mdns_entry["address"] = address
-        mdns_entry["wireless"] = True
-        if address_entry["connected"]:
-            mdns_entry["connected"] = True
-            mdns_entry["status"] = "device"
-        result[result.index(twin)] = mdns_entry
+        selected = mdns_entry if mdns_entry["connected"] or not address_entry["connected"] else address_entry
+        selected["address"] = address
+        selected["wireless"] = True
+        result[result.index(twin)] = selected
     return result
 
 
@@ -957,8 +968,9 @@ def _scrcpy_args(opts: dict) -> list[str]:
 
 
 def _start_scrcpy(args: list[str], device: str, kind: str, app: str = "", label: str = "") -> dict:
-    if not SCRCPY:
-        return {"ok": False, "message": "scrcpy not installed (Fedora: sudo dnf install scrcpy)"}
+    compatibility = scrcpy_compatibility()
+    if not compatibility["compatible"]:
+        return {"ok": False, "message": compatibility["summary"]}
 
     command = [SCRCPY, "-s", device] + args
     handle, log_path = tempfile.mkstemp(prefix="androlaunch-scrcpy-", suffix=".log")
@@ -1528,33 +1540,54 @@ def action_history(args: dict) -> dict:
     return {"ok": True, "data": state.get("previous", [])}
 
 
+def _clipboard_companion(device: str) -> Result:
+    result = adb_shell("pm path ch.pete.adbclipboard", device=device)
+    if not result.ok:
+        return result
+    if "package:" not in result.out:
+        return Result(False, "", "Install and open AdbClipboard (ch.pete.adbclipboard) on Android first. Clipboard transfer is opt-in and requires that companion app.")
+    return result
+
+
 def action_clipboard_send(args: dict) -> dict:
     device = resolve_device(args.get("device", ""))
     text = str(args.get("text", ""))
     if not device or not text:
         return {"ok": False, "message": "No device/text"}
-    quoted = shlex.quote(text)
+    companion = _clipboard_companion(device)
+    if not companion.ok:
+        return {"ok": False, "message": companion.text()}
     res = adb_shell(
-        f"am broadcast -a ch.pete.adbclipboard.set -e text {quoted} || input text {quoted}",
+        "am broadcast -a ch.pete.adbclipboard.WRITE "
+        "-n ch.pete.adbclipboard/.WriteReceiver -e text " + shlex.quote(text),
         device=device,
         timeout=30,
     )
-    return {"ok": res.ok, "message": "Text sent to Android clipboard" if res.ok else (res.text() or "Failed to send text")}
+    ok = res.ok and "Broadcast completed" in res.out and "Exception" not in res.out + res.err
+    return {"ok": ok, "message": "Clipboard write requested on Android. No text was typed into the foreground app."
+            if ok else (res.text() or "The clipboard companion did not accept the request")}
 
 
 def action_clipboard_get(args: dict) -> dict:
     device = resolve_device(args.get("device", ""))
     if not device:
         return {"ok": False, "message": "No device connected"}
-    res = adb_shell("am broadcast -a ch.pete.adbclipboard.get", device=device, timeout=30)
-    return {"ok": res.ok, "data": {"text": res.out.strip()}, "message": res.out.strip() or "No clipboard data"}
+    companion = _clipboard_companion(device)
+    if not companion.ok:
+        return {"ok": False, "message": companion.text()}
+    res = adb_shell("cat /sdcard/Android/data/ch.pete.adbclipboard/files/clipboard.txt", device=device, timeout=30)
+    if not res.ok:
+        return {"ok": False, "message": "No readable clipboard export. Open AdbClipboard, allow its overlay permission and tap its floating window on Android to export the clipboard, then try again. Android may restrict access to the export file.", "error": res.text()}
+    return {"ok": True, "data": {"text": res.out},
+            "message": "Loaded the companion's last clipboard export into the text field; the desktop clipboard was not changed."}
 
 
 def action_version(args: dict) -> dict:
     return {
         "ok": True,
         "message": f"AndroLaunch {VERSION}",
-        "data": {"version": VERSION, "adb": ADB, "scrcpy": SCRCPY},
+        "data": {"version": VERSION, "adb": ADB, "scrcpy": SCRCPY,
+                 "scrcpyCompatibility": scrcpy_compatibility()},
     }
 
 

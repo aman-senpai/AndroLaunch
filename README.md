@@ -4,17 +4,21 @@
   <img src="https://github.com/user-attachments/assets/1da15d00-ab8a-4afb-8d26-fd23ae3a3cda" alt="AndroLaunch" width="150">
 </p>
 
-**AndroLaunch** is a professional and powerful cross-platform application (macOS, Windows & Linux) designed to give you effortless control over your Android devices using the power of ADB (Android Debug Bridge) and Scrcpy. Manage quick settings, launch apps, install APKs, and even mirror your device screen—all from one convenient spot.
+**AndroLaunch** connects your Android devices to your desktop using ADB and scrcpy. Mirror your screen, manage apps, and move files through native macOS, Windows, and KDE Plasma interfaces. Developer tools remain available without getting in the way of everyday tasks.
 
 ## 🚀 Key Features at a Glance
 
-| Category                 | Features                                                                                        | New in Latest Release                                                                      |
-| :----------------------- | :---------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------- |
-| **Setup & Connectivity** | First-launch onboarding wizard, automatic device detection, ADB status monitoring.             | **Onboarding Wizard**, **Wireless Pairing via QR Code**, dedicated ADB Shell terminal.      |
-| **Quick Controls**       | Toggle Wi-Fi, Bluetooth, Mobile Data, Location, DND, Auto-Rotate. Adjust volume and brightness. | **Uninstall Apps**, **Clear App Data**, install APKs from file.                            |
-| **App & System**         | List and launch installed apps, system reboot (normal, bootloader, recovery).                   | Improved app search and native menu integration.                                           |
-| **Screen Mirroring**     | Full device screen mirroring with custom resolution.                                            | **Flex Display**, **Camera Torch & Zoom**, **Aspect Ratio Lock**, **Custom Background**, **Keep Active**, **Render Fit**. |
-| **Productivity**         | Clipboard sync, command execution, file management.                                           | **Bi-directional Clipboard Sync** (Mac/PC $leftrightarrow$ Android).                          |
+| Workflow | What you can do |
+| :-- | :-- |
+| Connect | Detect USB devices, authorize debugging, and pair wirelessly with QR or a pairing code. |
+| Control | Open device apps, change supported Android settings, and manage installed APKs. |
+| Mirror | Mirror the display or camera, choose a quality preset, and adjust advanced settings when needed. |
+| Transfer | Browse device files, upload, and download. Windows includes a transfer queue, measured progress where available, cancellation, conflict choices, and failed-item retry. |
+| Capture on Windows | Save PNG screenshots, copy them to the clipboard, or record an MP4 with explicit stop/save controls. |
+| Quick access on Windows | Search actions with **Ctrl+K**, save favorite apps/actions/commands, and revisit recent actions. |
+| Develop | Access shell, Logcat, saved commands, reboot modes, and optional Android emulators. |
+
+Platform capabilities differ; Windows capture/quick actions and the transfer queue described below are not claims of identical features on macOS or KDE.
 
 ## 🛠️ Setup: Get Started in Minutes
 
@@ -40,7 +44,7 @@ Homebrew 5+ asks you to trust a third-party tap the first time: accept the promp
 
 **Option B — Manual download**
 
-1.  **Launch**: Download the macOS build (`v<version>-macos.zip`) from [Releases](https://github.com/aman-senpai/AndroLaunch/releases), move AndroLaunch.app to Applications, and run.
+1.  **Launch**: Download the [macOS v0.3.9 build](https://github.com/aman-senpai/AndroLaunch/releases/download/v0.3.9/v0.3.9-macos.zip), move AndroLaunch.app to Applications, and run. This remains the latest published macOS binary; v0.4.0 includes macOS source improvements but no newly built macOS application.
 
 2.  **Onboarding Wizard**: On first launch, AndroLaunch guides you through dependency setup with an interactive onboarding window:
     - Automatically detects existing ADB and scrcpy installations
@@ -58,22 +62,30 @@ Homebrew 5+ asks you to trust a third-party tap the first time: accept the promp
 
 ### Windows Installation
 
-1.  **Install ADB** (required): We recommend using **Scoop** or **Chocolatey**:
-    - **Scoop**: `scoop install adb`
-    - **Chocolatey**: `choco install adb`
-
-2.  **Install scrcpy** (for screen mirroring): We recommend using **Scoop** or **Chocolatey**:
-    - **Scoop**: `scoop install scrcpy`
-    - **Chocolatey**: `choco install scrcpy`
-
-    > **Note**: Requires scrcpy v4.0+ for all features.
-
-3.  **Launch**: download [`AndroLaunch-0.3.9-windows-x64-setup.exe`](https://github.com/aman-senpai/AndroLaunch/releases/download/v0.3.9/AndroLaunch-0.3.9-windows-x64-setup.exe) from [Releases](https://github.com/aman-senpai/AndroLaunch/releases/tag/v0.3.9). The per-user installer requires no administrator privileges. Alternatively, extract **all** of `v0.3.9-windows.zip` and run `AndroLaunch/AndroLaunch.WinUI.exe`; do not move the executable out of that folder.
+1. **Install AndroLaunch 0.4.0** using the [Windows x64 installer](https://github.com/aman-senpai/AndroLaunch/releases/download/v0.4.0/AndroLaunch-0.4.0-windows-x64-setup.exe). No administrator privileges are required. Alternatively, extract the entire [portable ZIP](https://github.com/aman-senpai/AndroLaunch/releases/download/v0.4.0/v0.4.0-windows.zip) and run `AndroLaunch/AndroLaunch.WinUI.exe`; keep its companion files together.
+2. **Open Setup** to detect ADB and scrcpy. Install missing dependencies with the offered **winget** actions, or use the linked official downloads. Scoop and Chocolatey installations are also detected.
+3. **Connect a device** using the USB instructions below, then refresh Setup. Unauthorized and offline devices have recovery guidance. Finish requires an authorized device, or explicitly choose **Skip for now**.
+4. **Mirror** with scrcpy **4.0 or newer**. Setup checks the actual executable version, including a configured override. Missing or unsupported scrcpy does not prevent ordinary ADB app/file management.
 
 The Windows app uses **WinUI 3**: native navigation, menus, dialogs, system light/dark styling and a Mica backdrop. It includes device controls and mirroring configuration, app management and APK installation/export, a file browser, an Android emulator manager, QR/manual wireless pairing, saved commands, preferences and dependency onboarding. Android SDK command-line tools and the emulator are required only for AVD management; configure their paths in Settings.
 The native Windows title bar follows the same system app mode and updates live when Windows switches between light and dark.
 
 The Windows 10 (1809+) / Windows 11 x64 packages include .NET and Windows App SDK; neither runtime needs a separate installation. The notification-area icon is the same monochrome Android mark as the macOS menu bar, embedded in light/dark variants. Windows may initially put it under **Hidden icons**; drag it onto the taskbar to pin it. Closing the main window leaves AndroLaunch running in the tray; choose **Exit** to quit.
+
+[Release notes](https://github.com/aman-senpai/AndroLaunch/releases/tag/v0.4.0) · [SHA-256 checksums](https://github.com/aman-senpai/AndroLaunch/releases/download/v0.4.0/SHA256SUMS.txt)
+
+To verify a download in PowerShell, run `Get-FileHash .\AndroLaunch-0.4.0-windows-x64-setup.exe -Algorithm SHA256` (or use the ZIP filename), then compare the result with `SHA256SUMS.txt`.
+
+#### Windows 0.4.0 workflows
+
+- **Devices:** Mirror, Apps, Files, and Capture stay prominent. Quick settings, background clipboard sharing, camera configuration, and developer/power actions expand when needed. Unauthorized/offline targets cannot run device actions. Separate ADB serials remain separate targets, including phones of the same model.
+- **Mirror presets:** Balanced, Best quality, Low bandwidth, and Presentation explain their quality/bandwidth tradeoffs. Presets and custom mirror/camera options persist per device. Manual changes become Custom.
+- **Files:** upload files/folders or download selections through a queue. Existing destinations require **Overwrite**, **Skip**, or **Rename**. Transfers stage beside the destination before committing; cancellation keeps earlier completed items and attempts to remove incomplete staging data. Cleanup failures identify any retained temporary path.
+- **Folder overwrite means replacement, not merge.** Linked upload sources and downloaded directory trees containing symbolic links are rejected. Failed-only retry does not repeat successful, skipped, or cancelled items. Progress shows measured bytes/rate/ETA when available; otherwise adb percentages or an indeterminate state. **Show in folder** opens the download location.
+- **Capture:** choose a save directory and filename prefix; timestamps and unique suffixes prevent filename collisions. Screenshots save as PNG and can be copied or opened. Recording opens a scrcpy window and saves MP4; use **Stop and save recording** or close that recording window to finalize. Do not unplug the device before saving. Protected content may not be capturable. Capture recording does not enable clipboard sharing.
+- **Quick actions:** **Ctrl+K** searches navigation, connected-device actions, saved commands, and favorite apps. Use **Include installed apps** to search the full app catalog. Favorites and recent actions are stored locally. Select the target device explicitly when several are connected.
+- **Shortcuts:** **Ctrl+1/2/3** opens Devices/Apps/Files; **Ctrl+M** mirrors the selected authorized device; **Ctrl+Shift+S** opens Capture; **Ctrl+F** focuses app search on the Apps page.
+- **Settings:** Android SDK/emulator paths and manual tool overrides are optional collapsed sections. SDK installation is not required for managing a physical device.
 
 **Build on Windows:** install the .NET 8 SDK, Visual Studio Windows App SDK/WinUI build prerequisites and Inno Setup 6. Then run:
 
@@ -82,7 +94,9 @@ dotnet build windows/AndroLaunch.WinUI/AndroLaunch.WinUI.csproj -c Release
 ./scripts/publish-windows.ps1 -Iscc 'C:/Program Files (x86)/Inno Setup 6/ISCC.exe'
 ```
 
-Release outputs are written to `build/windows/`. The Windows release is unsigned; Windows SmartScreen may warn when launching it.
+Windows release artifacts are versioned under `build/windows/v<version>/`: an unpackaged `AndroLaunch/` directory, portable ZIP, and per-user setup executable. The publish script takes the version from the project and refuses to overwrite an existing release directory.
+
+The Windows release is unsigned; Windows SmartScreen may warn when launching it.
 
 ### Linux Installation (KDE Plasma 6)
 
@@ -113,6 +127,13 @@ See [`kde/README.md`](kde/README.md) for details, CLI reference and troubleshoot
 
 ### Step 2: Configure Your Android Device
 
+1. On Android, open **Settings → About phone**, then tap **Build number** seven times to enable Developer options (the exact path varies by manufacturer).
+2. Enable **USB debugging** in Developer options. Connect a data-capable USB cable, unlock the phone, and approve the computer's RSA fingerprint prompt.
+3. Refresh devices in AndroLaunch. If authorization is missing, reconnect the cable and look for the prompt. Revoke USB debugging authorizations and authorize again only if necessary.
+4. For wireless debugging on Android 11+, keep both devices on the same trusted network and use **Wireless pairing**. Use the pairing screen's port/code, not the separate connection port.
+
+ADB grants powerful access to your device. Authorize only computers you trust and disable debugging when it is no longer needed. Device manufacturers and Android versions restrict some settings; unavailable or unconfirmed actions should be handled on the phone directly.
+
 -----
 
 ## ✨ Features In-Depth
@@ -129,8 +150,8 @@ Manage your device's core functions directly from your Mac menu bar:
 ### 🔌 Seamless Connectivity
 
   * **Automatic Setup**: AndroLaunch automatically discovers ADB from common install locations (Homebrew, Android Studio) and manages the ADB daemon.
-  * **New! Wireless Pairing**: Connect your Android device wirelessly to your Mac using a simple **QR Code scan**—no cables required after the initial setup.
-  * **New! ADB Shell**: Open a dedicated terminal for the selected device to execute custom ADB commands directly.
+  * **Wireless Pairing**: Connect through Android's wireless-debugging QR or pairing-code flow.
+  * **ADB Shell**: Open a dedicated terminal for the selected device to execute custom ADB commands directly.
 
 ### 📂 App Control and Installation
 
@@ -139,9 +160,9 @@ Control your installed applications and manage APK files effortlessly:
   * **App List and Search**: Browse all installed apps with a quick search function.
   * **Launch Apps**: Open any app instantly from the menu.
   * **App Windows**: Open an app in its own resizable window on a scrcpy virtual display. On Android 12–13 the app is instead opened on the mirrored screen (foreground), because the platform SystemUI crashes on such virtual displays and locks the device.
-  * **New! App Uninstall**: Remove unwanted apps with a confirmation dialog.
-  * **New! Clear App Data**: Reset an application to its initial state by clearing all its saved data.
-  * **New! Install APK**: Drag and drop or select an APK file to install it directly onto the connected device.
+  * **App Uninstall**: Remove an app after confirming the target and consequences.
+  * **Clear App Data**: Permanently reset an app's local data; this is not an undoable action.
+  * **Install APK**: Select or drop an APK to install it on the intended device.
 
 ### 🖥️ Full Screen Mirroring (via Scrcpy)
 
@@ -151,20 +172,22 @@ Mirror your Android screen to your Mac with advanced options:
   * **Borderless Mode**: For a cleaner, more integrated view.
   * **Camera Mirroring**: Preview your device's camera (front or back) in a separate window with custom FPS and resolution settings.
   * **Audio Toggle**: Choose to mirror the audio from your device to your Mac.
-  * **🔒 Aspect Ratio Lock**: Window automatically maintains device aspect ratio when resizing (disable with `--no-aspect-ratio-lock`).
-  * **🎨 Custom Background**: Set any background color with hex code (e.g., `--background-color=#234567`). Default is now dark gray instead of black.
-  * **🔋 Keep Active**: Prevent device sleep without changing global settings (`--keep-active`).
-  * **📐 Flex Display**: Resize virtual display dynamically with the window (`--flex-display` / `-x`).
-  * **📸 Camera Torch & Zoom**: Control camera flash (`--camera-torch`) and zoom level (`--camera-zoom=1.5`) for camera mirroring.
-  * **📏 Render Fit**: Choose how content fits the window: `contain`, `cover`, `fit-width`, `fit-height`.
-  * **🔌 Disconnected Indicator**: Shows a disconnect icon for 2 seconds before closing, so you know the connection dropped.
+  * **Window behavior**: Configure borderless presentation and supported aspect-ratio behavior.
+  * **Quality presets**: Choose an outcome first; tune resolution, frame rate, and bitrate under advanced settings.
+  * **Virtual displays**: Open supported app windows or use flexible display sizing where the Android version permits it.
+  * **Camera settings**: Choose facing, frame rate, and size according to device capabilities.
 
-### 📋 Bi-directional Clipboard Sync
+Advanced options vary by platform and scrcpy version. A successful launch also depends on Android authorization, device encoders, and camera permissions.
 
-This is a massive productivity booster:
+### Clipboard sharing
 
-  * **Copy/Paste Mac $leftrightarrow$ Android**: Text copied on your Mac is instantly available on your Android device, and vice-versa.
-  * **Note**: For **Android $rightarrow$ Mac** synchronization, you **must** install the companion app, [**AdbClipboard**](https://play.google.com/store/apps/details?id=ch.pete.adbclipboard), on your Android device.
+**Mirror-session forwarding** belongs to scrcpy and applies while its session runs. It is separate from any background clipboard bridge.
+
+On Windows, the optional **Background clipboard bridge** checks for the [ADB Clipboard companion](https://play.google.com/store/apps/details?id=ch.pete.adbclipboard) before enabling PC-to-Android delivery. Its enabled indicator records the requested state, not verified delivery or helper-process health. Pause it explicitly to stop background sharing for that device.
+
+The KDE console provides explicit **Send desktop text** and **Read last Android export** actions through the companion. Reading an export is not live synchronization: Android restrictions may require opening/tapping the companion first, and access to its exported file may be restricted.
+
+Clipboard contents may contain passwords or other sensitive text. Enable sharing only for a trusted device. See each platform's controls for its scope and companion requirements.
 
 -----
 
@@ -182,9 +205,10 @@ This is a massive productivity booster:
 
 ## License 📄
 
-This project is licensed under the MIT License.
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPLv3)**. See [LICENSE](LICENSE).
 
 -----
 
-**Powered By**:
-[<img src="https://github.com/Genymobile/scrcpy/raw/master/app/data/icon.svg" width=25>](https://github.com/Genymobile/scrcpy)
+**Powered by [scrcpy](https://github.com/Genymobile/scrcpy)**
+
+<a href="https://github.com/Genymobile/scrcpy"><img src="https://raw.githubusercontent.com/Genymobile/scrcpy/master/app/data/scrcpy.png" alt="scrcpy" width="32" height="32"></a>

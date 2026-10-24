@@ -12,7 +12,7 @@ namespace AndroLaunch.WinUI.Dialogs
         public static async System.Threading.Tasks.Task ShowAsync()
         {
             Version? version = Assembly.GetExecutingAssembly().GetName().Version;
-            string versionText = version is null ? "0.3.9" : version.ToString(3);
+            string versionText = version is null ? "0.4.0" : version.ToString(3);
 
             var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
             header.Children.Add(new Image
@@ -54,7 +54,7 @@ namespace AndroLaunch.WinUI.Dialogs
                 TextWrapping = TextWrapping.Wrap
             });
             content.Children.Add(link);
-            content.Children.Add(new TextBlock { Text = "MIT License", Opacity = 0.6 });
+            content.Children.Add(new TextBlock { Text = "GNU Affero General Public License v3.0", Opacity = 0.6, TextWrapping = TextWrapping.Wrap });
 
             var dialog = new ContentDialog
             {

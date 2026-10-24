@@ -21,6 +21,11 @@ namespace AndroLaunch.WinUI.Tray
             var flyout = new MenuFlyout();
             flyout.Items.Add(new MenuFlyoutItem { Text = "AndroLaunch", IsEnabled = false });
             flyout.Items.Add(Create(flyout, "Open AndroLaunch", () => Navigate("devices")));
+            flyout.Items.Add(Create(flyout, "Quick actions…", async () =>
+            {
+                await ShowMainWindowAsync();
+                await CommandPaletteDialog.ShowAsync();
+            }));
             flyout.Items.Add(new MenuFlyoutSeparator());
             var devices = new MenuFlyoutSubItem { Text = "Devices" };
             devices.Items.Add(new MenuFlyoutItem { Text = "Loading devices…", IsEnabled = false });
@@ -170,31 +175,39 @@ namespace AndroLaunch.WinUI.Tray
             string serial = device.Serial;
             var menu = new MenuFlyoutSubItem { Text = device.Name };
             ToolTipService.SetToolTip(menu, serial);
-            menu.Items.Add(Create(flyout, "Mirror screen", () => Task.Run(() => AdbHelper.MirrorScreen(serial))));
+            menu.Items.Add(Create(flyout, "Mirror screen", async () =>
+            {
+                var compatibility = await ToolCompatibility.CheckScrcpyAsync();
+                if (!compatibility.IsCompatible) throw new InvalidOperationException(compatibility.Summary);
+                MirrorPresetStore.Restore(serial);
+                await Task.Run(() => AdbHelper.MirrorScreen(serial));
+            }));
             menu.Items.Add(Create(flyout, "Apps and APK installation", () => Navigate("apps", serial)));
             menu.Items.Add(Create(flyout, "Browse files", () => Navigate("files", serial)));
             menu.Items.Add(Create(flyout, "Device controls and configuration", () => Navigate("devices", serial)));
+            menu.Items.Add(Create(flyout, "Capture screen…", async () =>
+            {
+                await ShowMainWindowAsync("devices", serial);
+                await CaptureDialog.ShowAsync(serial);
+            }));
+            menu.Items.Add(Create(flyout, "Mirror camera", async () =>
+            {
+                var compatibility = await ToolCompatibility.CheckScrcpyAsync();
+                if (!compatibility.IsCompatible) throw new InvalidOperationException(compatibility.Summary);
+                var info = await Task.Run(() => AdbHelper.GetDeviceInfo(serial));
+                if (info.ApiLevel < 31) throw new InvalidOperationException("Camera mirroring needs Android 12 or newer. Select this device in Devices for details.");
+                MirrorPresetStore.Restore(serial);
+                await Task.Run(() => AdbHelper.MirrorCamera(serial));
+            }));
 
-            var tools = new MenuFlyoutSubItem { Text = "Quick actions" };
-            tools.Items.Add(Create(flyout, "Mirror camera", () => Task.Run(() => AdbHelper.MirrorCamera(serial))));
+            var tools = new MenuFlyoutSubItem { Text = "Developer tools" };
             tools.Items.Add(Create(flyout, "Open shell", () => Task.Run(() => AdbHelper.OpenShell(serial))));
             tools.Items.Add(Create(flyout, "Open logcat", () => Task.Run(() => AdbHelper.OpenLogcat(serial))));
-            var clipboard = new ToggleMenuFlyoutItem
-            {
-                Text = "Clipboard sync",
-                IsChecked = ClipboardSyncService.IsActive(serial)
-            };
-            clipboard.Click += (_, _) =>
-            {
-                bool enabled = clipboard.IsChecked;
-                AfterClosing(flyout, () => Task.Run(() => ClipboardSyncService.Toggle(serial, enabled)),
-                    "Could not change clipboard sync");
-            };
-            tools.Items.Add(clipboard);
+            menu.Items.Add(Create(flyout, "Clipboard sharing settings…", () => Navigate("devices", serial)));
             tools.Items.Add(Create(flyout, "Reboot…", async () =>
             {
                 await ShowMainWindowAsync("devices", serial);
-                if (await Ui.ConfirmAsync("Reboot device", $"Reboot {device.Name}?", "Reboot"))
+                if (await Ui.ConfirmAsync("Reboot device", $"Reboot {device.Name} ({serial})? Active work on this device will be interrupted.", "Reboot"))
                 {
                     await Task.Run(() => AdbHelper.Reboot(serial));
                 }
@@ -209,7 +222,7 @@ namespace AndroLaunch.WinUI.Tray
                     ToolTipService.SetToolTip(item, command.IsHostCommand ? "Runs on this PC" : "Runs on the Android device");
                     commandsMenu.Items.Add(item);
                 }
-                menu.Items.Add(commandsMenu);
+                tools.Items.Add(commandsMenu);
             }
             if (device.IsWireless)
             {

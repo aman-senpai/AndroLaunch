@@ -6,6 +6,10 @@ using Androlaunch.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using AndroLaunch.WinUI.Services;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Input;
+using Windows.System;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -29,12 +33,13 @@ namespace AndroLaunch.WinUI.Pages
         };
         private readonly TextBlock countText = new() { Opacity = 0.65 };
         private readonly Button launchButton = new() { Content = "Launch", IsEnabled = false };
-        private readonly Button clearButton = new() { Content = "Clear data", IsEnabled = false };
-        private readonly Button versionButton = new() { Content = "Version", IsEnabled = false };
-        private readonly Button permissionsButton = new() { Content = "Permissions", IsEnabled = false };
-        private readonly Button apkButton = new() { Content = "Get APK…", IsEnabled = false };
-        private readonly Button logcatButton = new() { Content = "Logcat", IsEnabled = false };
-        private readonly Button uninstallButton = new() { Content = "Uninstall", IsEnabled = false };
+        private readonly Button favoriteButton = new() { Content = "Add to favorites", IsEnabled = false };
+        private readonly MenuFlyoutItem clearButton = new() { Text = "Clear app data…", IsEnabled = false };
+        private readonly MenuFlyoutItem versionButton = new() { Text = "App version", IsEnabled = false };
+        private readonly MenuFlyoutItem permissionsButton = new() { Text = "Permissions", IsEnabled = false };
+        private readonly MenuFlyoutItem apkButton = new() { Text = "Export APK…", IsEnabled = false };
+        private readonly MenuFlyoutItem logcatButton = new() { Text = "Developer: Open Logcat", IsEnabled = false };
+        private readonly MenuFlyoutItem uninstallButton = new() { Text = "Uninstall app…", IsEnabled = false };
         private readonly Button installButton = new() { Content = "Install APK…", IsEnabled = false };
 
         private List<AdbHelper.AppInfo> allApps = new();
@@ -44,6 +49,11 @@ namespace AndroLaunch.WinUI.Pages
         {
             Content = BuildContent();
             Loaded += async (_, _) => await LoadDevicesAsync();
+            AutomationProperties.SetName(search, "Search installed apps, Control F");
+            AutomationProperties.SetName(deviceCombo, "Target device for app actions");
+            var find = new KeyboardAccelerator { Key = VirtualKey.F, Modifiers = VirtualKeyModifiers.Control };
+            find.Invoked += (_, args) => { search.Focus(FocusState.Keyboard); args.Handled = true; };
+            KeyboardAccelerators.Add(find);
         }
 
         private UIElement BuildContent()
@@ -97,12 +107,18 @@ namespace AndroLaunch.WinUI.Pages
                 HorizontalAlignment = HorizontalAlignment.Left
             };
             actions.Children.Add(launchButton);
-            actions.Children.Add(clearButton);
-            actions.Children.Add(versionButton);
-            actions.Children.Add(permissionsButton);
-            actions.Children.Add(apkButton);
-            actions.Children.Add(logcatButton);
-            actions.Children.Add(uninstallButton);
+            actions.Children.Add(favoriteButton);
+            var more = new Button { Content = "More actions" };
+            var menu = new MenuFlyout();
+            menu.Items.Add(versionButton);
+            menu.Items.Add(permissionsButton);
+            menu.Items.Add(apkButton);
+            menu.Items.Add(logcatButton);
+            menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(clearButton);
+            menu.Items.Add(uninstallButton);
+            more.Flyout = menu;
+            actions.Children.Add(more);
             searchRow.Children.Add(actions);
             Grid.SetRow(searchRow, 2);
             root.Children.Add(searchRow);
@@ -138,6 +154,16 @@ namespace AndroLaunch.WinUI.Pages
             root.Children.Add(footer);
 
             launchButton.Click += async (_, _) => await LaunchSelectedAsync();
+            favoriteButton.Click += async (_, _) =>
+            {
+                if (SelectedApp is not { } app || Serial is not string serial) return;
+                try
+                {
+                    QuickAccessStore.ToggleFavorite($"app:{serial}:{app.PackageName}");
+                    UpdateButtons();
+                }
+                catch (Exception ex) { await Ui.ShowErrorAsync("Favorite was not saved", ex.Message); }
+            };
             clearButton.Click += async (_, _) => await ClearSelectedAsync();
             versionButton.Click += async (_, _) => await ShowVersionAsync();
             permissionsButton.Click += async (_, _) => await ShowPermissionsAsync();
@@ -164,7 +190,7 @@ namespace AndroLaunch.WinUI.Pages
                 {
                     deviceCombo.Items.Add(new ComboBoxItem
                     {
-                        Content = device.Name,
+                        Content = $"{device.Name} • {device.Serial}",
                         Tag = device.Serial
                     });
                 }
@@ -268,6 +294,9 @@ namespace AndroLaunch.WinUI.Pages
             installButton.IsEnabled = Serial is not null && !loading;
             bool has = SelectedApp is not null && !loading;
             launchButton.IsEnabled = has;
+            favoriteButton.IsEnabled = has;
+            favoriteButton.Content = SelectedApp is { } favoriteApp && Serial is string favoriteSerial &&
+                QuickAccessStore.IsFavorite($"app:{favoriteSerial}:{favoriteApp.PackageName}") ? "Remove favorite" : "Add to favorites";
             clearButton.IsEnabled = has;
             versionButton.IsEnabled = has;
             permissionsButton.IsEnabled = has;
@@ -285,6 +314,9 @@ namespace AndroLaunch.WinUI.Pages
 
             try
             {
+                var compatibility = await ToolCompatibility.CheckScrcpyAsync();
+                if (!compatibility.IsCompatible) throw new InvalidOperationException(compatibility.Summary);
+                MirrorPresetStore.Restore(serial);
                 SetStatus("Launching", app.Name, InfoBarSeverity.Informational);
                 await Task.Run(() => AdbHelper.LaunchApp(serial, app.PackageName));
                 SetStatus("Launched", app.Name, InfoBarSeverity.Success);
@@ -302,7 +334,7 @@ namespace AndroLaunch.WinUI.Pages
                 return;
             }
 
-            if (!await Ui.ConfirmAsync("Clear app data", $"Clear all data for {app.Name}?", "Clear data"))
+            if (!await Ui.ConfirmAsync("Clear app data", $"Clear all data for {app.Name} ({app.PackageName}) on {DeviceIdentity(serial)}?\n\nAccounts, preferences, and local app data will be permanently removed. This cannot be undone.", "Clear data"))
             {
                 return;
             }
@@ -421,7 +453,7 @@ namespace AndroLaunch.WinUI.Pages
                 return;
             }
 
-            if (!await Ui.ConfirmAsync("Uninstall app", $"Uninstall {app.Name}?\n\n{app.PackageName}", "Uninstall"))
+            if (!await Ui.ConfirmAsync("Uninstall app", $"Uninstall {app.Name} ({app.PackageName}) from {DeviceIdentity(serial)}?\n\nThe app and its local data will be removed. This cannot be undone.", "Uninstall"))
             {
                 return;
             }
@@ -453,6 +485,9 @@ namespace AndroLaunch.WinUI.Pages
                 _ = Ui.ShowErrorAsync(title, ex.Message);
             }
         }
+
+        private string DeviceIdentity(string serial) =>
+            $"{(deviceCombo.SelectedItem as ComboBoxItem)?.Content ?? "Android device"} (serial: {serial})";
 
         private void SetStatus(string title, string message, InfoBarSeverity severity)
         {

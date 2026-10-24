@@ -79,29 +79,9 @@ namespace Androlaunch.Core
 
                             info.Name = string.IsNullOrEmpty(info.Model) ? serial : info.Model;
 
-                            // Deduplicate physical devices while remembering which transport is best.
-                            var deviceKey = string.IsNullOrEmpty(info.Product) && string.IsNullOrEmpty(info.Model)
-                                ? serial
-                                : $"{info.Product}|{info.Model}";
-
-                            int GetPriority(AdbDeviceInfo device) {
-                                int statusPriority = device.Status == "device" ? 10 : 0;
-                                if (device.Serial.Contains("_adb-tls-connect")) return statusPriority + 2; // mDNS
-                                if (device.Serial.Contains(".") || device.Serial.Contains(":")) return statusPriority + 1; // IP
-                                return statusPriority + 3; // USB / Hardware (likely no dots or underscores)
-                            }
-
-                            if (deviceDictionary.TryGetValue(deviceKey, out var existing))
-                            {
-                                if (GetPriority(info) > GetPriority(existing))
-                                {
-                                    deviceDictionary[deviceKey] = info;
-                                }
-                            }
-                            else
-                            {
-                                deviceDictionary[deviceKey] = info;
-                            }
+                            // A model/product is not a physical identity: two identical phones
+                            // must remain separate targets. Keep transports explicit by serial.
+                            deviceDictionary[serial] = info;
                         }
                     }
                 }
@@ -573,9 +553,10 @@ namespace Androlaunch.Core
                 var args = $"-s {serial} --window-title \"AndroLaunch - {serial}\"";
 
                 if (!config.FlexDisplay && config.MaxSize > 0) args += $" -m {config.MaxSize}";
+                if (config.FlexDisplay) args += " --new-display --flex-display";
                 if (config.MaxFps > 0) args += $" --max-fps {config.MaxFps}";
                 if (config.BitRate > 0) args += $" --video-bit-rate {config.BitRate}M";
-                if (config.Orientation != "Auto") args += $" --lock-video-orientation {config.Orientation}";
+                if (config.Orientation != "Auto") args += $" --capture-orientation=@{config.Orientation}";
                 if (config.Borderless) args += " --window-borderless";
                 if (!config.AudioEnabled) args += " --no-audio";
                 if (!config.ClipboardEnabled) args += " --no-clipboard-autosync";
@@ -603,7 +584,7 @@ namespace Androlaunch.Core
                 var args = $"-s {serial} --video-source=camera --window-title \"AndroLaunch Camera - {serial}\"";
 
                 if (!string.IsNullOrEmpty(facing) && facing != "Auto") args += $" --camera-facing={facing}";
-                if (config.CameraFps > 0) args += $" --max-fps {config.CameraFps}";
+                if (config.CameraFps > 0) args += $" --camera-fps={config.CameraFps}";
                 if (config.CameraSize > 0) args += $" -m {config.CameraSize}";
                 if (!string.IsNullOrEmpty(config.CameraAr) && config.CameraAr != "Auto") args += $" --camera-ar={config.CameraAr}";
                 if (!config.AudioEnabled) args += " --no-audio";

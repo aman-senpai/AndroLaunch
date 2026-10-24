@@ -12,6 +12,20 @@ extension StatusMenuController {
     func configureConfigMenu(_ menu: NSMenu, deviceID: String) {
         menu.removeAllItems()
 
+
+        let presetsItem = NSMenuItem(title: "Mirror Preset", action: nil, keyEquivalent: "")
+        let presetsMenu = NSMenu()
+        configureMirrorPresetsMenu(presetsMenu, deviceID: deviceID)
+        presetsItem.submenu = presetsMenu
+        menu.addItem(presetsItem)
+        let nextSessionItem = NSMenuItem(title: "Mirror settings apply to the next session", action: nil, keyEquivalent: "")
+        nextSessionItem.isEnabled = false
+        menu.addItem(nextSessionItem)
+        menu.addItem(.separator())
+
+        let advancedItem = NSMenuItem(title: "Advanced Mirror Settings", action: nil, keyEquivalent: "")
+        let advancedMenu = NSMenu()
+        advancedItem.submenu = advancedMenu
         // Resolution Submenu
         let resItem = NSMenuItem(title: "App Resolution", action: nil, keyEquivalent: "")
         resItem.image = NSImage(
@@ -21,13 +35,8 @@ extension StatusMenuController {
         let resMenu = NSMenu()
         configureResolutionMenu(resMenu, deviceID: deviceID)
         resItem.submenu = resMenu
-        menu.addItem(resItem)
+        advancedMenu.addItem(resItem)
 
-        menu.addItem(NSMenuItem.separator())
-
-        let mirroringHeader = NSMenuItem(title: "Mirroring", action: nil, keyEquivalent: "")
-        mirroringHeader.isEnabled = false
-        menu.addItem(mirroringHeader)
 
         // Mirroring Size Submenu
         let sizeItem = NSMenuItem(title: "Mirroring Size", action: nil, keyEquivalent: "")
@@ -38,7 +47,7 @@ extension StatusMenuController {
         let sizeMenu = NSMenu()
         configureMaxSizeMenu(sizeMenu, deviceID: deviceID)
         sizeItem.submenu = sizeMenu
-        menu.addItem(sizeItem)
+        advancedMenu.addItem(sizeItem)
 
         // Frame Rate Submenu
         let fpsItem = NSMenuItem(title: "Frame Rate", action: nil, keyEquivalent: "")
@@ -47,7 +56,7 @@ extension StatusMenuController {
         let fpsMenu = NSMenu()
         configureFrameRateMenu(fpsMenu, deviceID: deviceID)
         fpsItem.submenu = fpsMenu
-        menu.addItem(fpsItem)
+        advancedMenu.addItem(fpsItem)
 
         // Bit Rate Submenu
         let bitRateItem = NSMenuItem(title: "Bit Rate", action: nil, keyEquivalent: "")
@@ -56,20 +65,20 @@ extension StatusMenuController {
         let bitRateMenu = NSMenu()
         configureBitRateMenu(bitRateMenu, deviceID: deviceID)
         bitRateItem.submenu = bitRateMenu
-        menu.addItem(bitRateItem)
+        advancedMenu.addItem(bitRateItem)
 
         // Rotation Toggle
         let isCaptureOrientationEnabled = viewModel.isCaptureOrientationEnabled(for: deviceID)
         let captureOrientationItem = NSMenuItem()
         let captureOrientationView = ToggleMenuItemView(
-            title: "Rotation",
+            title: "Lock Rotation",
             icon: isCaptureOrientationEnabled ? "lock.rotation" : "lock.rotation.open",
             isOn: isCaptureOrientationEnabled
         ) { [weak self] isOn in
             self?.viewModel.toggleCaptureOrientation(for: deviceID)
         }
         captureOrientationItem.view = captureOrientationView
-        menu.addItem(captureOrientationItem)
+        advancedMenu.addItem(captureOrientationItem)
 
         // Borderless Toggle
         let isBorderlessEnabled = viewModel.isBorderlessEnabled(for: deviceID)
@@ -82,14 +91,15 @@ extension StatusMenuController {
             self?.viewModel.toggleBorderless(for: deviceID)
         }
         borderlessItem.view = borderlessView
-        menu.addItem(borderlessItem)
+        advancedMenu.addItem(borderlessItem)
+        menu.addItem(advancedItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        // Camera Section
-        let cameraHeader = NSMenuItem(title: "Camera", action: nil, keyEquivalent: "")
-        cameraHeader.isEnabled = false
-        menu.addItem(cameraHeader)
+        let cameraItem = NSMenuItem(title: "Camera Settings", action: nil, keyEquivalent: "")
+        let cameraMenu = NSMenu()
+        cameraItem.submenu = cameraMenu
+        menu.addItem(cameraItem)
 
         // Camera Facing
         let camFacingItem = NSMenuItem(title: "Camera Facing", action: nil, keyEquivalent: "")
@@ -98,7 +108,7 @@ extension StatusMenuController {
         let camFacingMenu = NSMenu()
         configureCameraFacingMenu(camFacingMenu, deviceID: deviceID)
         camFacingItem.submenu = camFacingMenu
-        menu.addItem(camFacingItem)
+        cameraMenu.addItem(camFacingItem)
 
         // Camera FPS
         let camFPSItem = NSMenuItem(title: "Camera FPS", action: nil, keyEquivalent: "")
@@ -107,7 +117,7 @@ extension StatusMenuController {
         let camFPSMenu = NSMenu()
         configureCameraFPSMenu(camFPSMenu, deviceID: deviceID)
         camFPSItem.submenu = camFPSMenu
-        menu.addItem(camFPSItem)
+        cameraMenu.addItem(camFPSItem)
 
         // Camera Size
         let camSizeItem = NSMenuItem(title: "Camera Size", action: nil, keyEquivalent: "")
@@ -117,7 +127,7 @@ extension StatusMenuController {
         let camSizeMenu = NSMenu()
         configureCameraSizeMenu(camSizeMenu, deviceID: deviceID)
         camSizeItem.submenu = camSizeMenu
-        menu.addItem(camSizeItem)
+        cameraMenu.addItem(camSizeItem)
 
         // Camera Aspect Ratio
         let camARItem = NSMenuItem(title: "Camera Aspect Ratio", action: nil, keyEquivalent: "")
@@ -126,7 +136,7 @@ extension StatusMenuController {
         let camARMenu = NSMenu()
         configureCameraARMenu(camARMenu, deviceID: deviceID)
         camARItem.submenu = camARMenu
-        menu.addItem(camARItem)
+        cameraMenu.addItem(camARItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -147,14 +157,72 @@ extension StatusMenuController {
         let isClipboardEnabled = viewModel.isClipboardEnabled(for: deviceID)
         let clipboardItem = NSMenuItem()
         let clipboardView = ToggleMenuItemView(
-            title: "Clipboard Sync",
+            title: "Share Text Clipboard",
             icon: "doc.on.clipboard",
             isOn: isClipboardEnabled
         ) { [weak self] isOn in
             self?.viewModel.toggleClipboard(for: deviceID)
         }
         clipboardItem.view = clipboardView
+        clipboardView.toolTip = "Opt-in for this device until app quit. Android to Mac uses scrcpy; automatic Mac to Android forwarding requires the ch.pete.adbclipboard companion. Clipboard text may include sensitive data."
         menu.addItem(clipboardItem)
+        let clipboardHelp = NSMenuItem(title: "About Clipboard Sharing…", action: #selector(showClipboardHelp), keyEquivalent: "")
+        clipboardHelp.target = self
+        menu.addItem(clipboardHelp)
+    }
+
+    private static let mirrorPresets: [(name: String, size: Int, fps: Int, bitRate: Int, help: String)] = [
+            ("Low Bandwidth", 1280, 30, 4, "1280 px longest edge, 30 fps, 4 Mbps. Uses less bandwidth and encoding work; less detail and motion smoothness."),
+            ("Balanced", 1920, 60, 8, "1920 px longest edge, 60 fps, 8 Mbps. A balance of detail, smoothness, and bandwidth."),
+            ("High Quality", 0, 60, 16, "Original resolution, 60 fps, 16 Mbps. More detail; higher bandwidth and device load.")
+    ]
+
+    private func configureMirrorPresetsMenu(_ menu: NSMenu, deviceID: String) {
+        var matchesPreset = false
+        for (index, preset) in Self.mirrorPresets.enumerated() {
+            let selected = !viewModel.isFlexDisplayEnabled(for: deviceID)
+                && viewModel.getMaxSize(for: deviceID) == preset.size
+                && viewModel.getMaxFPS(for: deviceID) == preset.fps
+                && viewModel.getBitRate(for: deviceID) == preset.bitRate
+            matchesPreset = matchesPreset || selected
+            let size = preset.size == 0 ? "Original" : "\(preset.size) px max"
+            let item = NSMenuItem(title: "\(preset.name) — \(size), \(preset.fps) fps, \(preset.bitRate) Mbps", action: #selector(applyMirrorPreset(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            item.representedObject = deviceID
+            item.state = selected ? .on : .off
+            item.toolTip = preset.help
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let custom = NSMenuItem(title: "Custom — adjust Advanced Mirror Settings", action: nil, keyEquivalent: "")
+        custom.state = matchesPreset ? .off : .on
+        custom.isEnabled = false
+        menu.addItem(custom)
+    }
+
+    @objc private func applyMirrorPreset(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String,
+              Self.mirrorPresets.indices.contains(sender.tag) else { return }
+        let preset = Self.mirrorPresets[sender.tag]
+        viewModel.setMaxSize(for: deviceID, size: preset.size)
+        viewModel.setMaxFPS(for: deviceID, fps: preset.fps)
+        viewModel.setBitRate(for: deviceID, bitRate: preset.bitRate)
+        if viewModel.isFlexDisplayEnabled(for: deviceID) {
+            viewModel.toggleFlexDisplay(for: deviceID)
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.updateDeviceSubmenu(for: deviceID)
+        }
+    }
+
+    @objc private func showClipboardHelp() {
+        let alert = NSAlert()
+        alert.messageText = "Share text with selected devices"
+        alert.informativeText = "Clipboard sharing is off by default and enabled per device until AndroLaunch quits. Every enabled device can receive text copied on this Mac, including passwords and other sensitive text.\n\nAndroid → Mac uses a background scrcpy session and depends on Android clipboard restrictions.\n\nAutomatic Mac → Android forwarding requires the Android companion package ch.pete.adbclipboard with its WriteReceiver enabled. AndroLaunch does not install or verify that companion. This toggle alone does not confirm delivery.\n\nTurn sharing off for each device when finished. Images and files are not shared."
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     func configureResolutionMenu(_ menu: NSMenu, deviceID: String) {

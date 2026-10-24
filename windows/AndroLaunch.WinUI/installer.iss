@@ -4,11 +4,14 @@
 #ifndef ReleaseDir
   #define ReleaseDir "..\..\build\windows"
 #endif
+#ifndef AppVersion
+  #define AppVersion "0.4.0"
+#endif
 
 [Setup]
 AppId={{C55DCA17-1B54-4FA6-932D-08EE92AD108A}
 AppName=AndroLaunch
-AppVersion=0.3.9
+AppVersion={#AppVersion}
 AppPublisher=AndroLaunch
 AppPublisherURL=https://github.com/aman-senpai/AndroLaunch
 DefaultDirName={localappdata}\Programs\AndroLaunch
@@ -19,8 +22,9 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
 OutputDir={#ReleaseDir}
-OutputBaseFilename=AndroLaunch-0.3.9-windows-x64-setup
+OutputBaseFilename=AndroLaunch-{#AppVersion}-windows-x64-setup
 SetupIconFile=Assets\app_icon.ico
+LicenseFile=..\..\LICENSE
 UninstallDisplayIcon={app}\AndroLaunch.WinUI.exe
 Compression=lzma2
 SolidCompression=yes

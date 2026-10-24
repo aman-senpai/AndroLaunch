@@ -51,6 +51,14 @@ ColumnLayout {
     ]
 
     spacing: Kirigami.Units.smallSpacing
+    Connections {
+        target: root.backend
+        function onActiveIdChanged() {
+            root.clipText = "";
+            root.output = "";
+        }
+    }
+
 
     // ---- helpers -----------------------------------------------------------
     function formatOutput(envelope) {
@@ -75,9 +83,12 @@ ColumnLayout {
         if (!command || command.trim().length === 0)
             return;
         running = true;
+        const requestedDevice = root.backend.activeId;
         root.backend.runShell(command, envelope => {
-            root.ranOk = !!(envelope && envelope.ok !== false);
-            root.output = root.formatOutput(envelope);
+            if (requestedDevice === root.backend.activeId) {
+                root.ranOk = !!(envelope && envelope.ok !== false);
+                root.output = root.formatOutput(envelope);
+            }
             root.running = false;
         });
     }
@@ -92,7 +103,7 @@ ColumnLayout {
             anchors.fill: parent
             iconName: "smartphone"
             message: "Connect a device to run commands"
-            hint: "ADB shell commands, presets, terminals and clipboard tools need an active device."
+            hint: root.backend.connectionGuidance
         }
     }
 
@@ -153,8 +164,13 @@ ColumnLayout {
                 PlasmaComponents3.ToolButton {
                     icon.name: "edit-copy"
                     enabled: root.output.length > 0
-                    onClicked: root.backend.sendClipboard(root.output)
-                    PlasmaComponents3.ToolTip.text: "Copy output to clipboard"
+                    Accessible.name: "Copy command output to desktop clipboard"
+                    onClicked: {
+                        outputArea.selectAll();
+                        outputArea.copy();
+                        outputArea.deselect();
+                    }
+                    PlasmaComponents3.ToolTip.text: "Copy output to desktop clipboard (not to Android)"
                 }
             }
 
@@ -186,7 +202,7 @@ ColumnLayout {
 
             GridLayout {
                 Layout.fillWidth: true
-                columns: 2
+                columns: scroller.availableWidth < Kirigami.Units.gridUnit * 22 ? 1 : 2
                 columnSpacing: Kirigami.Units.smallSpacing
                 rowSpacing: Kirigami.Units.smallSpacing
 
@@ -231,26 +247,24 @@ ColumnLayout {
             }
 
             SectionLabel {
-                text: "Clipboard"
+                text: "Manual clipboard transfer"
             }
 
-            RowLayout {
+            ColumnLayout {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.smallSpacing
 
                 PlasmaComponents3.TextField {
                     Layout.fillWidth: true
-                    placeholderText: "Text to copy to the device"
+                    placeholderText: "Text to send to Android (manual, companion required)"
                     text: root.clipText
                     enabled: root.backend.hasDevice
                     onTextEdited: root.clipText = text
                 }
 
                 ActionButton {
-                    Layout.fillWidth: false
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 9
                     iconName: "edit-copy"
-                    text: "Send to device"
+                    text: "Send text to Android"
                     enabled: root.backend.hasDevice && root.clipText.length > 0
                     onClicked: root.backend.sendClipboard(root.clipText)
                 }
@@ -258,7 +272,7 @@ ColumnLayout {
 
             ActionButton {
                 iconName: "edit-download"
-                text: "Get from device"
+                text: "Load Android's last clipboard export"
                 enabled: root.backend.hasDevice
                 onClicked: root.backend.getClipboard(text => {
                     root.clipText = text;
@@ -268,9 +282,16 @@ ColumnLayout {
             PlasmaComponents3.Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: "Reading the device clipboard requires the ADBClipboard companion app installed on Android."
+                text: "Opt-in only: install and open AdbClipboard (ch.pete.adbclipboard) on Android. To read, grant its overlay permission and tap its floating window first; this loads the last export, not a live clipboard. Sending writes through its explicit receiver and never types into another app. No automatic sync; loading leaves the desktop clipboard unchanged. Text travels over ADB and the companion keeps an export on the phone. Avoid secrets; desktop clipboard history may retain copied output."
                 font.pointSize: Kirigami.Theme.smallFont.pointSize
                 opacity: 0.55
+            }
+
+            PlasmaComponents3.Button {
+                text: "Clear transfer text"
+                enabled: root.clipText.length > 0
+                onClicked: root.clipText = ""
+                PlasmaComponents3.ToolTip.text: "Clears this field only, not the phone export or clipboard history"
             }
         }
     }

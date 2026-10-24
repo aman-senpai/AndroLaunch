@@ -9,6 +9,13 @@ import AppKit
 import SwiftUI
 
 extension StatusMenuController {
+
+    private func actionDeviceID(_ sender: Any) -> String? {
+        if let item = sender as? NSMenuItem {
+            return item.representedObject as? String
+        }
+        return (sender as? DeviceActionButton)?.deviceID
+    }
     
     @objc func refreshDevices() {
         viewModel.refresh()
@@ -39,17 +46,19 @@ extension StatusMenuController {
         }
     }
     
-    @objc func disconnectDevice(_ sender: NSButton) {
-        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+    @objc func disconnectDevice(_ sender: Any) {
+        if let deviceID = actionDeviceID(sender) {
             viewModel.disconnectDevice(deviceID: deviceID)
             if let menu = statusItem.menu { menu.cancelTracking() }
         }
     }
     
-    @objc func installAPK(_ sender: NSButton) {
-        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+    @objc func installAPK(_ sender: Any) {
+        if let deviceID = actionDeviceID(sender) {
             let openPanel = NSOpenPanel()
-            openPanel.title = "Select APK to Install"
+            let deviceName = viewModel.devices.first(where: { $0.id == deviceID })?.name ?? "Android device"
+            openPanel.title = "Install APK on \(deviceName)"
+            openPanel.message = "Target device: \(deviceName) (\(deviceID)). Choose an APK from a source you trust."
             openPanel.showsHiddenFiles = false
             openPanel.canChooseDirectories = false
             openPanel.canCreateDirectories = false
@@ -71,8 +80,8 @@ extension StatusMenuController {
         }
     }
     
-    @objc func launchShell(_ sender: NSButton) {
-        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+    @objc func launchShell(_ sender: Any) {
+        if let deviceID = actionDeviceID(sender) {
             
             print("DEBUG: Launching shell for device: \(deviceID)")
             
@@ -135,8 +144,8 @@ extension StatusMenuController {
         }
     }
     
-    @objc func launchLogcat(_ sender: NSButton) {
-        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+    @objc func launchLogcat(_ sender: Any) {
+        if let deviceID = actionDeviceID(sender) {
             
             print("DEBUG: Launching logcat for device: \(deviceID)")
             
@@ -189,8 +198,8 @@ extension StatusMenuController {
         }
     }
     
-    @objc func mirrorCamera(_ sender: NSButton) {
-        if let deviceButton = sender as? DeviceActionButton, let deviceID = deviceButton.deviceID {
+    @objc func mirrorCamera(_ sender: Any) {
+        if let deviceID = actionDeviceID(sender) {
             viewModel.mirrorCamera(deviceID: deviceID)
             if let menu = statusItem.menu { menu.cancelTracking() }
         }

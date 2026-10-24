@@ -28,6 +28,10 @@ final class DeviceMenuItemView: NSView {
     
     init(deviceName: String, isWireless: Bool) {
         super.init(frame: NSRect(x: 0, y: 0, width: 250, height: 20))
+        let connectionDescription = isWireless ? "Wireless" : "USB"
+        toolTip = "\(deviceName) — \(connectionDescription), authorized and ready"
+        setAccessibilityLabel("\(deviceName), \(connectionDescription), ready")
+        setAccessibilityHelp("Open this device’s submenu for mirroring, files, apps, and developer tools.")
         
         // Add hover effect view
         addSubview(hoverEffectView)

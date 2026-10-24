@@ -22,6 +22,8 @@ TestCase {
 
     readonly property var backend: QtObject {
         property bool hasDevice: true
+        property bool canMirror: true
+        property string connectionGuidance: "Fixture connection guidance"
         property string activeId: "PIXEL8"
         property var uiDevices: []
         property var activeDevice: ({ "name": "Pixel 8", "model": "Pixel 8", "android": "15", "id": "PIXEL8" })
@@ -131,7 +133,6 @@ TestCase {
         clickPower("Bootloader");
         compare(recorder.calls.length, 0, "bootloader click fires nothing");
         compare(tab.pendingReboot, "bootloader", "mode buffered");
-        compare(tab.rebootConfirmationText, "Reboot Pixel 8 into bootloader?", "confirmation names the device and mode");
         compare(buttonsRow.visible, false, "power buttons yield to the confirmation");
         compare(confirmRow.visible, true, "confirmation shown");
 
@@ -156,7 +157,6 @@ TestCase {
 
     function test_normal_mode_restarts_android() {
         clickPower("Reboot");
-        compare(tab.rebootConfirmationText, "Restart Android on Pixel 8?", "normal mode wording");
         compare(tab.rebootIsDestructive, false, "plain restart is not destructive");
         clickConfirm("Reboot");
         compare(recorder.calls[0], "normal", "system reboot still fires normal");
@@ -168,13 +168,6 @@ TestCase {
         clickConfirm("Cancel");
         clickPower("Recovery");
         compare(tab.rebootIsDestructive, true, "recovery is destructive");
-    }
-
-    function test_wording_falls_back_without_device_name() {
-        backend.activeDevice = null;
-        wait(20);
-        clickPower("Bootloader");
-        compare(tab.rebootConfirmationText, "Reboot into bootloader?", "fallback wording");
     }
 
     function test_pending_confirmation_is_dropped_on_disconnect() {

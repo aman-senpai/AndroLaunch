@@ -1,6 +1,6 @@
 # AndroLaunch for KDE Plasma (Linux)
 
-Android device manager for **KDE Plasma 6** on Fedora: a panel (menubar) widget plus an
+Android device manager for **KDE Plasma 6** on Linux: a panel widget plus an
 `androlaunch` command-line backend that drives `adb` and `scrcpy`.
 
 <p align="center">
@@ -38,24 +38,37 @@ From a checkout, run `./install.sh` in the repository root (it uses `kde/` direc
 | --- | --- | --- |
 | Plasma 6 (`kpackagetool6`, `plasmashell`) | `plasma-workspace` | the widget |
 | `adb` | `android-tools` | everything |
-| `scrcpy` (v2+) | `scrcpy` | mirroring, camera, app mirroring |
+| `scrcpy` (4.0+) | `scrcpy` | mirroring, camera, app mirroring; older versions are explicitly blocked |
 | `python3` | `python3` | the backend CLI |
 | `konsole` | `konsole` | interactive shell / logcat windows (optional) |
 
+Package names vary by distribution: Platform-Tools may be packaged as `adb` or
+`android-tools`. If your distribution does not provide it, install Google's
+[Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools).
+Install [scrcpy 4.0 or newer](https://github.com/Genymobile/scrcpy) separately if the
+distribution package is older. Ensure the binaries are on the **Plasma session's PATH**
+(a terminal-only shell alias is not enough), then use **Retry dependencies** in the popup.
+The backend also checks `~/Android/Sdk/platform-tools/adb`, `~/.local/bin/adb` and
+`~/.local/bin/scrcpy`. No privileged package-manager command runs from the widget.
+
+The optional emulator is a separate Android SDK component, not part of adb. Use Android
+Studio → SDK Manager → SDK Tools → Android Emulator, create a device in Device Manager,
+and put the SDK's `emulator` directory on the Plasma session's PATH.
+
 ## Using the widget
 
-Click the panel icon to open the popup. Its header is a single line naming the active device; the
-transport, battery percentage and Android version live on the device card below it, and the tab bar
-uses plain-language labels instead of the old `Quick`/`Pair`/`AVDs` names:
+Click the panel icon to open the popup. The Device, Apps, Wireless and Files tabs hold
+everyday actions. The **Developer tools** icon beside them reveals Console and Emulators;
+these features remain available without crowding the everyday navigation.
 
 | Tab | What it does |
 | --- | --- |
-| **Device** | device card (name, model, Android version, battery), device switcher, eight switch tiles (Wi-Fi, Bluetooth, data, dark mode, airplane, location, DND, auto-rotate — each shows the requested state until the phone echoes it back), brightness/volume sliders, mirror + camera + shell + logcat buttons, power (reboot / bootloader / recovery, each buffered behind a confirmation row that names the device), reconnect to previous devices |
-| **Apps** | search installed apps (labels always come from `scrcpy --list-apps`), **open an app in its own window**, mirror the phone screen with the app open, launch it on the device only, clear its data, uninstall (double confirmation), install an APK |
-| **Wireless** | wireless debugging: QR pairing, manual `ip:port` + 6-digit code, direct `adb connect`, switch a USB device to TCP/IP, disconnect |
-| **Files** | browse `/sdcard`, download, upload, create folders, delete (double confirmation) |
-| **Console** | run one-off ADB shell commands, presets (screenshot, IP, battery, memory, processes, storage), open an interactive shell or logcat in Konsole, clipboard sync |
-| **Emulators** | list and start Android Virtual Devices (needs the Android SDK emulator) |
+| **Device** | device identity/status, device switcher, eight switch tiles (Wi-Fi, Bluetooth, data, dark mode, airplane, location, DND, auto-rotate), brightness/volume sliders, mirror and camera buttons, device-targeted reboot/bootloader/recovery confirmation, reconnect to previous devices |
+| **Apps** | search installed apps, open an app in its own window, mirror the phone with an app open, launch on Android only, install an APK; clear-data and uninstall require a confirmation naming the app, package and device |
+| **Wireless** | QR pairing, manual `ip:port` + 6-digit code, direct `adb connect`, USB to TCP/IP, disconnect |
+| **Files** | browse `/sdcard`, download, upload, create folders; permanent deletion requires a confirmation naming the path and device, with Cancel and no pretend undo |
+| **Developer → Console** | one-off ADB shell commands, presets (screenshot, IP, battery, memory, processes, storage), interactive shell/logcat, manual companion-based clipboard transfer |
+| **Developer → Emulators** | list and start Android Virtual Devices (needs the Android SDK emulator) |
 
 The panel entry is the icon only — device name, connection type and battery level are in the
 tooltip (hover) and in the popup.
@@ -66,6 +79,38 @@ thick dark edge included, and stays legible on light and dark panels. (Panel app
 opposite of the panel's.) Right-click the widget → **Configure AndroLaunch** to change
 the backend path, the refresh interval and every scrcpy option (resolution, fps, bitrate, audio,
 borderless, stay-awake, virtual display, camera facing/torch/zoom).
+
+### Connection states and privacy
+
+Unauthorized devices remain visible in the switcher but cannot run device actions. Unlock
+Android and accept this computer's USB debugging RSA prompt; if it is missing, revoke USB
+debugging authorizations in Developer options and reconnect. Offline devices likewise
+disable controls and show USB/Wi-Fi recovery steps. Switching devices cancels pending
+destructive confirmations. Requests carry the selected serial explicitly, so they do not
+fall back to a newly selected device if the original disconnects.
+
+Mirroring requires a detected scrcpy 4.0+; apps, files and ordinary ADB controls remain
+available when scrcpy is missing or unsupported. **Configure AndroLaunch → Mirroring**
+offers Balanced (1920 px, 60 fps, 8 Mbps), Low latency (1280 px, 60 fps, 8 Mbps),
+High quality (native resolution, 60 fps, 16 Mbps), and Low bandwidth (1024 px,
+30 fps, 4 Mbps) presets. These update the existing saved settings for new windows,
+without changing audio, virtual-display or other choices; individual settings remain editable.
+
+Clipboard transfer is **manual and opt-in**, not background synchronization.
+**Copy output** in Console writes to the desktop clipboard only; desktop clipboard history
+may retain it. **Send text to Android** requires the
+[AdbClipboard companion](https://github.com/PRosenb/AdbClipboard) (`ch.pete.adbclipboard`)
+and uses its documented explicit `WRITE` receiver. It never falls back to typing into the
+foreground Android app. For Android-to-desktop transfer, open the companion, grant its
+overlay permission and tap its floating window to export the current clipboard.
+**Load Android's last clipboard export** reads that file into the transfer field; it is
+not a live clipboard read and does not replace the desktop clipboard. Android permissions
+may prevent access, in which case the error is shown rather than treating command output
+as clipboard data. The companion retains its export on Android. Clearing the transfer field
+does not erase that export or clipboard history. Avoid transferring secrets.
+
+Wireless pairing is preferable to legacy USB-to-TCP/IP, which exposes ADB on the network.
+Use legacy TCP/IP only on a trusted private network.
 
 ### App windows (multi-window)
 
@@ -99,11 +144,11 @@ been fetched does it fall back to `pm list packages`, and the footer then reads
 ### Wireless debugging details
 
 Android 11+ exposes one phone twice: as `adb-<hash>…._adb-tls-connect._tcp` and as `host:port`.
-The backend keeps a single entry and uses the **mDNS serial**, because `scrcpy` refuses the
-`ip:port` serial while the alias transport exists (that mismatch is what made app names fall back
-to raw package ids). The `host:port` address is kept for display and for reconnecting, and the
-phone's port changing on every wireless-debugging toggle is healed automatically: stale offline
-endpoints are dropped and the device is re-connected via mDNS discovery.
+The backend keeps a single entry and prefers an **authorized mDNS serial** for scrcpy.
+An offline or unauthorized alias is never marked ready merely because its address transport
+is ready; that ready transport is selected instead. USB entries are not merged with Wi-Fi.
+The `host:port` address is kept for display and reconnecting. Port changes are healed
+through mDNS discovery when available; otherwise reconnect using the current address in Wireless.
 
 Brightness is handled in percent: the 0–255 (older Android) and 0–4095 (Android 12+) ranges are
 detected once per device (probe + cache) instead of being guessed from the current value, and volume
@@ -112,7 +157,20 @@ slider coalesces writes — one helper call in flight, the newest value wins —
 one adb command per pixel, and the handle keeps showing the value under the finger until the device
 confirms it.
 
-Long lists are virtualised and scroll; actions report back through the message bar in the popup.
+Long lists scroll; actions report through the popup's message bar. No KDE-native runtime
+verification was performed for this polish on the Windows development host.
+
+### Native checks before release
+
+On Plasma 6, check popup/configuration loading under Breeze light and dark themes, keyboard
+focus and accessible names for icon actions, large-font/narrow-popup wrapping, all four
+everyday tabs and both Developer tools. Exercise missing adb/scrcpy and scrcpy <4.0 repair
+and Retry dependencies; no device, unauthorized, offline, and multiple-device selection;
+confirmations canceled by selection/disconnection; app clear/uninstall and recursive file
+deletion on a disposable device. Check every mirror preset with scrcpy 4.0+, camera and
+app windows, clipboard with/without the real companion and with unreadable export storage,
+wireless pairing/TCP/IP and AVD startup. These are required native smoke scenarios,
+not claims of completed checks.
 
 ## Command line
 
@@ -247,4 +305,4 @@ icon is visible, which is what made the row look ragged.
 
 ## License
 
-MIT — see [../LICENSE](../LICENSE).
+GNU Affero General Public License v3.0 — see [../LICENSE](../LICENSE).

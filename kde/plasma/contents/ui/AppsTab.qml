@@ -22,8 +22,17 @@ ColumnLayout {
 
     // Search string bound to the header text field.
     property string filter: ""
-    // Index of the app whose uninstall confirmation row is open (-1 = none).
-    property int confirmIndex: -1
+    property string pendingPackage: ""
+    property string pendingName: ""
+    property string pendingAction: ""
+    property string pendingDevice: ""
+
+    function requestDestructive(action, app) {
+        pendingPackage = app.package;
+        pendingName = app.name || app.package;
+        pendingAction = action;
+        pendingDevice = backend.activeId;
+    }
 
     readonly property var appModel: backend.apps.filter(a => filter.length === 0
         || String(a.name || "").toLowerCase().includes(filter.toLowerCase())
@@ -39,8 +48,14 @@ ColumnLayout {
     Connections {
         target: backend
         function onActiveIdChanged() {
-            appsTab.confirmIndex = -1
+            appsTab.pendingPackage = ""
             backend.fetchApps(true)
+        }
+        function onHasDeviceChanged() {
+            if (!backend.hasDevice)
+                appsTab.pendingPackage = "";
+            else
+                backend.fetchApps(false);
         }
     }
 
@@ -55,12 +70,13 @@ ColumnLayout {
             enabled: backend.hasDevice
             onTextChanged: {
                 appsTab.filter = text
-                appsTab.confirmIndex = -1
+                appsTab.pendingPackage = ""
             }
         }
 
         PlasmaComponents3.ToolButton {
             icon.name: "view-refresh"
+            Accessible.name: "Refresh app list"
             enabled: backend.hasDevice && !backend.appsLoading
             onClicked: backend.fetchApps(true)
 
@@ -71,6 +87,7 @@ ColumnLayout {
 
         PlasmaComponents3.ToolButton {
             icon.name: "document-open"
+            Accessible.name: "Install an APK"
             enabled: backend.hasDevice && !backend.appsLoading
             onClicked: {
                 backend.holdPopup()
@@ -79,6 +96,42 @@ ColumnLayout {
 
             PlasmaComponents3.ToolTip {
                 text: "Install an APK"
+            }
+        }
+    }
+
+    PlasmaComponents3.Frame {
+        Layout.fillWidth: true
+        visible: appsTab.pendingPackage.length > 0
+        ColumnLayout {
+            anchors.fill: parent
+            PlasmaComponents3.Label {
+                Layout.fillWidth: true
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                text: (appsTab.pendingAction === "clear" ? "Permanently clear all data for " : "Uninstall ")
+                    + appsTab.pendingName + " (" + appsTab.pendingPackage + ") on " + backend.targetLabel
+                    + "? This cannot be undone."
+                color: Kirigami.Theme.negativeTextColor
+            }
+            RowLayout {
+                PlasmaComponents3.Button {
+                    text: appsTab.pendingAction === "clear" ? "Clear app data" : "Uninstall"
+                    enabled: backend.hasDevice && appsTab.pendingDevice === backend.activeId
+                    onClicked: {
+                        const packageName = appsTab.pendingPackage;
+                        const action = appsTab.pendingAction;
+                        appsTab.pendingPackage = "";
+                        if (action === "clear")
+                            backend.clearAppData(packageName);
+                        else
+                            backend.uninstallApp(packageName);
+                    }
+                }
+                PlasmaComponents3.Button {
+                    text: "Cancel"
+                    onClicked: appsTab.pendingPackage = ""
+                }
             }
         }
     }
@@ -100,6 +153,7 @@ ColumnLayout {
         visible: !backend.hasDevice
         iconName: "smartphone"
         message: "Connect a device to manage apps"
+        hint: backend.connectionGuidance
     }
 
     // ---- no results --------------------------------------------------------
@@ -135,7 +189,6 @@ ColumnLayout {
                         Layout.fillWidth: true
                     spacing: Kirigami.Units.smallSpacing
 
-                    readonly property bool confirming: appsTab.confirmIndex === appRow.index
 
                     Kirigami.Icon {
                         Layout.alignment: Qt.AlignVCenter
@@ -192,7 +245,8 @@ ColumnLayout {
                     // apps can run side by side — only meaningful with scrcpy installed.
                     PlasmaComponents3.ToolButton {
                         Layout.alignment: Qt.AlignVCenter
-                        visible: appsTab.backend.scrcpyPath.length > 0
+                        enabled: appsTab.backend.canMirror
+                        Accessible.name: "Open " + appRow.modelData.name + " in a new window"
                         icon.name: "window-new"
                         onClicked: appsTab.backend.appMirror(appRow.modelData.package, appRow.modelData.name)
 
@@ -204,7 +258,8 @@ ColumnLayout {
                     // Mirrors the phone screen with the app in the foreground.
                     PlasmaComponents3.ToolButton {
                         Layout.alignment: Qt.AlignVCenter
-                        visible: appsTab.backend.scrcpyPath.length > 0
+                        enabled: appsTab.backend.canMirror
+                        Accessible.name: "Mirror screen with " + appRow.modelData.name
                         icon.name: "video-display"
                         onClicked: appsTab.backend.appScreen(appRow.modelData.package, appRow.modelData.name)
 
@@ -216,6 +271,7 @@ ColumnLayout {
                     PlasmaComponents3.ToolButton {
                         Layout.alignment: Qt.AlignVCenter
                         icon.name: "media-playback-start"
+                        Accessible.name: "Launch " + appRow.modelData.name + " on Android"
                         onClicked: appsTab.backend.launchApp(appRow.modelData.package)
 
                         PlasmaComponents3.ToolTip {
@@ -226,7 +282,8 @@ ColumnLayout {
                     PlasmaComponents3.ToolButton {
                         Layout.alignment: Qt.AlignVCenter
                         icon.name: "edit-clear"
-                        onClicked: appsTab.backend.clearAppData(appRow.modelData.package)
+                        Accessible.name: "Clear data for " + appRow.modelData.name
+                        onClicked: appsTab.requestDestructive("clear", appRow.modelData)
 
                         PlasmaComponents3.ToolTip {
                             text: "Clear app data"
@@ -236,42 +293,16 @@ ColumnLayout {
                     // Uninstall (initial button).
                     PlasmaComponents3.ToolButton {
                         Layout.alignment: Qt.AlignVCenter
-                        visible: !appRow.confirming
                         icon.name: "edit-delete"
                         icon.color: Kirigami.Theme.negativeTextColor
-                        onClicked: appsTab.confirmIndex = appRow.index
+                        Accessible.name: "Uninstall " + appRow.modelData.name
+                        onClicked: appsTab.requestDestructive("uninstall", appRow.modelData)
 
                         PlasmaComponents3.ToolTip {
                             text: "Uninstall app"
                         }
                     }
 
-                    // Inline uninstall confirmation.
-                    RowLayout {
-                        Layout.alignment: Qt.AlignVCenter
-                        visible: appRow.confirming
-                        spacing: Kirigami.Units.smallSpacing
-
-                        PlasmaComponents3.Label {
-                            text: "Uninstall?"
-                            color: Kirigami.Theme.negativeTextColor
-                            font.pointSize: Kirigami.Theme.smallFont.pointSize
-                        }
-
-                        PlasmaComponents3.ToolButton {
-                            icon.name: "edit-delete"
-                            icon.color: Kirigami.Theme.negativeTextColor
-                            onClicked: {
-                                appsTab.confirmIndex = -1
-                                appsTab.backend.uninstallApp(appRow.modelData.package)
-                            }
-                        }
-
-                        PlasmaComponents3.ToolButton {
-                            text: "Cancel"
-                            onClicked: appsTab.confirmIndex = -1
-                        }
-                    }
                 }
             
             }
@@ -285,7 +316,7 @@ ColumnLayout {
         visible: backend.hasDevice
         opacity: 0.6
         font.pointSize: Kirigami.Theme.smallFont.pointSize
-        elide: Text.ElideRight
+        wrapMode: Text.Wrap
         text: {
             let label = backend.apps.length + " apps · " + appsTab.appModel.length + " shown";
             if (backend.appsSource === "scrcpy")

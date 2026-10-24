@@ -50,5 +50,8 @@ print(json.dumps({
     "error": "",
     "adb": "/usr/bin/adb",
     "scrcpy": "/usr/bin/scrcpy",
-    "data": {},
+    "data": ({"devices": [{"id": "fixture-device", "name": "Fixture phone", "status": "device",
+                           "connected": True}], "active": "fixture-device"}
+             if action == "state" else
+             {"scrcpyCompatibility": {"compatible": True, "summary": "Fixture scrcpy 4.0"}}),
 }))

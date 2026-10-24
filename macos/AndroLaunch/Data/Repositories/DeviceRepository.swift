@@ -503,7 +503,9 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     }
 
     // Mirroring Size Preferences (for Mirroring)
-    private var maxSizePreferences: [String: Int] = [:]  // Keyed by device ID
+    private var maxSizePreferences: [String: Int] = UserDefaults.standard.dictionary(forKey: "mirror_max_size") as? [String: Int] ?? [:] {
+        didSet { UserDefaults.standard.set(maxSizePreferences, forKey: "mirror_max_size") }
+    }
 
     func setMaxSize(for deviceID: String, size: Int) {
         maxSizePreferences[deviceID] = size
@@ -514,7 +516,9 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     }
 
     // FPS Preferences
-    private var fpsPreferences: [String: Int] = [:]
+    private var fpsPreferences: [String: Int] = UserDefaults.standard.dictionary(forKey: "mirror_max_fps") as? [String: Int] ?? [:] {
+        didSet { UserDefaults.standard.set(fpsPreferences, forKey: "mirror_max_fps") }
+    }
 
     func setMaxFPS(for deviceID: String, fps: Int) {
         fpsPreferences[deviceID] = fps
@@ -525,7 +529,9 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     }
 
     // Bit Rate Preferences
-    private var bitRatePreferences: [String: Int] = [:]
+    private var bitRatePreferences: [String: Int] = UserDefaults.standard.dictionary(forKey: "mirror_bit_rate") as? [String: Int] ?? [:] {
+        didSet { UserDefaults.standard.set(bitRatePreferences, forKey: "mirror_bit_rate") }
+    }
 
     func setBitRate(for deviceID: String, bitRate: Int) {
         bitRatePreferences[deviceID] = bitRate
@@ -547,7 +553,9 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
         return borderlessPreferences[deviceID] ?? false  // Default false
     }
 
-    private var flexDisplayPreferences: [String: Bool] = [:]
+    private var flexDisplayPreferences: [String: Bool] = UserDefaults.standard.dictionary(forKey: "mirror_flex_display") as? [String: Bool] ?? [:] {
+        didSet { UserDefaults.standard.set(flexDisplayPreferences, forKey: "mirror_flex_display") }
+    }
 
     func toggleFlexDisplay(for deviceID: String) {
         let current = isFlexDisplayEnabled(for: deviceID)

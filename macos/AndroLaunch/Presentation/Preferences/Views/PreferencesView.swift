@@ -12,6 +12,7 @@ struct PreferencesView: View {
     @State private var toolStatuses: [ToolStatus] = []
     @State private var isCheckingTools = false
 
+    @AppStorage("show_developer_settings") private var showDeveloperSettings = false
     struct ToolStatus: Identifiable {
         let id = UUID()
         let name: String
@@ -20,140 +21,129 @@ struct PreferencesView: View {
     }
 
     var body: some View {
-        VStack(spacing: 20) {
-            // ADB Status
-            HStack {
-                Image(
-                    systemName: viewModel.adbStatus == "Connected"
-                        ? "checkmark.circle.fill" : "xmark.circle.fill"
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Label(
+                    viewModel.adbStatus == "Connected" ? "Device connection tools are ready" : "Device connection tools need attention",
+                    systemImage: viewModel.adbStatus == "Connected" ? "checkmark.circle" : "exclamationmark.triangle"
                 )
-                .foregroundColor(viewModel.adbStatus == "Connected" ? .green : .red)
-                Text("ADB Status: \(viewModel.adbStatus)")
-                    .font(.headline)
-            }
+                .font(.headline)
+                .accessibilityValue(viewModel.adbStatus)
 
-            Divider()
-
-            // Command Line Tools Path
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Android Command Line Tools Path")
-                    .font(.subheadline)
-                    .fontWeight(.bold)
-
-                HStack {
-                    TextField(
-                        "Path to cmdline-tools/latest/bin",
-                        text: Binding(
-                            get: { viewModel.commandLineToolsPath },
-                            set: { newValue in
-                                viewModel.commandLineToolsPath = newValue
-                                checkTools()
-                            }
-                        )
-                    )
-                    .textFieldStyle(.roundedBorder)
-
-                    Button("Browse…") {
-                        let panel = NSOpenPanel()
-                        panel.canChooseFiles = false
-                        panel.canChooseDirectories = true
-                        panel.allowsMultipleSelection = false
-                        panel.title = "Select Android SDK Command Line Tools Directory"
-                        if panel.runModal() == .OK, let url = panel.url {
-                            viewModel.commandLineToolsPath = url.path
-                            checkTools()
-                        }
-                    }
-                }
-
-                Text("This directory should contain sdkmanager and avdmanager binaries.")
-                    .font(.caption)
+                Text("Tool readiness is not a device connection. Connect and authorize a device before using its actions in the menu bar.")
                     .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                GroupBox("Connect a device") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("1. On Android, enable Developer options and USB debugging.")
+                        Text("2. Connect a data-capable USB cable and unlock the device.")
+                        Text("3. Approve “Allow USB debugging?” on Android, then choose Refresh Devices in the menu bar.")
+                        Text("Once the device appears, choose Mirror Screen or Browse Files. Wireless pairing is available separately for Android 11 and later.")
+                            .foregroundColor(.secondary)
+                    }
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                }
+
+                Button("Recheck Connection Tools") {
+                    viewModel.checkAdbStatus()
+                    checkTools()
+                }
+                .help("Checks ADB availability. Refresh Devices in the menu bar to discover authorized devices.")
+                .disabled(isCheckingTools)
+
+                GroupBox("Clipboard privacy") {
+                    Text("Text sharing is off by default and enabled per device until app quit. Android to Mac uses scrcpy. Automatic Mac to Android forwarding requires the ch.pete.adbclipboard Android companion; AndroLaunch does not install or verify it. Every enabled device may receive sensitive text copied on this Mac.")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                }
+
+                DisclosureGroup("Developer Settings", isExpanded: $showDeveloperSettings) {
+                    developerSettings
+                        .padding(.top, 12)
+                }
+                .help("Optional Android SDK paths and diagnostics for emulator management. Not required for everyday device mirroring.")
             }
+            .padding(24)
+        }
+        .frame(minWidth: 500, idealWidth: 560, minHeight: 460, idealHeight: 600)
+        .onAppear {
+            viewModel.checkAdbStatus()
+            checkTools()
+        }
+    }
 
-            // Tool Status
-            if !toolStatuses.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Tool Status")
-                        .font(.subheadline)
-                        .fontWeight(.bold)
-
-                    ForEach(toolStatuses) { tool in
-                        HStack(spacing: 8) {
-                            Image(
-                                systemName: tool.found
-                                    ? "checkmark.circle.fill" : "xmark.circle.fill"
-                            )
-                            .foregroundColor(tool.found ? .green : .red)
-                            .frame(width: 16)
-                            Text(tool.name)
-                                .font(.callout)
-                                .frame(width: 100, alignment: .leading)
-                            Text(tool.path)
-                                .font(.caption)
-                                .foregroundColor(tool.found ? .secondary : .red)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
+    private var developerSettings: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Android SDK Command-Line Tools")
+                .font(.headline)
+            Text("These optional tools are used by Emulator Manager. ADB and scrcpy are discovered separately.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            HStack {
+                TextField("Path to cmdline-tools/latest/bin", text: Binding(
+                    get: { viewModel.commandLineToolsPath },
+                    set: {
+                        viewModel.commandLineToolsPath = $0
+                        checkTools()
+                    }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("Android SDK command-line tools directory")
+                .help("Choose the bin directory containing sdkmanager and avdmanager.")
+                Button("Browse…") {
+                    let panel = NSOpenPanel()
+                    panel.canChooseFiles = false
+                    panel.canChooseDirectories = true
+                    panel.allowsMultipleSelection = false
+                    panel.title = "Choose Android SDK Command-Line Tools Directory"
+                    if panel.runModal() == .OK, let url = panel.url {
+                        viewModel.commandLineToolsPath = url.path
+                        checkTools()
                     }
                 }
-                .padding(12)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.primary.opacity(0.05))
-                )
+                .help("Choose the Android SDK command-line tools directory.")
             }
 
-            Divider()
+            ForEach(toolStatuses) { tool in
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("\(tool.name): \(tool.found ? "Available" : "Not found")",
+                          systemImage: tool.found ? "checkmark.circle" : "exclamationmark.triangle")
+                    Text(tool.path)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
 
-            // Actions
-            HStack(spacing: 12) {
+            HStack {
                 Button("Auto-Detect SDK") {
                     if let detected = AppConstants.detectCmdlineToolsPath() {
                         viewModel.commandLineToolsPath = detected
                     }
                     checkTools()
                 }
-
-                Button("Check Tools") {
-                    checkTools()
-                }
-                .disabled(isCheckingTools)
-
-                Button("Check ADB Status") {
-                    viewModel.checkAdbStatus()
-                }
-
+                Button("Check Tools") { checkTools() }
+                    .disabled(isCheckingTools)
                 if isCheckingTools {
                     ProgressView()
-                        .scaleEffect(0.7)
-                        .frame(width: 16, height: 16)
+                        .controlSize(.small)
+                        .accessibilityLabel("Checking developer tools")
                 }
             }
 
-            // Help text
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Troubleshooting")
-                    .font(.subheadline)
-                    .fontWeight(.bold)
-                Text(
-                    """
-                    • Install Android SDK Command-Line Tools from Android Studio or \
-                    via Homebrew: `brew install --cask android-commandlinetools`
-                    • After installation, run: `sdkmanager --install "cmdline-tools;latest"`
-                    • The default path is usually: ~/Library/Android/sdk/cmdline-tools/latest/bin
-                    • Open the Emulator Manager for advanced SDK and AVD settings.
-                    """
-                )
+            Text("Install Android SDK Command-Line Tools from Android Studio or with Homebrew: brew install --cask android-commandlinetools. The usual directory is ~/Library/Android/sdk/cmdline-tools/latest/bin. Emulator Manager contains advanced SDK and virtual-device settings.")
                 .font(.caption)
                 .foregroundColor(.secondary)
+                .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding()
-        .frame(minWidth: 480, minHeight: 420)
-        .onAppear {
-            checkTools()
         }
     }
 

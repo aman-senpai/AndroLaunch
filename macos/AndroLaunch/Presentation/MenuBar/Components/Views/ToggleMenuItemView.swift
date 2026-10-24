@@ -15,7 +15,7 @@ class ToggleMenuItemView: NSView {
     var onToggle: ((Bool) -> Void)?
     
     init(title: String, icon: String, isOn: Bool, onToggle: @escaping (Bool) -> Void) {
-        super.init(frame: NSRect(x: 0, y: 0, width: 200, height: 26))
+        super.init(frame: NSRect(x: 0, y: 0, width: 280, height: 30))
         self.onToggle = onToggle
         
         // Icon
@@ -37,6 +37,7 @@ class ToggleMenuItemView: NSView {
         
         // Switch
         toggleSwitch.state = isOn ? .on : .off
+        toggleSwitch.setAccessibilityLabel(title)
         toggleSwitch.controlSize = .mini
         toggleSwitch.target = self
         toggleSwitch.action = #selector(switchToggled(_:))
@@ -51,6 +52,7 @@ class ToggleMenuItemView: NSView {
             
             titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: toggleSwitch.leadingAnchor, constant: -8),
             
             toggleSwitch.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             toggleSwitch.centerYAnchor.constraint(equalTo: centerYAnchor)

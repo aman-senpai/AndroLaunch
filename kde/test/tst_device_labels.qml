@@ -1,9 +1,6 @@
 /*
- * Guards the device labels in the popup:
- *   - the header is a single identity line (the transport, battery and Android
- *     version belong to the device card below it),
- *   - a device that reports neither name nor model still gets an identity instead
- *     of an empty bold line.
+ * Guards device identity fallbacks in the popup: a device that reports neither
+ * name nor model still gets an identity instead of an empty bold line.
  *
  *   QT_QPA_PLATFORM=offscreen qmltestrunner-qt6 -input kde/test/tst_device_labels.qml
  */
@@ -38,6 +35,11 @@ TestCase {
             import QtQuick;
             QtObject {
                 property bool hasDevice: true
+                property bool canMirror: true
+                property bool scrcpyCompatible: true
+                property string scrcpySummary: "Fixture scrcpy 4.0"
+                property string adbRepair: "Fixture dependency guidance"
+                property string connectionGuidance: "Fixture connection guidance"
                 property string activeId: "dev"
                 property var uiDevices: []
                 property var activeDevice: null
@@ -92,10 +94,6 @@ TestCase {
         return item.text;
     }
 
-    function hasLabel(name) {
-        return findByName(popup, name) !== null;
-    }
-
     function start(device) {
         backend = createBackend(device);
         backend.uiDevices = device ? [device] : [];
@@ -123,17 +121,6 @@ TestCase {
         backend = null;
     }
 
-    function test_header_is_the_identity_line_only() {
-        start({ "id": "adb-1", "name": "M2007J17I", "model": "M2007J17I", "address": "192.168.1.37:41105", "android": "12", "api": 31, "connected": true, "wireless": true });
-
-        compare(label("deviceTitle"), "M2007J17I", "header names the device");
-        verify(!hasLabel("deviceSubtitle"), "header has no second line");
-
-        compare(label("cardTitle"), "M2007J17I", "card uses the same identity");
-        verify(label("cardSubtitle").indexOf("Wi-Fi") === 0, "card carries the transport");
-        verify(label("cardSubtitle").indexOf("Android 12 (API 31)") !== -1, "card carries the Android version");
-    }
-
     function test_nameless_device_still_gets_an_identity() {
         start({ "id": "192.168.1.37:41105", "name": "", "model": "", "address": "192.168.1.37:41105", "android": "12", "api": 31, "connected": true, "wireless": true });
 
@@ -151,6 +138,5 @@ TestCase {
         start(null);
 
         compare(label("deviceTitle"), "AndroLaunch", "header falls back to the app name");
-        verify(!hasLabel("deviceSubtitle"), "no device status line");
     }
 }

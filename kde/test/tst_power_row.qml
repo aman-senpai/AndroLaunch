@@ -27,6 +27,8 @@ TestCase {
 
     readonly property var backend: QtObject {
         property bool hasDevice: true
+        property bool canMirror: true
+        property string connectionGuidance: "Fixture connection guidance"
         property string activeId: "dev"
         property var uiDevices: []
         property var activeDevice: null

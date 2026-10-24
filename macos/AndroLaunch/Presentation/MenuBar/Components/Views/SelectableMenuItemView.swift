@@ -30,6 +30,10 @@ final class SelectableMenuItemView: NSView {
     init(title: String, isSelected: Bool, onSelect: @escaping () -> Void) {
         super.init(frame: NSRect(x: 0, y: 0, width: 200, height: 22))
         self.onSelect = onSelect
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(title)
+        setAccessibilityValue(isSelected ? "Selected" : "Not selected")
         
         // Add hover effect view
         addSubview(hoverEffectView)
@@ -97,8 +101,14 @@ final class SelectableMenuItemView: NSView {
             hoverEffectView.animator().alphaValue = visible ? 1 : 0
         }
     }
+
+    override func accessibilityPerformPress() -> Bool {
+        onSelect?()
+        return true
+    }
     
     func updateState(isSelected: Bool) {
         checkIconView.isHidden = !isSelected
+        setAccessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 }

@@ -12,6 +12,14 @@
             IsSettingsVisible="False"
             SelectionChanged="Nav_SelectionChanged"
             OpenPaneLength="210">
+            <NavigationView.PaneHeader>
+                <Button Content="Quick actions"
+                        Click="QuickActions_Click"
+                        HorizontalAlignment="Stretch"
+                        Margin="12,8,12,12"
+                        ToolTipService.ToolTip="Search actions, favorites and commands (Ctrl+K)"
+                        AutomationProperties.Name="Quick actions, Control K" />
+            </NavigationView.PaneHeader>
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="Devices" Tag="devices">
                     <NavigationViewItem.Icon>
@@ -28,7 +36,9 @@
                         <FontIcon Glyph="&#xE8B7;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Emulators" Tag="emulators">
+            </NavigationView.MenuItems>
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="Emulators" Tag="emulators" ToolTipService.ToolTip="Optional developer tools">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE7F8;" />
                     </NavigationViewItem.Icon>
@@ -38,7 +48,7 @@
                         <FontIcon Glyph="&#xE713;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-            </NavigationView.MenuItems>
+            </NavigationView.FooterMenuItems>
             <Frame x:Name="ContentFrame" />
         </NavigationView>
     </Grid>

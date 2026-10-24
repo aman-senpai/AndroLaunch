@@ -22,6 +22,38 @@ ColumnLayout {
     Kirigami.FormLayout {
         Layout.fillWidth: true
 
+        PlasmaComponents3.ComboBox {
+            Kirigami.FormData.label: "Mirror preset:"
+            Accessible.name: "Mirror quality preset"
+            model: ["Custom", "Balanced", "Low latency", "High quality", "Low bandwidth"]
+            currentIndex: {
+                if (fpsSpin.value === 60 && bitrateSpin.value === 8 && sizeSpin.value === 1920)
+                    return 1;
+                if (fpsSpin.value === 60 && bitrateSpin.value === 8 && sizeSpin.value === 1280)
+                    return 2;
+                if (fpsSpin.value === 60 && bitrateSpin.value === 16 && sizeSpin.value === 0)
+                    return 3;
+                if (fpsSpin.value === 30 && bitrateSpin.value === 4 && sizeSpin.value === 1024)
+                    return 4;
+                return 0;
+            }
+            onActivated: index => {
+                const presets = [null, [60, 8, 1920], [60, 8, 1280], [60, 16, 0], [30, 4, 1024]];
+                if (index === 0)
+                    return;
+                fpsSpin.value = presets[index][0];
+                bitrateSpin.value = presets[index][1];
+                sizeSpin.value = presets[index][2];
+            }
+        }
+
+        PlasmaComponents3.Label {
+            Layout.fillWidth: true
+            Layout.maximumWidth: Kirigami.Units.gridUnit * 24
+            wrapMode: Text.Wrap
+            text: "Presets set frame rate, bitrate and maximum resolution for new windows. Audio, privacy and virtual-display choices are unchanged. Fine-tune below, then Apply."
+        }
+
         PlasmaComponents3.SpinBox {
             id: fpsSpin
 

@@ -33,7 +33,7 @@ TestCase {
             "pollInterval": 600000
         });
         verify(backend !== null, "backend created");
-        tryVerify(function () { return backend.helperReady; }, 5000, "helper ready");
+        tryVerify(function () { return backend.hasDevice; }, 5000, "authorized fixture device ready");
         backend.runShell("reset", function () {});   // truncate the recorded call log
         wait(300);
     }
@@ -86,6 +86,7 @@ TestCase {
         const stub = Qt.createQmlObject('import QtQuick 2.0; QtObject {' +
             'property bool helperReady: true; property string helperError: ""; property bool adbMissing: false;' +
             'property string adbPath: "/usr/bin/adb"; property string scrcpyPath: "/usr/bin/scrcpy";' +
+            'property bool canMirror: true; property string connectionGuidance: "";' +
             'property var devices: [{id: "d", name: "Phone", connected: true, wireless: false, emulator: false, battery: 50, charging: false, android: "12", api: "31", address: "", quick: {}}];' +
             'property var uiDevices: devices; property int connectedCount: 1; property string activeId: "d";' +
             'property var activeDevice: devices[0]; property bool hasDevice: true; property int activeBattery: 50;' +

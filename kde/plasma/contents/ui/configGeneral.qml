@@ -36,7 +36,7 @@ ColumnLayout {
             font.pointSize: Kirigami.Theme.smallFont.pointSize
             text: "Absolute path or command name of the AndroLaunch helper. "
                 + "Installed by default to ~/.local/bin/androlaunch. "
-                + "adb comes from the android-tools package, mirroring needs scrcpy."
+                + "Install Android SDK Platform-Tools (adb) using your distribution's package manager or the Android developer site. Mirroring needs scrcpy 4.0 or newer on PATH."
         }
     }
 

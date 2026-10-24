@@ -80,7 +80,7 @@ namespace AndroLaunch.WinUI
             }
         }
 
-        public static void Shutdown()
+        public static async void Shutdown()
         {
             if (IsShuttingDown)
             {
@@ -88,6 +88,20 @@ namespace AndroLaunch.WinUI
             }
 
             IsShuttingDown = true;
+            try
+            {
+                if (Services.CaptureService.ActiveRecording is { IsRunning: true } recording)
+                    await recording.StopAsync();
+                if (MainWindowInstance.CurrentPage is Pages.FilesPage files)
+                    await files.StopTransfersAsync();
+            }
+            catch (Exception ex)
+            {
+                IsShuttingDown = false;
+                ShowMainWindow();
+                await Ui.ShowErrorAsync("Finish the active operation before exiting", ex.Message);
+                return;
+            }
             ClipboardSyncService.Dispose();
             TrayIcon?.Dispose();
             TrayIcon = null;

@@ -18,14 +18,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>Assets\app_icon.ico</ApplicationIcon>
     <AppxMSBuildToolsPath Condition="Exists('$(MSBuildProjectDirectory)\..\.tools\AppxPackage\Microsoft.AppxPackage.Targets')">$(MSBuildProjectDirectory)\..\.tools\AppxPackage\</AppxMSBuildToolsPath>
-    <Version>0.3.9</Version>
-    <FileVersion>0.3.9.0</FileVersion>
-    <AssemblyVersion>0.3.9.0</AssemblyVersion>
+    <Version>0.4.0</Version>
+    <FileVersion>0.4.0.0</FileVersion>
+    <AssemblyVersion>0.4.0.0</AssemblyVersion>
     <Product>AndroLaunch</Product>
     <AssemblyTitle>AndroLaunch</AssemblyTitle>
     <Description>Android device management for Windows, built with WinUI 3</Description>
     <Company>AndroLaunch</Company>
-    <Copyright>MIT License</Copyright>
+    <Copyright>GNU Affero General Public License v3.0</Copyright>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
@@ -40,6 +40,7 @@
 
   <ItemGroup>
     <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <EmbeddedResource Include="Assets\tray_icon_dark.ico" LogicalName="AndroLaunch.Tray.dark.ico" />
     <EmbeddedResource Include="Assets\tray_icon_light.ico" LogicalName="AndroLaunch.Tray.light.ico" />
   </ItemGroup>

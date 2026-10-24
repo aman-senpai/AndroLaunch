@@ -62,15 +62,10 @@ struct DependencyCheckPage: View {
                     } label: {
                         Text("Continue")
                             .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white)
-                            .frame(width: 180)
-                            .padding(.vertical, 9)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(Color.black)
-                            )
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 4)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderedProminent)
                     .transition(.scale.combined(with: .opacity))
                 }
 
@@ -196,11 +191,11 @@ private struct DependencyCard: View {
                     .font(.system(size: 14))
                     .foregroundColor(.primary.opacity(0.5))
                     .symbolEffect(.bounce, value: status)
-                Text(abbreviatedPath(path))
-                    .font(.system(size: 10))
+                Text("Ready")
+                    .font(.system(size: 11))
                     .foregroundColor(.secondary)
-                    .lineLimit(1)
             }
+            .help("Detected at \(path). This checks tool availability, not a device connection.")
 
         case .notFound:
             Image(systemName: "circle")
@@ -218,11 +213,11 @@ private struct DependencyCard: View {
                     .font(.system(size: 14))
                     .foregroundColor(.primary.opacity(0.5))
                     .symbolEffect(.bounce, value: status)
-                Text(abbreviatedPath(path))
-                    .font(.system(size: 10))
+                Text("Installed")
+                    .font(.system(size: 11))
                     .foregroundColor(.secondary)
-                    .lineLimit(1)
             }
+            .help("Installed at \(path). Connect and authorize your device next.")
 
         case .failed:
             Image(systemName: "xmark.circle.fill")
@@ -301,11 +296,4 @@ private struct DependencyCard: View {
         return false
     }
 
-    private func abbreviatedPath(_ path: String) -> String {
-        let home = NSHomeDirectory()
-        if path.hasPrefix(home) {
-            return "~" + path.dropFirst(home.count)
-        }
-        return path
-    }
 }

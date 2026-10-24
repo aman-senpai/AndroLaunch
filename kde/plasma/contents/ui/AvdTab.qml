@@ -66,7 +66,7 @@ ColumnLayout {
             visible: !root.backend.avdsLoading && root.emulatorMissing
             iconName: "computer"
             message: "Android emulator not installed"
-            hint: "Install it with: sudo dnf install android-tools  (the `emulator` binary is currently not available from Fedora packages — install the Android SDK emulator to use AVDs)"
+            hint: "In Android Studio, open SDK Manager → SDK Tools and install Android Emulator. Create a virtual device in Device Manager. Add your SDK's emulator directory (often ~/Android/Sdk/emulator) to PATH for the Plasma session, then refresh. Installing adb alone does not install an emulator."
         }
 
         EmptyState {

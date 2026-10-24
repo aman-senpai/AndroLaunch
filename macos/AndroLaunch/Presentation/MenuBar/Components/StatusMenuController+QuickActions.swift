@@ -12,29 +12,13 @@ extension StatusMenuController {
     func configureQuickActionsMenu(_ menu: NSMenu, deviceID: String) {
         menu.removeAllItems()
         
-        // Reboot Options
-        let rebootItem = NSMenuItem(title: "Reboot", action: #selector(rebootDevice(_:)), keyEquivalent: "")
-        rebootItem.target = self
-        rebootItem.representedObject = deviceID
-        rebootItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
-        menu.addItem(rebootItem)
-        
-        let bootloaderItem = NSMenuItem(title: "Reboot to Bootloader", action: #selector(rebootBootloader(_:)), keyEquivalent: "")
-        bootloaderItem.target = self
-        bootloaderItem.representedObject = deviceID
-        bootloaderItem.image = NSImage(systemSymbolName: "laptopcomputer", accessibilityDescription: nil)
-        menu.addItem(bootloaderItem)
-        
-        let recoveryItem = NSMenuItem(title: "Reboot to Recovery", action: #selector(rebootRecovery(_:)), keyEquivalent: "")
-        recoveryItem.target = self
-        recoveryItem.representedObject = deviceID
-        recoveryItem.image = NSImage(systemSymbolName: "wrench.and.screwdriver", accessibilityDescription: nil)
-        menu.addItem(recoveryItem)
-        
-        menu.addItem(NSMenuItem.separator())
-        
         // Toggles
-        let state = viewModel.quickActionsStates[deviceID]
+        guard let state = viewModel.quickActionsStates[deviceID] else {
+            let loading = NSMenuItem(title: "Reading device controls…", action: nil, keyEquivalent: "")
+            loading.isEnabled = false
+            menu.addItem(loading)
+            return
+        }
         
         func addToggle(title: String, icon: String, isEnabled: Bool, action: @escaping () -> Void) {
             let item = NSMenuItem()
@@ -45,15 +29,30 @@ extension StatusMenuController {
             menu.addItem(item)
         }
         
-        addToggle(title: "Wi-Fi", icon: "wifi", isEnabled: state?.isWifiEnabled ?? false) { [weak self] in self?.viewModel.toggleWifi(for: deviceID) }
-        addToggle(title: "Bluetooth", icon: "wave.3.right", isEnabled: state?.isBluetoothEnabled ?? false) { [weak self] in self?.viewModel.toggleBluetooth(for: deviceID) }
-        addToggle(title: "Mobile Data", icon: "antenna.radiowaves.left.and.right", isEnabled: state?.isMobileDataEnabled ?? false) { [weak self] in self?.viewModel.toggleMobileData(for: deviceID) }
-        addToggle(title: "Airplane Mode", icon: "airplane", isEnabled: state?.isAirplaneModeEnabled ?? false) { [weak self] in self?.viewModel.toggleAirplaneMode(for: deviceID) }
-        addToggle(title: "Location", icon: "location.fill", isEnabled: state?.isLocationEnabled ?? false) { [weak self] in self?.viewModel.toggleLocation(for: deviceID) }
-        addToggle(title: "Do Not Disturb", icon: "bell.slash.fill", isEnabled: state?.isDoNotDisturbEnabled ?? false) { [weak self] in self?.viewModel.toggleDoNotDisturb(for: deviceID) }
-        addToggle(title: "Auto Rotate", icon: "arrow.triangle.2.circlepath", isEnabled: state?.isAutoRotateEnabled ?? false) { [weak self] in self?.viewModel.toggleAutoRotate(for: deviceID) }
-        addToggle(title: "Auto Brightness", icon: "sun.max.fill", isEnabled: state?.isAdaptiveBrightnessEnabled ?? false) { [weak self] in self?.viewModel.toggleAdaptiveBrightness(for: deviceID) }
-        addToggle(title: "Dark Mode", icon: "moon.fill", isEnabled: state?.isDarkModeEnabled ?? false) { [weak self] in self?.viewModel.toggleDarkMode(for: deviceID) }
+        addToggle(title: "Wi-Fi", icon: "wifi", isEnabled: state.isWifiEnabled) { [weak self] in self?.viewModel.toggleWifi(for: deviceID) }
+        addToggle(title: "Bluetooth", icon: "wave.3.right", isEnabled: state.isBluetoothEnabled) { [weak self] in self?.viewModel.toggleBluetooth(for: deviceID) }
+        addToggle(title: "Mobile Data", icon: "antenna.radiowaves.left.and.right", isEnabled: state.isMobileDataEnabled) { [weak self] in self?.viewModel.toggleMobileData(for: deviceID) }
+        addToggle(title: "Airplane Mode", icon: "airplane", isEnabled: state.isAirplaneModeEnabled) { [weak self] in self?.viewModel.toggleAirplaneMode(for: deviceID) }
+        addToggle(title: "Location", icon: "location.fill", isEnabled: state.isLocationEnabled) { [weak self] in self?.viewModel.toggleLocation(for: deviceID) }
+        addToggle(title: "Do Not Disturb", icon: "bell.slash.fill", isEnabled: state.isDoNotDisturbEnabled) { [weak self] in self?.viewModel.toggleDoNotDisturb(for: deviceID) }
+        addToggle(title: "Auto Rotate", icon: "arrow.triangle.2.circlepath", isEnabled: state.isAutoRotateEnabled) { [weak self] in self?.viewModel.toggleAutoRotate(for: deviceID) }
+        addToggle(title: "Auto Brightness", icon: "sun.max.fill", isEnabled: state.isAdaptiveBrightnessEnabled) { [weak self] in self?.viewModel.toggleAdaptiveBrightness(for: deviceID) }
+        addToggle(title: "Dark Mode", icon: "moon.fill", isEnabled: state.isDarkModeEnabled) { [weak self] in self?.viewModel.toggleDarkMode(for: deviceID) }
+    }
+
+    func configureRestartMenu(_ menu: NSMenu, deviceID: String) {
+        let modes: [(String, Selector, String)] = [
+            ("Restart Android…", #selector(rebootDevice(_:)), "power"),
+            ("Restart in Bootloader…", #selector(rebootBootloader(_:)), "laptopcomputer"),
+            ("Restart in Recovery…", #selector(rebootRecovery(_:)), "wrench.and.screwdriver")
+        ]
+        for (title, action, symbol) in modes {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            item.representedObject = deviceID
+            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+            menu.addItem(item)
+        }
     }
     
     func updateAllQuickActionsSubmenus() {
@@ -96,16 +95,18 @@ extension StatusMenuController {
     
     private func confirmReboot(deviceID: String, mode: RebootMode) {
         let alert = NSAlert()
-        alert.messageText = "Reboot Device?"
-        let modeString = mode == .normal ? "System" : mode.rawValue.capitalized
-        alert.informativeText = "Are you sure you want to reboot the device into \(modeString) mode?"
-        alert.addButton(withTitle: "Reboot")
+        let deviceName = viewModel.devices.first(where: { $0.id == deviceID })?.name ?? "Android device"
+        alert.messageText = "Restart \(deviceName)?"
+        let modeString = mode == .normal ? "Android" : mode.rawValue.capitalized
+        alert.informativeText = "Target: \(deviceName)\nDevice ID: \(deviceID)\n\nThis will stop active apps, mirroring, and transfers on this device and restart it into \(modeString). Unsaved work may be lost."
         alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Restart")
+        alert.buttons[1].hasDestructiveAction = true
         alert.alertStyle = .warning
         
         NSApp.activate(ignoringOtherApps: true)
         let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
+        if response == .alertSecondButtonReturn {
             viewModel.reboot(deviceID: deviceID, mode: mode)
         }
     }

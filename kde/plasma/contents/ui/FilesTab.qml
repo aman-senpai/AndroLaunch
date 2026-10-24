@@ -11,6 +11,7 @@ ColumnLayout {
 
     required property var backend
     property string confirmPath: ""
+    property string confirmDevice: ""
     property bool newFolderVisible: false
 
     Layout.fillWidth: true
@@ -26,6 +27,11 @@ ColumnLayout {
         function onActiveIdChanged() {
             root.confirmPath = ""
             root.backend.browse("/sdcard", true)
+        }
+        function onHasDeviceChanged() {
+            root.confirmPath = "";
+            if (root.backend.hasDevice)
+                root.backend.browse("/sdcard", true);
         }
 
         function onCurrentPathChanged() {
@@ -46,6 +52,7 @@ ColumnLayout {
 
         PlasmaComponents3.ToolButton {
             icon.name: "go-up"
+            Accessible.name: "Go to parent folder"
             enabled: root.backend.hasDevice
             PlasmaComponents3.ToolTip.text: "Go up"
             onClicked: root.backend.browse(Util.parentPath(root.backend.currentPath), false)
@@ -62,6 +69,7 @@ ColumnLayout {
 
         PlasmaComponents3.ToolButton {
             icon.name: "view-refresh"
+            Accessible.name: "Refresh folder"
             enabled: root.backend.hasDevice
             PlasmaComponents3.ToolTip.text: "Refresh"
             onClicked: root.backend.browse(root.backend.currentPath, false)
@@ -69,6 +77,7 @@ ColumnLayout {
 
         PlasmaComponents3.ToolButton {
             icon.name: "folder-new"
+            Accessible.name: "Create a folder"
             enabled: root.backend.hasDevice
             PlasmaComponents3.ToolTip.text: "New folder"
             onClicked: root.newFolderVisible = !root.newFolderVisible
@@ -76,6 +85,7 @@ ColumnLayout {
 
         PlasmaComponents3.ToolButton {
             icon.name: "document-open"
+            Accessible.name: "Upload a file"
             enabled: root.backend.hasDevice
             PlasmaComponents3.ToolTip.text: "Upload file"
             onClicked: root.openUploadDialog()
@@ -98,7 +108,7 @@ ColumnLayout {
         PlasmaComponents3.Button {
             id: createButton
             text: "Create"
-            enabled: newFolderField.text.length > 0
+            enabled: root.backend.hasDevice && newFolderField.text.length > 0
             onClicked: {
                 if (newFolderField.text.length === 0)
                     return;
@@ -114,6 +124,37 @@ ColumnLayout {
             onClicked: {
                 newFolderField.text = "";
                 root.newFolderVisible = false;
+            }
+        }
+    }
+
+    PlasmaComponents3.Frame {
+        Layout.fillWidth: true
+        visible: root.confirmPath.length > 0
+        ColumnLayout {
+            anchors.fill: parent
+            PlasmaComponents3.Label {
+                Layout.fillWidth: true
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                text: "Permanently delete " + root.confirmPath + " on " + root.backend.targetLabel
+                    + "? Folders and their contents are removed. There is no trash or undo."
+                color: Kirigami.Theme.negativeTextColor
+            }
+            RowLayout {
+                PlasmaComponents3.Button {
+                    text: "Delete permanently"
+                    enabled: root.backend.hasDevice && root.confirmDevice === root.backend.activeId
+                    onClicked: {
+                        const path = root.confirmPath;
+                        root.confirmPath = "";
+                        root.backend.deleteFile(path);
+                    }
+                }
+                PlasmaComponents3.Button {
+                    text: "Cancel"
+                    onClicked: root.confirmPath = ""
+                }
             }
         }
     }
@@ -200,40 +241,31 @@ ColumnLayout {
                                 }
                             }
 
-                            PlasmaComponents3.Label {
-                                visible: root.confirmPath === fileRow.modelData.path
-                                text: "Delete?"
-                                color: Kirigami.Theme.negativeTextColor
-                                font.pointSize: Kirigami.Theme.smallFont.pointSize
-                            }
 
                             PlasmaComponents3.ItemDelegate {
                                 visible: fileRow.modelData.isDirectory
                                 Layout.preferredWidth: implicitWidth
                                 icon.name: "go-next"
+                                Accessible.name: "Open folder " + fileRow.modelData.name
                                 onClicked: root.backend.browse(fileRow.modelData.path, false)
                             }
 
                             PlasmaComponents3.ToolButton {
                                 visible: !fileRow.modelData.isDirectory
                                 icon.name: "download"
+                                Accessible.name: "Download " + fileRow.modelData.name
                                 PlasmaComponents3.ToolTip.text: "Download"
                                 onClicked: root.backend.pullFile(fileRow.modelData.path, "~/Downloads")
                             }
 
                             PlasmaComponents3.ToolButton {
                                 icon.name: "edit-delete"
-                                icon.color: root.confirmPath === fileRow.modelData.path
-                                    ? Kirigami.Theme.negativeTextColor
-                                    : Kirigami.Theme.textColor
+                                Accessible.name: "Delete " + fileRow.modelData.name
+                                icon.color: Kirigami.Theme.negativeTextColor
                                 PlasmaComponents3.ToolTip.text: "Delete"
                                 onClicked: {
-                                    if (root.confirmPath === fileRow.modelData.path) {
-                                        root.confirmPath = "";
-                                        root.backend.deleteFile(fileRow.modelData.path);
-                                    } else {
-                                        root.confirmPath = fileRow.modelData.path;
-                                    }
+                                    root.confirmDevice = root.backend.activeId;
+                                    root.confirmPath = fileRow.modelData.path;
                                 }
                             }
                         }
@@ -249,6 +281,7 @@ ColumnLayout {
             visible: !root.backend.hasDevice
             iconName: "smartphone"
             message: "Connect a device to browse its storage"
+            hint: root.backend.connectionGuidance
         }
 
         EmptyState {
@@ -279,7 +312,7 @@ ColumnLayout {
 
     PlasmaComponents3.Label {
         Layout.fillWidth: true
-        text: "Long-press style delete confirmation: click the trash icon twice"
+        text: "Downloads go to ~/Downloads. Uploads go to the current device folder. Deletion always asks you to confirm the path and device; it cannot be undone."
         font.pointSize: Kirigami.Theme.smallFont.pointSize
         opacity: 0.55
         wrapMode: Text.WordWrap

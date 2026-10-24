@@ -112,7 +112,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: Kirigami.Theme.negativeTextColor
-                text: "adb not found — sudo dnf install android-tools scrcpy"
+                text: root.backend.adbRepair
             }
         }
     }
@@ -285,12 +285,12 @@ ColumnLayout {
                 wrapMode: Text.WordWrap
                 font.pointSize: Kirigami.Theme.smallFont.pointSize
                 opacity: 0.7
-                text: "The phone keeps its current IP address. After switching, unplug USB and connect with the address above."
+                text: "Legacy TCP/IP exposes ADB on the network. Use only a trusted private network. Prefer Android 11+ Wireless debugging pairing above. After switching, connect to the device's IP and port 5555; unplug USB only after the wireless connection is authorized."
             }
 
             // ---- connected devices -----------------------------------------
             SectionLabel {
-                text: "Connected"
+                text: "Detected devices"
             }
 
             PlasmaComponents3.Label {
@@ -333,12 +333,15 @@ ColumnLayout {
 
                     PlasmaComponents3.Label {
                         font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        Layout.maximumWidth: Kirigami.Units.gridUnit * 9
+                        elide: Text.ElideMiddle
                         opacity: 0.5
                         text: deviceRow.modelData.id
                     }
 
                     PlasmaComponents3.ToolButton {
                         icon.name: "network-disconnect"
+                        Accessible.name: "Disconnect " + (deviceRow.modelData.name || deviceRow.modelData.id)
                         visible: deviceRow.modelData.wireless
                         enabled: root.controlsEnabled
                         onClicked: root.backend.disconnectDevice(deviceRow.modelData.id)
