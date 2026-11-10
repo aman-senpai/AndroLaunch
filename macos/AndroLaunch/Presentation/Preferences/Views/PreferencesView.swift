@@ -9,6 +9,7 @@ import SwiftUI
 
 struct PreferencesView: View {
     @EnvironmentObject var viewModel: PreferencesViewModel
+    @ObservedObject private var notificationMirror = NotificationMirror.shared
     @State private var toolStatuses: [ToolStatus] = []
     @State private var isCheckingTools = false
 
@@ -56,12 +57,36 @@ struct PreferencesView: View {
                 .disabled(isCheckingTools)
 
                 GroupBox("Clipboard privacy") {
-                    Text("Text sharing is off by default and enabled per device until app quit. Android to Mac uses scrcpy. Automatic Mac to Android forwarding requires the ch.pete.adbclipboard Android companion; AndroLaunch does not install or verify it. Every enabled device may receive sensitive text copied on this Mac.")
+                    Text("Text sharing is off by default and enabled per device. Android to Mac uses scrcpy. Mac to Android uses AndroLaunch Comp, which installs from the Clipboard menu over ADB. Every enabled device may receive sensitive text copied on this Mac.")
                         .font(.callout)
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8)
+                }
+
+                GroupBox("Notifications") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle("Mirror Android notifications", isOn: Binding(
+                            get: { notificationMirror.masterEnabled },
+                            set: { notificationMirror.setMasterEnabled($0) }
+                        ))
+                        .accessibilityValue(notificationMirror.masterEnabled ? "On" : "Off")
+                        .help("Nothing is mirrored until you also enable it for a device in the Notifications menu.")
+
+                        Toggle("Hide sensitive apps", isOn: Binding(
+                            get: { notificationMirror.hideSensitiveApps },
+                            set: { notificationMirror.setHideSensitiveApps($0) }
+                        ))
+                        .help("Keeps banking, finance, password managers, authenticators and email off this Mac. On by default.")
+
+                        Text("Notification text is read over ADB only while mirroring is enabled for a connected device. Banking, finance, password-manager, authenticator and email apps are hidden by default; media and ongoing notifications are ignored. Nothing is sent off this Mac.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
                 }
 
                 DisclosureGroup("Developer Settings", isExpanded: $showDeveloperSettings) {

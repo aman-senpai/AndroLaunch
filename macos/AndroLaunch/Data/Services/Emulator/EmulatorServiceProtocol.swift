@@ -13,6 +13,8 @@ protocol EmulatorServiceProtocol {
     var avdsPublisher: AnyPublisher<[AVD], Never> { get }
     var downloadProgress: AnyPublisher<(String, Double), Never> { get }  // (imagePath, progress 0-1)
     var errorPublisher: AnyPublisher<String?, Never> { get }
+    /// Configuration problems (missing SDK command-line tools), separate from failed actions.
+    var setupIssuePublisher: AnyPublisher<String?, Never> { get }
 
     func listAvailableImages(toolsPath: String, sdkRoot: String?)
     func downloadImage(toolsPath: String, imagePath: String, sdkRoot: String?)
@@ -30,6 +32,7 @@ protocol EmulatorServiceProtocol {
         launchFlags: LaunchFlags)
     func stopEmulator(toolsPath: String, avdName: String)
     func isEmulatorProcessRunning(avdName: String) -> Bool
+    func reportMissingCommandLineTools(toolsPath: String?)
 }
 
 struct LaunchFlags: Codable, Equatable {

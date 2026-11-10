@@ -17,6 +17,8 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     @Published var isLoading: Bool = false
     @Published var isLoadingApps: Bool = false
     @Published var previousDevices: [PreviousDevice] = []
+    /// Blocks emulator features when the SDK command-line tools are unavailable.
+    @Published public var emulatorSetupIssue: String?
 
     public var errorPublisher: AnyPublisher<String?, Never> { $error.eraseToAnyPublisher() }
     public var devicesPublisher: AnyPublisher<[AndroidDevice], Never> {
@@ -29,6 +31,9 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     }
     public var previousDevicesPublisher: AnyPublisher<[PreviousDevice], Never> {
         $previousDevices.eraseToAnyPublisher()
+    }
+    public var emulatorSetupIssuePublisher: AnyPublisher<String?, Never> {
+        $emulatorSetupIssue.eraseToAnyPublisher()
     }
 
     public var imagesPublisher: AnyPublisher<[SystemImage], Never> {
@@ -46,21 +51,55 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     private let commandLineToolsPathKey = "android_command_line_tools_path"
     private var didAttemptAutoDetect = false
 
+    /// The command-line-tools directory, or nil when the SDK genuinely isn't usable.
+    ///
+    /// A stored path is only trusted while it still contains both binaries. Earlier
+    /// releases persisted whatever was auto-detected once, so a moved/uninstalled SDK
+    /// kept pointing at a dead folder and every AVD poll failed against it.
     public var commandLineToolsPath: String? {
         if let saved = UserDefaults.standard.string(forKey: commandLineToolsPathKey),
             !saved.isEmpty
         {
-            return saved
+            if AppConstants.isValidCmdlineToolsDirectory(saved) {
+                return saved
+            }
+            // Self-heal: drop the stale value and fall through to auto-detection.
+            UserDefaults.standard.removeObject(forKey: commandLineToolsPathKey)
+            didAttemptAutoDetect = false
         }
-        // Auto-detect on first access only
+
+        // Auto-detect on first access only; cleared again when a path is set by hand.
         if !didAttemptAutoDetect {
             didAttemptAutoDetect = true
-            if let detected = AppConstants.detectCmdlineToolsPath() {
+            if let detected = resolveCmdlineToolsPath() {
                 UserDefaults.standard.set(detected, forKey: commandLineToolsPathKey)
                 return detected
             }
         }
         return nil
+    }
+
+    /// Re-scans for the SDK command-line tools after the user installs them.
+    /// Returns true when a usable directory was found (and stored).
+    @discardableResult
+    func redetectCommandLineTools() -> Bool {
+        UserDefaults.standard.removeObject(forKey: commandLineToolsPathKey)
+        didAttemptAutoDetect = false
+        guard commandLineToolsPath != nil else { return false }
+        emulatorSetupIssue = nil
+        objectWillChange.send()
+        return true
+    }
+
+    /// Looks in the configured SDK root first, then the usual install locations.
+    private func resolveCmdlineToolsPath() -> String? {
+        if let root = androidSdkRootPath, !root.isEmpty,
+            let match = AppConstants.cmdlineToolsBinDirectories(inRoot: root)
+                .first(where: AppConstants.isValidCmdlineToolsDirectory)
+        {
+            return match
+        }
+        return AppConstants.detectCmdlineToolsPath()
     }
 
     /// Returns the effective tools path (auto-detected or user-configured), or nil if unavailable.
@@ -75,6 +114,9 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
             didAttemptAutoDetect = false
         } else {
             UserDefaults.standard.set(path, forKey: commandLineToolsPathKey)
+        }
+        if AppConstants.isValidCmdlineToolsDirectory(path) {
+            emulatorSetupIssue = nil
         }
         objectWillChange.send()
     }
@@ -247,6 +289,11 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     // Mapping from Serial Number (emulator-5554) to AVD Name (Pixel)
     private var serialToAVDNameMap: [String: String] = [:]
 
+    // Last transport we recorded endpoint history for, per stable ID. Lets a device
+    // that reconnects over the same transport count as a new success without the
+    // periodic device-list refresh inflating the counters.
+    private var recordedTransportByDevice: [String: String] = [:]
+
     // Initialize with dependencies
     init(
         adbService: ADBServiceProtocol, scrcpyService: ScrcpyServiceProtocol,
@@ -279,6 +326,54 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
 
                 self.devices = updatedDevices
                 self.isLoading = false
+
+                // Register every live transport with its hardware serial so the
+                // preference accessors resolve to the same identity over USB and
+                // Wi-Fi, remember the endpoint for the connection layer, and fold
+                // legacy transport-keyed preferences onto the serial.
+                //
+                // Migration runs whenever a device is present rather than once per
+                // launch: the first refresh can legitimately be empty (app launched
+                // with nothing plugged in), and a device may also appear mid-session.
+                // `migrateLegacyDictionaries()` is idempotent and never overwrites a
+                // value that is already stored, so re-running it is free.
+                var activeTransports: [String: String] = [:]
+                for device in updatedDevices {
+                    let stableID = device.stableID
+                    DeviceScopedPreferences.shared.register(
+                        transportID: device.id, identity: stableID)
+                    activeTransports[stableID] = device.id
+
+                    // Record the transport when it first shows up or reconnects, not
+                    // on every refresh, so the success counters keep their meaning.
+                    let isNewEndpoint = EndpointStore.shared.endpoint(
+                        address: device.id, for: stableID) == nil
+                    if isNewEndpoint
+                        || self.recordedTransportByDevice[stableID] != device.id
+                    {
+                        EndpointStore.shared.recordSuccess(
+                            address: device.id, for: stableID)
+                    }
+                }
+                // Replacing the map (rather than merging) means a device that drops
+                // off and reconnects is treated as a fresh success next time.
+                self.recordedTransportByDevice = activeTransports
+
+                if !updatedDevices.isEmpty {
+                    DeviceScopedPreferences.shared.migrateLegacyDictionaries()
+                }
+
+                // Restore clipboard sharing that was enabled in an earlier session.
+                // The opt-in is persisted, but the pasteboard watcher and the scrcpy
+                // side live in memory — without this the toggle read "on" while no
+                // sync was running after a relaunch.
+                let connectedIDs = Set(updatedDevices.map(\.id))
+                for device in updatedDevices where self.isClipboardEnabled(for: device.id) {
+                    guard !self.clipboardArmedDevices.contains(device.id) else { continue }
+                    self.clipboardArmedDevices.insert(device.id)
+                    self.adbService.startClipboardSync(deviceID: device.id)
+                }
+                self.clipboardArmedDevices.formIntersection(connectedIDs)
 
                 // Sync previous devices: remove ones that are now connected
                 self.syncPreviousDevices(liveDevices: updatedDevices)
@@ -385,6 +480,19 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
             }
             .store(in: &cancellables)
 
+        // Missing SDK tools are a configuration problem, not a failed action. They are
+        // published for the Emulator Manager to explain in place — never raised as an
+        // alert, because this fires from a background poll the user did not start.
+        emulatorService.setupIssuePublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] issue in
+                // The poll republishes the same text; only publish real changes so the
+                // Emulator Manager does not rebuild its empty state every 5 seconds.
+                guard let self, self.emulatorSetupIssue != issue else { return }
+                self.emulatorSetupIssue = issue
+            }
+            .store(in: &cancellables)
+
     }
 
     // MARK: - DeviceRepositoryProtocol Methods
@@ -399,9 +507,9 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     }
 
     func fetchApps(for deviceID: String) {
-        // Find the AndroidDevice to get its serial number
+        // The device can disappear between building the menu and highlighting a row.
+        // That is a benign race, not something to report in the menu or as an alert.
         guard let device = devices.first(where: { $0.id == deviceID }) else {
-            self.error = "Device with ID \(deviceID) not found to fetch apps."  // Corrected
             self.apps = []
             return
         }
@@ -437,8 +545,8 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
     }
 
     func forceRefreshApps(for deviceID: String) {
+        // Same benign race as fetchApps; never surface it as a device error.
         guard let device = devices.first(where: { $0.id == deviceID }) else {
-            self.error = "Device with ID \(deviceID) not found to force refresh apps."  // Corrected
             self.apps = []
             return
         }
@@ -460,177 +568,190 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
         }
     }
 
-    // Audio Preferences
-    private var audioPreferences: [String: Bool] = [:]  // Keyed by device ID (or serial if available)
+    // MARK: - Per-Device Preferences
+    //
+    // Every preference below belongs to the physical phone, not to the ADB transport
+    // it happens to be reachable on. Callers pass a transport ID (`R58M…` over USB,
+    // `192.168.1.5:5555` over Wi-Fi), so each accessor resolves it to the hardware
+    // serial via `identity(for:)` and stores through `DeviceScopedPreferences`,
+    // which is UserDefaults-backed and keyed by that serial. Unplugging the cable or
+    // relaunching the app therefore no longer resets mirror quality, clipboard
+    // opt-in, audio, borderless, orientation or camera settings.
+    //
+    // Migration: older releases stored the mirror quality presets in bare
+    // UserDefaults dictionaries keyed by transport ID (`mirror_max_size`,
+    // `mirror_max_fps`, `mirror_bit_rate`, `mirror_flex_display`). Each refresh
+    // registers every live transport→serial pair and then folds those legacy
+    // values onto the serial keys without overwriting anything newer; the pass is
+    // idempotent, so devices that appear later in the session still migrate. The
+    // preferences that used to live only in memory now go through the same store,
+    // so they survive relaunch as well.
+
+    private let preferences = DeviceScopedPreferences.shared
+    /// Devices whose clipboard watcher is running in this session.
+    private var clipboardArmedDevices: Set<String> = []
+
+    /// Resolves an ADB transport ID to the device's stable identity (hardware
+    /// serial). Falls back to the persisted transport map, then to the ID itself.
+    private func identity(for deviceID: String) -> String {
+        if let device = devices.first(where: { $0.id == deviceID }) {
+            return device.stableID
+        }
+        return preferences.identity(forTransportID: deviceID)
+    }
+
+    // Audio Preferences (default: on)
 
     func toggleAudio(for deviceID: String) {
-        let current = isAudioEnabled(for: deviceID)
-        audioPreferences[deviceID] = !current
+        let newState = !isAudioEnabled(for: deviceID)
+        preferences.setBool(newState, "audio", for: identity(for: deviceID))
     }
 
     func isAudioEnabled(for deviceID: String) -> Bool {
-        return audioPreferences[deviceID] ?? true  // Default to true
+        preferences.bool("audio", for: identity(for: deviceID), default: true)
     }
 
-    // Clipboard Preferences
-    private var clipboardPreferences: [String: Bool] = [:]  // Keyed by device ID
+    // Clipboard Preferences (default: off — explicit per-device opt-in)
 
     func toggleClipboard(for deviceID: String) {
-        let current = isClipboardEnabled(for: deviceID)
-        let newState = !current
-        clipboardPreferences[deviceID] = newState
+        let newState = !isClipboardEnabled(for: deviceID)
+        preferences.setBool(newState, "clipboard", for: identity(for: deviceID))
 
+        // The sync loop itself runs against the live transport, not the identity.
         if newState {
+            clipboardArmedDevices.insert(deviceID)
             adbService.startClipboardSync(deviceID: deviceID)
         } else {
+            clipboardArmedDevices.remove(deviceID)
             adbService.stopClipboardSync(deviceID: deviceID)
         }
     }
 
     func isClipboardEnabled(for deviceID: String) -> Bool {
-        return clipboardPreferences[deviceID] ?? false  // Default to false if we want explicit enable, or true? User said "toggle is on... automatically copied". Let's default to false so they have to turn it on to start the process.
+        preferences.bool("clipboard", for: identity(for: deviceID), default: false)
     }
 
-    // Resolution Preferences
-    private var resolutionPreferences: [String: Int] = [:]  // Keyed by device ID
+    // Resolution Preferences (default: 900p)
 
     func setResolution(for deviceID: String, resolution: Int) {
-        resolutionPreferences[deviceID] = resolution
+        preferences.setInteger(resolution, "resolution", for: identity(for: deviceID))
     }
 
     func getResolution(for deviceID: String) -> Int {
-        return resolutionPreferences[deviceID] ?? 900  // Default to 900p
+        preferences.integer("resolution", for: identity(for: deviceID), default: 900)
     }
 
-    // Mirroring Size Preferences (for Mirroring)
-    private var maxSizePreferences: [String: Int] = UserDefaults.standard.dictionary(forKey: "mirror_max_size") as? [String: Int] ?? [:] {
-        didSet { UserDefaults.standard.set(maxSizePreferences, forKey: "mirror_max_size") }
-    }
+    // Mirroring Size Preferences (default: 0 = original / no limit)
 
     func setMaxSize(for deviceID: String, size: Int) {
-        maxSizePreferences[deviceID] = size
+        preferences.setInteger(size, "maxSize", for: identity(for: deviceID))
     }
 
     func getMaxSize(for deviceID: String) -> Int {
-        return maxSizePreferences[deviceID] ?? 0  // Default to 0 (Original/No Limit)
+        preferences.integer("maxSize", for: identity(for: deviceID), default: 0)
     }
 
-    // FPS Preferences
-    private var fpsPreferences: [String: Int] = UserDefaults.standard.dictionary(forKey: "mirror_max_fps") as? [String: Int] ?? [:] {
-        didSet { UserDefaults.standard.set(fpsPreferences, forKey: "mirror_max_fps") }
-    }
+    // FPS Preferences (default: 0 = unlimited)
 
     func setMaxFPS(for deviceID: String, fps: Int) {
-        fpsPreferences[deviceID] = fps
+        preferences.setInteger(fps, "maxFPS", for: identity(for: deviceID))
     }
 
     func getMaxFPS(for deviceID: String) -> Int {
-        return fpsPreferences[deviceID] ?? 0  // Default 0 (Unlimited)
+        preferences.integer("maxFPS", for: identity(for: deviceID), default: 0)
     }
 
-    // Bit Rate Preferences
-    private var bitRatePreferences: [String: Int] = UserDefaults.standard.dictionary(forKey: "mirror_bit_rate") as? [String: Int] ?? [:] {
-        didSet { UserDefaults.standard.set(bitRatePreferences, forKey: "mirror_bit_rate") }
-    }
+    // Bit Rate Preferences (default: 8 Mbps)
 
     func setBitRate(for deviceID: String, bitRate: Int) {
-        bitRatePreferences[deviceID] = bitRate
+        preferences.setInteger(bitRate, "bitRate", for: identity(for: deviceID))
     }
 
     func getBitRate(for deviceID: String) -> Int {
-        return bitRatePreferences[deviceID] ?? 8  // Default 8 Mbps
+        preferences.integer("bitRate", for: identity(for: deviceID), default: 8)
     }
 
-    // Borderless Preferences
-    private var borderlessPreferences: [String: Bool] = [:]
+    // Borderless Preferences (default: off)
 
     func toggleBorderless(for deviceID: String) {
-        let current = isBorderlessEnabled(for: deviceID)
-        borderlessPreferences[deviceID] = !current
+        let newState = !isBorderlessEnabled(for: deviceID)
+        preferences.setBool(newState, "borderless", for: identity(for: deviceID))
     }
 
     func isBorderlessEnabled(for deviceID: String) -> Bool {
-        return borderlessPreferences[deviceID] ?? false  // Default false
+        preferences.bool("borderless", for: identity(for: deviceID), default: false)
     }
 
-    private var flexDisplayPreferences: [String: Bool] = UserDefaults.standard.dictionary(forKey: "mirror_flex_display") as? [String: Bool] ?? [:] {
-        didSet { UserDefaults.standard.set(flexDisplayPreferences, forKey: "mirror_flex_display") }
-    }
+    // Flex Display Preferences (default: off)
 
     func toggleFlexDisplay(for deviceID: String) {
-        let current = isFlexDisplayEnabled(for: deviceID)
-        flexDisplayPreferences[deviceID] = !current
+        let newState = !isFlexDisplayEnabled(for: deviceID)
+        preferences.setBool(newState, "flexDisplay", for: identity(for: deviceID))
     }
 
     func isFlexDisplayEnabled(for deviceID: String) -> Bool {
-        return flexDisplayPreferences[deviceID] ?? false  // Default false
+        preferences.bool("flexDisplay", for: identity(for: deviceID), default: false)
     }
 
-    // Orientation Preferences
-    private var orientationPreferences: [String: String] = [:]
-    private var captureOrientationEnabledPreferences: [String: Bool] = [:]
+    // Orientation Preferences (default: capture off, so orientation reads "Auto")
 
     func setOrientation(for deviceID: String, orientation: String) {
-        orientationPreferences[deviceID] = orientation
-        // Auto-enable when a specific orientation is selected
-        if orientation != "Auto" {
-            captureOrientationEnabledPreferences[deviceID] = true
-        } else {
-            captureOrientationEnabledPreferences[deviceID] = false
-        }
+        let stableID = identity(for: deviceID)
+        preferences.setString(orientation, "orientation", for: stableID)
+        // Auto-enable capture when a specific orientation is selected.
+        preferences.setBool(orientation != "Auto", "captureOrientation", for: stableID)
     }
 
     func getOrientation(for deviceID: String) -> String {
-        let isEnabled = isCaptureOrientationEnabled(for: deviceID)
-        if !isEnabled { return "Auto" }
-        return orientationPreferences[deviceID] ?? "0"  // Default to 0 if enabled but not set
+        let stableID = identity(for: deviceID)
+        guard preferences.bool("captureOrientation", for: stableID, default: false) else {
+            return "Auto"
+        }
+        return preferences.string("orientation", for: stableID, default: "0")
     }
 
     func toggleCaptureOrientation(for deviceID: String) {
-        let current = isCaptureOrientationEnabled(for: deviceID)
-        captureOrientationEnabledPreferences[deviceID] = !current
+        let stableID = identity(for: deviceID)
+        let newState = !preferences.bool("captureOrientation", for: stableID, default: false)
+        preferences.setBool(newState, "captureOrientation", for: stableID)
     }
 
     func isCaptureOrientationEnabled(for deviceID: String) -> Bool {
-        return captureOrientationEnabledPreferences[deviceID] ?? false
+        preferences.bool("captureOrientation", for: identity(for: deviceID), default: false)
     }
 
-    // Camera Preferences
-    private var cameraFacingPreferences: [String: String] = [:]
-    private var cameraFPSPreferences: [String: Int] = [:]
-    private var cameraSizePreferences: [String: Int] = [:]
-    private var cameraARPreferences: [String: String] = [:]
+    // Camera Preferences (default: "Auto" / 0 / 0 / "Auto")
 
     func setCameraFacing(for deviceID: String, facing: String) {
-        cameraFacingPreferences[deviceID] = facing
+        preferences.setString(facing, "cameraFacing", for: identity(for: deviceID))
     }
 
     func getCameraFacing(for deviceID: String) -> String {
-        return cameraFacingPreferences[deviceID] ?? "Auto"
+        preferences.string("cameraFacing", for: identity(for: deviceID), default: "Auto")
     }
 
     func setCameraFPS(for deviceID: String, fps: Int) {
-        cameraFPSPreferences[deviceID] = fps
+        preferences.setInteger(fps, "cameraFPS", for: identity(for: deviceID))
     }
 
     func getCameraFPS(for deviceID: String) -> Int {
-        return cameraFPSPreferences[deviceID] ?? 0  // Default 0 (Default/30)
+        preferences.integer("cameraFPS", for: identity(for: deviceID), default: 0)
     }
 
     func setCameraSize(for deviceID: String, size: Int) {
-        cameraSizePreferences[deviceID] = size
+        preferences.setInteger(size, "cameraSize", for: identity(for: deviceID))
     }
 
     func getCameraSize(for deviceID: String) -> Int {
-        return cameraSizePreferences[deviceID] ?? 0  // Default 0 (Original)
+        preferences.integer("cameraSize", for: identity(for: deviceID), default: 0)
     }
 
     func setCameraAR(for deviceID: String, ar: String) {
-        cameraARPreferences[deviceID] = ar
+        preferences.setString(ar, "cameraAR", for: identity(for: deviceID))
     }
 
     func getCameraAR(for deviceID: String) -> String {
-        return cameraARPreferences[deviceID] ?? "Auto"
+        preferences.string("cameraAR", for: identity(for: deviceID), default: "Auto")
     }
 
     func mirrorCamera(deviceID: String) {
@@ -814,9 +935,12 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
             toolsPath: toolsPath, imagePath: imagePath, sdkRoot: imageDownloadPath)
     }
 
+    /// Called on a timer by the Emulator Manager. When the SDK is unavailable this
+    /// stays silent: a background poll must never raise an alert or the menu-bar
+    /// status text. The Emulator Manager shows the setup guidance instead.
     func listAVDs() {
         guard let toolsPath = effectiveToolsPath else {
-            self.error = "Android Command Line Tools path not set in Preferences."
+            emulatorService.reportMissingCommandLineTools(toolsPath: nil)
             return
         }
         emulatorService.listAVDs(toolsPath: toolsPath, avdPath: avdPath)
@@ -901,6 +1025,19 @@ final class DeviceRepository: DeviceRepositoryProtocol {  // Conform to the prot
         deviceID: String, localPath: String, remotePath: String,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
+        if AppPreferences.shared.ignoreSystemFiles,
+            AppPreferences.isSystemMetadataFile(URL(fileURLWithPath: localPath))
+        {
+            completion(
+                .failure(
+                    NSError(
+                        domain: "AndroLaunch.Transfer", code: 4,
+                        userInfo: [
+                            NSLocalizedDescriptionKey:
+                                "macOS metadata files are ignored. Turn off Ignore system files in Settings to send this file."
+                        ])))
+            return
+        }
         adbService.pushFile(
             deviceID: deviceID, localPath: localPath, remotePath: remotePath, completion: completion
         )

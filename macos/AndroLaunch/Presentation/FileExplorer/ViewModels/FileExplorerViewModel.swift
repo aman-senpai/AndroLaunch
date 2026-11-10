@@ -5,12 +5,17 @@
 //  Created by Aman Raj on 12/4/26.
 //
 
+import Combine
 import Foundation
 import SwiftUI
 
 class FileExplorerViewModel: ObservableObject {
     let repository: any DeviceRepositoryProtocol
     let deviceID: String
+    private let transferCoordinator: TransferCoordinator
+    private var cancellables = Set<AnyCancellable>()
+    /// Set when this view model enqueued a batch, so it only reacts to its own transfer.
+    private var pendingTransferDeviceID: String?
 
     @Published var currentPath: String = "/sdcard"
     @Published var files: [AndroidFile] = []
@@ -44,10 +49,37 @@ class FileExplorerViewModel: ObservableObject {
         return crumbs
     }
 
-    init(repository: any DeviceRepositoryProtocol, deviceID: String) {
+    init(
+        repository: any DeviceRepositoryProtocol, deviceID: String,
+        transferCoordinator: TransferCoordinator? = nil
+    ) {
         self.repository = repository
         self.deviceID = deviceID
+        self.transferCoordinator = transferCoordinator ?? .shared
+        observeTransfers()
         Task { @MainActor in self.refresh() }
+    }
+
+    /// Follows the shared queue so a drop keeps the existing progress spinner and
+    /// surfaces per-file failures once the batch finishes.
+    private func observeTransfers() {
+        transferCoordinator.$isActive
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isActive in
+                guard let self else { return }
+                if isActive {
+                    if self.transferCoordinator.activeDeviceID == self.deviceID {
+                        self.pendingTransferDeviceID = self.deviceID
+                        self.isLoading = true
+                    }
+                } else if self.pendingTransferDeviceID == self.deviceID {
+                    self.pendingTransferDeviceID = nil
+                    self.isLoading = false
+                    self.refresh()
+                    self.presentTransferFailures()
+                }
+            }
+            .store(in: &cancellables)
     }
 
     func refresh() {
@@ -93,24 +125,49 @@ class FileExplorerViewModel: ObservableObject {
     }
 
     func pushFiles(urls: [URL]) {
+        guard !urls.isEmpty else { return }
+
+        pendingTransferDeviceID = deviceID
         isLoading = true
-        let group = DispatchGroup()
+        transferCoordinator.enqueue(files: urls, deviceID: deviceID, destination: currentPath)
+    }
 
-        for url in urls {
-            group.enter()
-            let remotePath =
-                currentPath.hasSuffix("/")
-                ? "\(currentPath)\(url.lastPathComponent)"
-                : "\(currentPath)/\(url.lastPathComponent)"
-            repository.pushFile(deviceID: deviceID, localPath: url.path, remotePath: remotePath) {
-                _ in
-                group.leave()
-            }
+    private static func isRegularFile(_ url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            return false
         }
+        return !isDirectory.boolValue
+    }
 
-        group.notify(queue: .main) {
-            self.refresh()
+    private static func totalSize(of urls: [URL]) -> Int64 {
+        urls.reduce(into: Int64(0)) { total, url in
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+            total += Int64(size)
         }
+    }
+
+    /// Turns the failed items of the last batch into one quiet, actionable alert.
+    private func presentTransferFailures() {
+        let failures = transferCoordinator.items.compactMap { item -> String? in
+            guard item.deviceID == deviceID, case .failed(let reason) = item.state,
+                reason != "Cancelled"
+            else { return nil }
+            return "\(item.url.lastPathComponent): \(reason)"
+        }
+        guard !failures.isEmpty else { return }
+
+        let deviceItems = transferCoordinator.items.filter { $0.deviceID == deviceID }
+        let cancelledCount = deviceItems.filter { item in
+            if case .failed(let reason) = item.state { return reason == "Cancelled" }
+            return false
+        }.count
+        let total = deviceItems.count - cancelledCount
+        let header =
+            total == failures.count
+            ? "\(failures.count == 1 ? "The file was" : "All \(failures.count) files were") not sent."
+            : "\(failures.count) of \(total) files were not sent."
+        AlertPresenter.showWarning(message: header + "\n\n" + failures.joined(separator: "\n"))
     }
 
     func pullFile(file: AndroidFile) {

@@ -2,100 +2,151 @@
 //  WelcomePage.swift
 //  AndroLaunch
 //
+//  First-run welcome, on the Hub design system. The window is 620×600
+//  (AppDelegate-owned) and the layout stays comfortable when the user resizes it:
+//  content is capped at 560 pt and scrolls if the window gets shorter.
+//
 
 import SwiftUI
 
 struct WelcomePage: View {
-    @ObservedObject var viewModel: OnboardingViewModel
+    var onConnect: () -> Void
+    var onOpenApp: () -> Void
 
-    @State private var showIcon = false
-    @State private var showTitle = false
-    @State private var showBody = false
-    @State private var showButton = false
+    /// `ImageRenderer` cannot lay out `ScrollView` content, so the design
+    /// snapshot renderer asks pages for their direct content instead.
+    @Environment(\.hubSnapshotMode) private var snapshotMode
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer()
-
-            // App Icon from menu bar asset
-            Image("MenuIcons")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 80, height: 80)
-            .scaleEffect(showIcon ? 1.0 : 0.6)
-            .opacity(showIcon ? 1.0 : 0.0)
-            .animation(.spring(response: 0.5, dampingFraction: 0.7), value: showIcon)
-
-            Spacer().frame(height: 28)
-
-            // Title
-            Text("Welcome to AndroLaunch")
-                .font(.system(size: 22, weight: .semibold, design: .default))
-                .foregroundColor(.primary)
-                .multilineTextAlignment(.center)
-                .offset(y: showTitle ? 0 : 6)
-                .opacity(showTitle ? 1.0 : 0.0)
-                .animation(.easeOut(duration: 0.4), value: showTitle)
-
-            Spacer().frame(height: 10)
-
-            // Description
-            Text("Mirror your Android device, manage apps,\nand control everything from your Mac menu bar.")
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .lineSpacing(4)
-                .padding(.horizontal, 48)
-                .fixedSize(horizontal: false, vertical: true)
-                .opacity(showBody ? 1.0 : 0.0)
-                .animation(.easeOut(duration: 0.4), value: showBody)
-
-            Spacer().frame(height: 36)
-
-            // Get Started Button — monochrome
-            Button {
-                viewModel.proceedToDependencyCheck()
-            } label: {
-                Text("Get Started")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.black)
-                    )
+        if snapshotMode {
+            page
+        } else {
+            ScrollView(.vertical, showsIndicators: false) {
+                page
             }
-            .buttonStyle(.plain)
-            .scaleEffect(showButton ? 1.0 : 0.95)
-            .opacity(showButton ? 1.0 : 0.0)
-            .animation(.spring(response: 0.4, dampingFraction: 0.6), value: showButton)
-            .keyboardShortcut(.return, modifiers: [])
-
-            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear(perform: animateIn)
     }
 
-    private func animateIn() {
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-            showIcon = true
+    private var page: some View {
+        VStack(spacing: 20) {
+            hero
+            steps
+            features
+            actions
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            withAnimation(.easeOut(duration: 0.4)) {
-                showTitle = true
+        .frame(maxWidth: 560)
+        .padding(.horizontal, 30)
+        .padding(.top, 30)
+        .padding(.bottom, 26)
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: Hero
+
+    private var hero: some View {
+        VStack(spacing: 12) {
+            HubLogoMark(size: 58)
+            VStack(spacing: 6) {
+                Text(OnboardingCopy.heroTitle)
+                    .font(.hubWindowTitle)
+                    .foregroundStyle(HubColor.textPrimary)
+                    .multilineTextAlignment(.center)
+                Text(OnboardingCopy.heroBody)
+                    .font(.hubBody)
+                    .foregroundStyle(HubColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2.5)
+                    .frame(maxWidth: 440)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            withAnimation(.easeOut(duration: 0.4)) {
-                showBody = true
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: Steps
+
+    private var steps: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ForEach(OnboardingCopy.steps) { step in
+                HubCard(padding: 12) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 7) {
+                            HubIconTile(systemName: step.icon, size: 26)
+                            Spacer(minLength: 4)
+                            Text("\(step.index)")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(HubColor.textTertiary)
+                                .monospacedDigit()
+                        }
+                        Text(step.title)
+                            .font(.hubRowTitle)
+                            .foregroundStyle(HubColor.textPrimary)
+                        Text(step.detail)
+                            .font(.hubCaption)
+                            .foregroundStyle(HubColor.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
-                showButton = true
+    }
+
+    // MARK: Features
+
+    private var features: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HubSectionHeader("Included")
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 10),
+                    GridItem(.flexible(), spacing: 10),
+                ],
+                spacing: 10
+            ) {
+                ForEach(OnboardingCopy.features) { feature in
+                    HubCard(padding: 11) {
+                        HStack(spacing: 10) {
+                            HubIconTile(systemName: feature.icon, size: 26)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(feature.title)
+                                    .font(.hubRowTitle)
+                                    .foregroundStyle(HubColor.textPrimary)
+                                Text(feature.detail)
+                                    .font(.hubCaption)
+                                    .foregroundStyle(HubColor.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
             }
         }
+    }
+
+    // MARK: Actions
+
+    private var actions: some View {
+        VStack(spacing: 9) {
+            HubActionButton(
+                title: "Connect your Android phone",
+                icon: "cable.connector",
+                style: .primary,
+                fullWidth: true,
+                action: onConnect)
+            HubActionButton(
+                title: "Open AndroLaunch",
+                icon: "macwindow",
+                style: .secondary,
+                fullWidth: true,
+                action: onOpenApp)
+            HubNote(text: OnboardingCopy.localNote, icon: "lock.fill")
+                .frame(maxWidth: .infinity)
+                .padding(.top, 2)
+        }
+        .padding(.top, 2)
     }
 }

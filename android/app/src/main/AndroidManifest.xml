@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Declared for future targetSdk 34 foreground-service enforcement. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Calls are opt-in: the app stays silent until the user enables call
+         awareness in the companion UI. Both are runtime permissions. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+
+    <!-- "Find my phone" raises the alarm stream while ringing (normal permission,
+         granted at install); the previous volume is always restored. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- Storage detail (protocol v5). Capacity needs no permission; per-folder
+         totals need to read the shared-storage tree, which Android exposes only
+         through All files access on Android 11+ or READ_EXTERNAL_STORAGE earlier.
+         The special grant is requested in Settings by storage.requestAccess and
+         is never assumed. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+
+    <uses-feature
+        android:name="android.hardware.telephony"
+        android:required="false" />
+
+    <!--
+        Android 11+ package visibility: the Mac app grid lists launchable apps
+        (the same catalog scrcpy reports), and the app-icons command must be able
+        to read their icons. Declaring the launcher intent is the narrow, policy-
+        friendly way to see exactly those apps — no QUERY_ALL_PACKAGES needed.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AndroLaunchComp"
+        android:usesCleartextTraffic="false">
+
+        <!-- Companion control panel: status, permissions, capabilities. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.AndroLaunchComp">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- The daemon the Mac app talks to through `adb forward`. -->
+        <service
+            android:name=".CompanionService"
+            android:exported="true"
+            android:foregroundServiceType="connectedDevice" />
+
+        <!-- Notification mirroring: only active once the user grants access. -->
+        <service
+            android:name=".NotificationRelay"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Android 8-9 image clipboard: exposes only the clipboard cache folder so
+             a pasting app can read the shared image. Android 10+ uses MediaStore. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+</manifest>

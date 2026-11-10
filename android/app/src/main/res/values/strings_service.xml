@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Strings owned by the companion daemon (service + notification layer).
+    Prefix: svc_ — the UI owns its own string resources in strings.xml.
+
+    Copy is deliberately terse: the foreground notification is a compact native
+    row (title + one short line), not a paragraph.
+-->
+<resources>
+
+    <!-- Foreground notification channel -->
+    <string name="svc_channel_name">Connection status</string>
+    <string name="svc_channel_description">Shows the connection status.</string>
+
+    <!-- Foreground notification content -->
+    <string name="svc_title">AndroLaunch Comp</string>
+    <string name="svc_text_ready">Ready for your Mac</string>
+    <string name="svc_text_synced">Synced just now</string>
+    <string name="svc_text_mirrored">%1$d notifications mirrored</string>
+    <string name="svc_text_ringing">Incoming call</string>
+    <string name="svc_text_in_call">In call</string>
+    <string name="svc_text_ring_phone">Ringing from your Mac</string>
+
+    <!-- Foreground notification actions -->
+    <string name="svc_action_open">Open</string>
+    <string name="svc_action_stop">Stop</string>
+    <string name="svc_action_answer">Answer</string>
+    <string name="svc_action_decline">Decline</string>
+    <string name="svc_action_end_call">End call</string>
+    <string name="svc_action_stop_ring">Stop ringing</string>
+
+    <!-- Canonical human labels for call awareness states -->
+    <string name="svc_call_idle">Idle</string>
+    <string name="svc_call_ringing">Ringing</string>
+    <string name="svc_call_in_call">In call</string>
+
+</resources>

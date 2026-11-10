@@ -29,41 +29,73 @@ enum AppConstants {
         ]
     }()
 
-    /// Auto-detect the Android SDK command-line tools path.
-    /// Returns the first path that contains both `sdkmanager` and `avdmanager`.
-    static func detectCmdlineToolsPath() -> String? {
+    /// A usable command-line-tools directory contains both binaries the emulator
+    /// features shell out to. Anything else (a folder the user picked once, a moved
+    /// SDK, an interrupted install) must not be treated as configured.
+    static func isValidCmdlineToolsDirectory(_ path: String) -> Bool {
+        guard !path.isEmpty else { return false }
         let fm = FileManager.default
+        return fm.isExecutableFile(atPath: (path as NSString).appendingPathComponent("sdkmanager"))
+            && fm.isExecutableFile(atPath: (path as NSString).appendingPathComponent("avdmanager"))
+    }
 
-        // Check environment variables first
-        if let sdkRoot = ProcessInfo.processInfo.environment["ANDROID_SDK_ROOT"]
-            ?? ProcessInfo.processInfo.environment["ANDROID_HOME"]
-        {
-            let binPath = (sdkRoot as NSString).appendingPathComponent("cmdline-tools/latest/bin")
-            if fm.isExecutableFile(
-                atPath: (binPath as NSString).appendingPathComponent("sdkmanager")),
-                fm.isExecutableFile(
-                    atPath: (binPath as NSString).appendingPathComponent("avdmanager"))
-            {
-                return binPath
-            }
+    /// Every `cmdline-tools` bin directory under an SDK root, best first.
+    ///
+    /// Android Studio installs into `cmdline-tools/latest`, but versioned folders
+    /// (`17.0`, `18.1`, …) and the legacy `cmdline-tools/bin` layout are common —
+    /// assuming `latest` is what produced a permanent "avdmanager not found".
+    static func cmdlineToolsBinDirectories(inRoot root: String) -> [String] {
+        guard !root.isEmpty else { return [] }
+        let tools = (root as NSString).appendingPathComponent("cmdline-tools")
+        var directories = [(tools as NSString).appendingPathComponent("latest/bin")]
+
+        let entries =
+            (try? FileManager.default.contentsOfDirectory(atPath: tools)) ?? []
+        let versions =
+            entries
+            .filter { $0 != "latest" && !$0.hasPrefix(".") }
+            .sorted { $0.localizedStandardCompare($1) == .orderedDescending }
+        directories.append(
+            contentsOf: versions.map { (tools as NSString).appendingPathComponent("\($0)/bin") })
+        directories.append((tools as NSString).appendingPathComponent("bin"))
+        return directories
+    }
+
+    /// Every SDK root worth looking in, including a user-configured one.
+    static func candidateSDKRoots(additional: String? = nil) -> [String] {
+        let home = NSHomeDirectory()
+        let environment = ProcessInfo.processInfo.environment
+        var roots: [String] = []
+        for root in [
+            additional,
+            environment["ANDROID_SDK_ROOT"],
+            environment["ANDROID_HOME"],
+            "\(home)/Library/Android/sdk",
+            "\(home)/Android/Sdk",
+            "/opt/homebrew/share/android-commandlinetools",
+            "/usr/local/share/android-commandlinetools",
+        ] {
+            guard let root, !root.isEmpty, !roots.contains(root) else { continue }
+            roots.append(root)
         }
+        return roots
+    }
 
-        // Check common paths
-        for path in cmdlineToolsPaths {
-            let sdkmanagerPath = (path as NSString).appendingPathComponent("sdkmanager")
-            let avdmanagerPath = (path as NSString).appendingPathComponent("avdmanager")
-            if fm.isExecutableFile(atPath: sdkmanagerPath),
-                fm.isExecutableFile(atPath: avdmanagerPath)
+    /// Auto-detect the Android SDK command-line tools path.
+    /// Returns the first directory that contains both `sdkmanager` and `avdmanager`.
+    static func detectCmdlineToolsPath(additionalRoots: [String] = []) -> String? {
+        for root in candidateSDKRoots() + additionalRoots {
+            if let match = cmdlineToolsBinDirectories(inRoot: root)
+                .first(where: isValidCmdlineToolsDirectory)
             {
-                return path
+                return match
             }
         }
 
         // Fallback: check if there's a sdkmanager in PATH and derive from that
         if let sdkmanagerInPath = findExecutableInPath(named: "sdkmanager") {
             let binDir = (sdkmanagerInPath as NSString).deletingLastPathComponent
-            let avdmanagerPath = (binDir as NSString).appendingPathComponent("avdmanager")
-            if fm.isExecutableFile(atPath: avdmanagerPath) {
+            if isValidCmdlineToolsDirectory(binDir) {
                 return binDir
             }
         }

@@ -82,13 +82,12 @@ final class ScrcpyService: ScrcpyServiceProtocol {
             args.append(contentsOf: ["-m", "\(maxSize)"])
         }
         if let maxFPS = maxFPS { args.append(contentsOf: ["--max-fps", "\(maxFPS)"]) }
-        if let bitRate = bitRate { args.append(contentsOf: ["--bit-rate", "\(bitRate)M"]) }
+        if let bitRate = bitRate { args.append(contentsOf: ["--video-bit-rate", "\(bitRate)M"]) }
         if let orientation = orientation {
             args.append(contentsOf: ["--lock-video-orientation", orientation])
         }
-        if let adbPath = adbPath { args.append(contentsOf: ["--adb", adbPath]) }
 
-        launchProcess(scrcpyPath: scrcpyPath, args: args, key: deviceID)
+        launchProcess(scrcpyPath: scrcpyPath, args: args, key: deviceID, adbPath: adbPath)
     }
 
     // MARK: - Mirror Camera
@@ -123,7 +122,7 @@ final class ScrcpyService: ScrcpyServiceProtocol {
         if let facing = facing { args.append(contentsOf: ["--camera-facing", facing]) }
         if let fps = fps { args.append(contentsOf: ["--max-fps", "\(fps)"]) }
         if let size = size { args.append(contentsOf: ["-m", "\(size)"]) }
-        if let bitRate = bitRate { args.append(contentsOf: ["--bit-rate", "\(bitRate)M"]) }
+        if let bitRate = bitRate { args.append(contentsOf: ["--video-bit-rate", "\(bitRate)M"]) }
         if let orientation = orientation {
             args.append(contentsOf: ["--lock-video-orientation", orientation])
         }
@@ -133,9 +132,8 @@ final class ScrcpyService: ScrcpyServiceProtocol {
         } else {
             args.append("--no-audio")
         }
-        if let adbPath = adbPath { args.append(contentsOf: ["--adb", adbPath]) }
 
-        launchProcess(scrcpyPath: scrcpyPath, args: args, key: "camera-\(deviceID)")
+        launchProcess(scrcpyPath: scrcpyPath, args: args, key: "camera-\(deviceID)", adbPath: adbPath)
     }
 
     // MARK: - Launch App
@@ -193,17 +191,35 @@ final class ScrcpyService: ScrcpyServiceProtocol {
         } else {
             args.append("--audio-bit-rate=10000")
         }
-        if let adbPath = adbPath { args.append(contentsOf: ["--adb", adbPath]) }
 
-        launchProcess(scrcpyPath: scrcpyPath, args: args, key: "app-\(deviceID)-\(packageID)")
+        launchProcess(scrcpyPath: scrcpyPath, args: args, key: "app-\(deviceID)-\(packageID)", adbPath: adbPath)
     }
 
     // MARK: - Process Management
 
-    private func launchProcess(scrcpyPath: String, args: [String], key: String) {
+    private func launchProcess(
+        scrcpyPath: String, args: [String], key: String, adbPath: String?
+    ) {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: scrcpyPath)
         task.arguments = args
+        // scrcpy 4.x removed --adb; it reads the ADB environment variable.
+        if let adbPath {
+            var env = ProcessInfo.processInfo.environment
+            env["ADB"] = adbPath
+            env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:" + (env["PATH"] ?? "")
+            task.environment = env
+        }
+
+        let isCamera = key.hasPrefix("camera-")
+        let diagnostics = Pipe()
+        if isCamera {
+            // Camera failures (CAMERA_IN_USE, permissions, no camera) are only
+            // visible in scrcpy's stderr; capture it so the card can explain the
+            // real reason instead of a generic "couldn't start".
+            task.standardError = diagnostics
+            task.standardOutput = diagnostics
+        }
 
         processLock.lock()
         runningProcesses[key] = task
@@ -213,10 +229,20 @@ final class ScrcpyService: ScrcpyServiceProtocol {
             do {
                 try task.run()
                 task.waitUntilExit()
+                let data = isCamera
+                    ? (try? diagnostics.fileHandleForReading.readToEnd()) ?? Data()
+                    : Data()
                 self?.processLock.lock()
                 self?.runningProcesses.removeValue(forKey: key)
                 self?.processLock.unlock()
+                if isCamera, task.terminationStatus != 0 {
+                    let text = String(data: data ?? Data(), encoding: .utf8) ?? ""
+                    self?.error.send("Camera: \(CameraLaunchFailure.message(from: text))")
+                }
             } catch {
+                self?.processLock.lock()
+                self?.runningProcesses.removeValue(forKey: key)
+                self?.processLock.unlock()
                 self?.error.send("Failed: \(error.localizedDescription)")
             }
         }
@@ -241,5 +267,28 @@ final class ScrcpyService: ScrcpyServiceProtocol {
         for p in processes {
             p.terminate()
         }
+    }
+}
+
+
+private enum CameraLaunchFailure {
+    static func message(from output: String) -> String {
+        let lowered = output.lowercased()
+        if lowered.contains("camera_in_use") || lowered.contains("higher-priority client") {
+            return "Another app is using the phone's camera. Close the Camera/Settings app on the phone, then press Start preview again."
+        }
+        if lowered.contains("permission") || lowered.contains("denied") {
+            return "The phone denied camera access. Allow Camera permission for the scrcpy server / Android shell, then retry."
+        }
+        if lowered.contains("camera") && (lowered.contains("not found") || lowered.contains("unavailable")) {
+            return "The phone did not expose a usable camera. Unlock it, close other camera apps, and retry."
+        }
+        let line = output
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty && !$0.hasPrefix("scrcpy ") && !$0.hasPrefix("INFO:") }
+        return line.map { "scrcpy could not start the camera: \($0)" }
+            ?? "scrcpy could not start the camera."
     }
 }

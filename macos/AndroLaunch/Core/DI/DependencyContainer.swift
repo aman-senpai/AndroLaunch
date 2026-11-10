@@ -27,6 +27,8 @@ final class DependencyContainer: DependencyContainerProtocol {
 
     // MARK: - Private Properties
     private let commandExecutor: any CommandExecutorProtocol
+    /// Concrete service for features that need more than the protocol surface.
+    private let adbServiceImpl: ADBService
     private let adbServiceInstance: any ADBServiceProtocol
     private let adbPairingServiceInstance: any ADBPairingServiceProtocol
     private let scrcpyServiceInstance: any ScrcpyServiceProtocol
@@ -44,7 +46,9 @@ final class DependencyContainer: DependencyContainerProtocol {
         let commandExecutor = CommandExecutor()
         self.commandExecutor = commandExecutor
 
-        self.adbServiceInstance = ADBService()
+        let adbService = ADBService()
+        self.adbServiceImpl = adbService
+        self.adbServiceInstance = adbService
         self.adbPairingServiceInstance = ADBPairingService(commandExecutor: commandExecutor, adbService: adbServiceInstance)
         self.scrcpyServiceInstance = ScrcpyService()
         self.emulatorServiceInstance = EmulatorService()
@@ -73,6 +77,8 @@ final class DependencyContainer: DependencyContainerProtocol {
 
     // MARK: - Public Properties
     var adbService: any ADBServiceProtocol { adbServiceInstance }
+    /// Concrete ADB service for feature controllers (connection, clipboard, notifications).
+    var adb: ADBService { adbServiceImpl }
     var adbPairingService: any ADBPairingServiceProtocol { adbPairingServiceInstance }
     var scrcpyService: any ScrcpyServiceProtocol { scrcpyServiceInstance }
     var emulatorService: any EmulatorServiceProtocol { emulatorServiceInstance }

@@ -13,6 +13,10 @@ final class EmulatorService: EmulatorServiceProtocol {
     private let avdsSubject = PassthroughSubject<[AVD], Never>()
     private let downloadProgressSubject = PassthroughSubject<(String, Double), Never>()
     private let errorSubject = PassthroughSubject<String?, Never>()
+    /// Configuration problems (missing SDK tools) are reported separately from failed
+    /// actions: they are not the user's current task failing, and they must not raise
+    /// an alert every time the AVD poll runs.
+    private let setupIssueSubject = PassthroughSubject<String?, Never>()
 
     var imagesPublisher: AnyPublisher<[SystemImage], Never> { imagesSubject.eraseToAnyPublisher() }
     var avdsPublisher: AnyPublisher<[AVD], Never> { avdsSubject.eraseToAnyPublisher() }
@@ -20,6 +24,9 @@ final class EmulatorService: EmulatorServiceProtocol {
         downloadProgressSubject.eraseToAnyPublisher()
     }
     var errorPublisher: AnyPublisher<String?, Never> { errorSubject.eraseToAnyPublisher() }
+    var setupIssuePublisher: AnyPublisher<String?, Never> {
+        setupIssueSubject.eraseToAnyPublisher()
+    }
 
     private var cancellables = Set<AnyCancellable>()
     private var startingAVDs = Set<String>()
@@ -38,9 +45,7 @@ final class EmulatorService: EmulatorServiceProtocol {
 
         // Verify the executable exists before attempting to run it
         guard FileManager.default.isExecutableFile(atPath: sdkManagerPath) else {
-            errorSubject.send(
-                "Android SDK sdkmanager not found at \(sdkManagerPath). Please check your Android SDK path in Preferences."
-            )
+            reportMissingCommandLineTools(toolsPath: toolsPath)
             imagesSubject.send([])
             return
         }
@@ -59,6 +64,7 @@ final class EmulatorService: EmulatorServiceProtocol {
                 "[EmulatorService] listAvailableImages completed: success=\(success), outputLength=\(output?.count ?? 0), errorLength=\(errorOutput?.count ?? 0)"
             )
             if success {
+                self.setupIssueSubject.send(nil)
                 let images = self.parseImages(from: output ?? "", sdkRoot: resolvedSdkRoot)
                 print("[EmulatorService] parsed \(images.count) images")
                 if images.isEmpty && !(output ?? "").isEmpty {
@@ -76,6 +82,20 @@ final class EmulatorService: EmulatorServiceProtocol {
         }
     }
 
+    // MARK: - Setup Issues
+
+    /// Explains what is missing and how to fix it, once per session.
+    func reportMissingCommandLineTools(toolsPath: String? = nil) {
+        let location =
+            toolsPath.map { " at \($0)" } ?? ""
+        setupIssueSubject.send(
+            "Android SDK command-line tools were not found\(location). Emulator Manager needs "
+                + "sdkmanager and avdmanager. Install them with Homebrew "
+                + "(brew install --cask android-commandlinetools) or through Android Studio's "
+                + "SDK Manager, then choose Auto-Detect SDK in Preferences."
+        )
+    }
+
     // MARK: - List AVDs
     func listAVDs(toolsPath: String, avdPath: String? = nil) {
         guard !toolsPath.isEmpty else {
@@ -86,9 +106,7 @@ final class EmulatorService: EmulatorServiceProtocol {
 
         // Verify the executable exists before attempting to run it
         guard FileManager.default.isExecutableFile(atPath: avdManagerPath) else {
-            errorSubject.send(
-                "Android SDK avdmanager not found at \(avdManagerPath). Please check your Android SDK path in Preferences."
-            )
+            reportMissingCommandLineTools(toolsPath: toolsPath)
             avdsSubject.send([])
             return
         }
@@ -108,6 +126,7 @@ final class EmulatorService: EmulatorServiceProtocol {
             }
 
             if success {
+                self.setupIssueSubject.send(nil)
                 let avds = self.parseAVDs(from: output ?? "")
 
                 // Now check which ones are running

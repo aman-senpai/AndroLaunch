@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Launcher icon foreground: the established AndroLaunch mark — the Android head
+    on a rounded green screen, resting on a neutral plate. Geometry is traced from
+    the original launcher icon (in the 108dp adaptive-icon grid the artwork sits
+    inside the centre 72dp window the launcher mask exposes).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Green screen: rounded left end, bleeding off the right edge (mask crops it). -->
+    <path
+        android:fillColor="@color/al_brand"
+        android:pathData="M20.32,53.15 A22.4,22.4 0 1,1 65.12,53.15 A22.4,22.4 0 1,1 20.32,53.15 Z" />
+    <path
+        android:fillColor="@color/al_brand"
+        android:pathData="M42.72,30.8 H128 V75.5 H42.72 Z" />
+
+    <!-- Android head, white line art. -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M34.3,75.5 A25.7,25.7 0 1,1 85.7,75.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4.2" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M46.76,53.47 L39.94,46.16"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.6" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M73.24,53.47 L80.06,46.16"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.6" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M47,65.8 A2.5,2.5 0 1,1 52,65.8 A2.5,2.5 0 1,1 47,65.8 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M68,65.8 A2.5,2.5 0 1,1 73,65.8 A2.5,2.5 0 1,1 68,65.8 Z" />
+</vector>

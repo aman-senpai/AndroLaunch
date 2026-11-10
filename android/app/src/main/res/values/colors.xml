@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Product colours that resources still reference.
+
+    The Compose UI uses MaterialTheme colour roles (with Material You dynamic
+    colour on Android 12+); these XML tokens remain for the launcher icon and the
+    companion daemon's notification colour.
+-->
+<resources>
+    <color name="al_brand">#4CB250</color>
+    <!-- Neutral plate behind the green screen in the adaptive launcher icon. -->
+    <color name="al_icon_plate">#CCCCCC</color>
+</resources>

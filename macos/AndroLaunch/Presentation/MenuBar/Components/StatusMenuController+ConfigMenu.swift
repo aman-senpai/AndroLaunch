@@ -160,11 +160,13 @@ extension StatusMenuController {
             title: "Share Text Clipboard",
             icon: "doc.on.clipboard",
             isOn: isClipboardEnabled
-        ) { [weak self] isOn in
-            self?.viewModel.toggleClipboard(for: deviceID)
+        ) { isOn in
+            ClipboardBridge.shared.setEnabled(isOn, for: deviceID)
         }
         clipboardItem.view = clipboardView
-        clipboardView.toolTip = "Opt-in for this device until app quit. Android to Mac uses scrcpy; automatic Mac to Android forwarding requires the ch.pete.adbclipboard companion. Clipboard text may include sensitive data."
+        // State the real companion state instead of a generic caveat.
+        ClipboardBridge.shared.refreshCompanionStatus(for: deviceID)
+        clipboardView.toolTip = ClipboardBridge.shared.tooltip(for: deviceID)
         menu.addItem(clipboardItem)
         let clipboardHelp = NSMenuItem(title: "About Clipboard Sharing…", action: #selector(showClipboardHelp), keyEquivalent: "")
         clipboardHelp.target = self
@@ -219,7 +221,7 @@ extension StatusMenuController {
     @objc private func showClipboardHelp() {
         let alert = NSAlert()
         alert.messageText = "Share text with selected devices"
-        alert.informativeText = "Clipboard sharing is off by default and enabled per device until AndroLaunch quits. Every enabled device can receive text copied on this Mac, including passwords and other sensitive text.\n\nAndroid → Mac uses a background scrcpy session and depends on Android clipboard restrictions.\n\nAutomatic Mac → Android forwarding requires the Android companion package ch.pete.adbclipboard with its WriteReceiver enabled. AndroLaunch does not install or verify that companion. This toggle alone does not confirm delivery.\n\nTurn sharing off for each device when finished. Images and files are not shared."
+        alert.informativeText = "Clipboard sharing is off by default and enabled per device. Every enabled device can receive text copied on this Mac, including passwords and other sensitive text.\n\nAndroid → Mac reuses an open mirror session when it forwards the clipboard, and otherwise runs a lightweight background scrcpy session. Android clipboard restrictions still apply.\n\nAutomatic Mac → Android forwarding uses AndroLaunch Comp, which ships with this build: choose Install AndroLaunch Comp in the Clipboard menu and AndroLaunch installs it over ADB. A missing AndroLaunch Comp is reported as such instead of failing silently.\n\nTurn sharing off for each device when finished. Images and files are not shared — use Send Files to Device for those."
         alert.addButton(withTitle: "OK")
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()

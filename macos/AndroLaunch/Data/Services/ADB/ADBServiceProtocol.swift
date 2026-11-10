@@ -47,6 +47,7 @@ protocol ADBServiceProtocol {
         size: Int?, bitRate: Int?, orientation: String?, aspectRatio: String?)
     func startClipboardSync(deviceID: String)
     func stopClipboardSync(deviceID: String)
+    func stopAllClipboardSync()
     func disconnectDevice(deviceID: String)
     func connectToHost(_ hostPort: String, completion: @escaping (Bool) -> Void)
     func installAPK(deviceID: String, apkPath: String)

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Light host theme: the Compose Material 3 theme paints the UI; this theme
+     only supplies the platform window/splash background. -->
+<resources>
+    <style name="Theme.AndroLaunchComp" parent="@android:style/Theme.Material.Light.NoActionBar" />
+</resources>

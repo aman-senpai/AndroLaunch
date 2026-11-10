@@ -1,4 +1,4 @@
-# AndroLaunch - Your Android Device Management Hub for macOS, Windows & Linux
+# AndroLaunch - Your Android Device Management App for macOS, Windows & Linux
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/1da15d00-ab8a-4afb-8d26-fd23ae3a3cda" alt="AndroLaunch" width="150">
@@ -16,9 +16,26 @@
 | Transfer | Browse device files, upload, and download. Windows includes a transfer queue, measured progress where available, cancellation, conflict choices, and failed-item retry. |
 | Capture on Windows | Save PNG screenshots, copy them to the clipboard, or record an MP4 with explicit stop/save controls. |
 | Quick access on Windows | Search actions with **Ctrl+K**, save favorite apps/actions/commands, and revisit recent actions. |
+| Continuity on macOS | One identity per phone across USB, Wi-Fi and Bonjour: preferences follow the device, connections race and fail over, and reconnect themselves after sleep. |
+| Dashboard on macOS | One Liquid Glass menu-bar surface with **Apps / Notifications / Storage / Device / Settings**: live USB and Wi-Fi pairing, an app catalog with Frame Mode windows, phone features, tools and preferences. |
+| Phone on the Mac | Calls with best-effort Answer/Decline, now-playing media controls, notification actions with inline reply, phone storage, APK/APKS/APKM/XAPK installation, camera preview, and trackpad gestures. |
+| AI on your phone | **Android Use**: a local stdio MCP server with 15 phone tools, an activity log, and a stop control. Works with Codex, Claude Code, Cursor and other MCP clients. |
+| Day-to-day loops | Opt-in clipboard sharing with companion detection, drop-to-send file transfer, Android notification mirroring, a Glance desktop board, and a Finder **Send to Android** service. |
 | Develop | Access shell, Logcat, saved commands, reboot modes, and optional Android emulators. |
 
 Platform capabilities differ; Windows capture/quick actions and the transfer queue described below are not claims of identical features on macOS or KDE.
+
+## 🧪 Verify the macOS milestone
+
+```bash
+./scripts/verify-milestone.sh
+```
+
+This builds the macOS app, runs the Foundation logic suite, builds the
+Android companion, renders the dashboard and platform snapshots to `build/`, launches the
+app once, and exercises the local MCP server over stdio. The individual scripts are
+`scripts/build-macos.sh`, `scripts/test-macos-logic.sh`,
+`scripts/render-hub-snapshots.sh` and `android/build.sh`.
 
 ## 🛠️ Setup: Get Started in Minutes
 
@@ -179,11 +196,146 @@ Mirror your Android screen to your Mac with advanced options:
 
 Advanced options vary by platform and scrcpy version. A successful launch also depends on Android authorization, device encoders, and camera permissions.
 
+### 🔗 Continuity layer (macOS)
+
+The macOS app treats a phone as one device, not as whichever ADB transport it is
+reachable on.
+
+- **One identity per phone.** Preferences, mirror presets and clipboard opt-in are
+  keyed by the hardware serial, so unplugging USB and reconnecting over Wi-Fi keeps
+  the device configured exactly as it was. Existing v0.3/v0.4 preferences are
+  migrated automatically on first launch.
+- **Racing connections and failover.** AndroLaunch remembers every transport it has
+  seen for a device — USB, a Bonjour service name, a remembered LAN address, or an
+  address you add yourself (Tailscale, ZeroTier, an SSH forward) — and races the
+  wireless candidates, preferring USB, then Bonjour, then a stored IP. When a cable
+  is unplugged or the network changes, it fails over instead of dropping the session.
+  A 9-second presence check reconnects devices that come back, after sleep, or after
+  a brief Wi-Fi drop. Disconnecting on purpose does not fight the user.
+- **Clipboard.** Android → Mac reuses an open mirror session when it can, and
+  otherwise runs one hidden session; Mac → Android detects real pasteboard changes
+  instead of polling text. Mac → Android is delivered by **AndroLaunch Comp**, the
+  first-party companion that ships with this app — choose **Install AndroLaunch
+  Comp** in the Clipboard menu and AndroLaunch installs it over ADB. No third-party
+  app and no Play Store dependency. AndroLaunch Comp is a Jetpack Compose +
+  Material 3 control panel (Material You dynamic color, system light/dark, the
+  real app icon) with a compact brand-colored connection notification. Its loopback socket (behind
+  `adb forward`) serves clipboard writes, platform-parsed notification data, and
+  opt-in call awareness with best-effort answer/decline on the phone. The macOS app
+  now surfaces calls in a floating banner and the status menu, with Answer/Decline
+  (audio always stays on the phone). Protocol v5 adds notification actions and
+  inline reply, media transport, ring phone, storage information and clipboard
+  images, real launcher icons, and the storage-permission handshake. See [`android/README.md`](android/README.md).
+- **Drag, drop, send.** Drop files on the file browser, choose **Send Files to
+  Device…** in a device's menu, or use Finder → **Services → Send to Android**.
+  Transfers are queued one at a time with per-file results and a completion
+  notification.
+- **Notification mirroring.** Opt in per device to see Android notifications in
+  macOS Notification Center; clicking one opens the app on the phone. Sensitive apps
+  (banking, password managers, authenticators, mail) are hidden by default, and
+  notifications without readable text are never mirrored.
+
+The design and file layout for this layer are documented in
+[`docs/continuity-architecture.md`](docs/continuity-architecture.md).
+
+### ✨ Menu-bar dashboard (macOS)
+
+The menu bar is the only main surface: left-click the status icon for the floating
+**Liquid Glass dashboard**, right-click for the classic menu. The dashboard is
+built around five tabs — Apps, Notifications, Storage, Device and Settings — with
+no separate second window.
+
+- **Devices.** A USB card with live device rows (status, Android version, battery,
+  transport) and three-step guidance; a Wi-Fi card with four connection methods —
+  **QR code** (generated by the app, scanned by Android’s Wireless debugging),
+  **Pairing code** (Bonjour discovery + `adb pair`), **IP address** (validated
+  IPv4 / bracketed IPv6 + `adb connect`), and **Companion app** (installs
+  AndroLaunch Comp over ADB); and an “On this Mac” entry for the emulator manager.
+- **Apps.** Search the phone’s launchable apps, pin favourites, install
+  APK/APKS/APKM/XAPK packages with a permission/compatibility inspector, drag files
+  onto the dashboard to send them, and open an Android app in its own **Frame Mode**
+  window on Android 14+ (main-display mirroring with an honest explanation on
+  older releases). Desktop shortcuts and Spotlight indexing are included.
+- **Settings.** Fusion mode (Frame Mode, Spotlight Search, Open Links on Mac,
+  Handoff), Hardware support (phone-camera preview + an honest camera-extension
+  status, trackpad gestures, Glance desktop board), **AI → Android Use** (MCP
+  command, activity log, stop server), device/notification/clipboard controls,
+  storage, launch at login, and About.
+
+The panel has the same five tabs (Apps, Notifications, Storage, Device, Settings),
+a device/Frame Mode header and the app grid, plus a **Tools** sheet for Mirror
+Controls, Storage Analytics, Finder Mirror, Copy Clipboard to Android, camera,
+commands, AVD, Wi-Fi and Mirror Controls. There is no bottom
+status strip; refresh lives in Tools. Notifications are on by default and poll the
+companion directly, so the panel works even if macOS banners are denied. Wi-Fi
+pairing, AVDs, saved commands, Mirror Controls, Storage Analytics and the full
+Settings surface expand **inside the panel** instead of opening windows. A
+Bluetooth quick action is in Tools. Scrollbars are hidden throughout; the panel adapts to
+**light and dark** desktop appearances (real Liquid Glass on macOS 26+, a
+thin-material fallback on older releases).
+
+The camera extension has a **local-signing test lane**: `scripts/install-local-camera-extension.sh Release`
+builds, self-signs and embeds a real CMIO system extension, then installs the app
+to `/Applications`. It emits a 720p test pattern so FaceTime/Zoom/QuickTime can
+select **AndroLaunch Camera**; see [`docs/camera-extension-local-signing.md`](docs/camera-extension-local-signing.md).
+Self-signed system extensions require `csrutil enable --without kext --without debug`
+and `sudo systemextensionsctl developer on` once.
+
+App icons are **real launcher icons**: the companion (`v5`) serves 96×96 PNGs for
+launchable apps, cached under `~/Library/Application Support/AndroLaunch/AppIcons`.
+Without the companion, the UI keeps its SF Symbol fallbacks. Installing the
+companion over ADB pre-grants notification, media/storage and notification-listener
+access; phone/call permissions remain opt-in in the companion UI.
+
+**Device Dashboard** (`⌘D`) opens the same compact dashboard from the menu bar,
+with five tabs:
+
+- **Apps:** search by name/package, app grid, “Copy to Android” for typed text or
+  links, companion install helper, and one-tap app windows.
+- **Notifications:** Showing / Hidden / **Recently Canceled** groups with real app
+  icons, sender/subject shaping, Delete / Mark as read / Reply / Open, and
+  per-device sync.
+- **Storage:** file management plus an inline Storage Analytics donut; when
+  Android hides folder access, an **Allow storage access** card opens the grant.
+- **Device:** every connected phone is listed and expandable; the selected phone
+  shows model/battery/transport, mirror/camera/screenshot/ring/storage actions,
+  Wi-Fi pairing, AVDs, saved commands, trackpad/glance and every action that used to require the old menu.
+- **Settings:** device-scoped audio, clipboard, quality and Frame Mode preferences.
+
+**Storage Analytics** shows internal and SD-card capacity as donut charts with
+Apps / User files / System & Others categories, folder drill-down, and the largest
+media files. **Mount**/Open materializes a local **Finder mirror** under
+`~/Library/Application Support/AndroLaunch/Finder` and reveals it in Finder (a
+sidebar link is created at `~/AndroLaunch`).
+
+**Mirror Controls** is a floating panel for the active mirror: audio forwarding,
+always-on-top (Pin), screen off, clipboard, screenshot, recording, Mac keyboard,
+frame toggle and Back/Home/Recents. Option changes restart that device’s mirror;
+screenshots save to the Desktop and recordings to Movies.
+
+**Copy to Android** is available as a macOS Services item for selected text/URLs
+and from the dashboard search. The menu-bar **Tools** sheet exposes it alongside
+the mirror, storage and Finder surfaces.
+
+Also in this milestone: a redesigned onboarding flow, a floating call banner and
+media controls, notification inline reply, camera preview, trackpad gesture panel,
+and the Glance desktop board.
+
+**Honest limits.** There is no relay cloud (use a LAN/VPN `adb connect` endpoint), no
+cellular call audio on the Mac, and this unsigned build does not ship signed
+extension targets (CMIO camera, File Provider, Quick Look, Share). The working
+alternatives are the camera preview, the Finder mirror, Finder Services and the
+Services “Copy to Android” item; the signed-extension packaging remains separate.
+Plans for these surfaces are in
+[`docs/feature-expansion-plan.md`](docs/feature-expansion-plan.md).
+
 ### Clipboard sharing
 
 **Mirror-session forwarding** belongs to scrcpy and applies while its session runs. It is separate from any background clipboard bridge.
 
-On Windows, the optional **Background clipboard bridge** checks for the [ADB Clipboard companion](https://play.google.com/store/apps/details?id=ch.pete.adbclipboard) before enabling PC-to-Android delivery. Its enabled indicator records the requested state, not verified delivery or helper-process health. Pause it explicitly to stop background sharing for that device.
+On Windows, the optional **Background clipboard bridge** checks for the third-party [ADB Clipboard app](https://play.google.com/store/apps/details?id=ch.pete.adbclipboard) before enabling PC-to-Android delivery. Its enabled indicator records the requested state, not verified delivery or helper-process health. Pause it explicitly to stop background sharing for that device.
+
+On macOS, enable **Share clipboard** per device from the Clipboard section or a device's Configuration submenu.
 
 The KDE console provides explicit **Send desktop text** and **Read last Android export** actions through the companion. Reading an export is not live synchronization: Android restrictions may require opening/tapping the companion first, and access to its exported file may be restricted.
 

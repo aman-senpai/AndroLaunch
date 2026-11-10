@@ -13,6 +13,7 @@ struct FileExplorerView: View {
     @StateObject var viewModel: FileExplorerViewModel
     @Environment(\.dismiss) var dismiss
     @State private var hoveredFileID: String?
+    @State private var isDropTargeted = false
 
     var body: some View {
         NavigationSplitView {
@@ -21,7 +22,7 @@ struct FileExplorerView: View {
             detailView
         }
         .frame(minWidth: 800, minHeight: 500)
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
             Task {
                 var urls: [URL] = []
                 for provider in providers {
@@ -39,6 +40,8 @@ struct FileExplorerView: View {
             }
             return true
         }
+        .overlay { dropOverlay }
+        .animation(.easeOut(duration: 0.15), value: isDropTargeted)
         .confirmationDialog(
             "Delete \(viewModel.pendingDeleteCount) item\(viewModel.pendingDeleteCount == 1 ? "" : "s")?",
             isPresented: $viewModel.showDeleteConfirmation,
@@ -47,6 +50,27 @@ struct FileExplorerView: View {
             Button("Delete", role: .destructive) {
                 viewModel.confirmDelete()
             }
+        }
+    }
+
+    /// Subtle drop affordance: only shown while a Finder drag hovers the window.
+    @ViewBuilder
+    private var dropOverlay: some View {
+        if isDropTargeted {
+            ZStack(alignment: .top) {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.accentColor.opacity(0.5), lineWidth: 2)
+                    .padding(6)
+                Text("Drop to send")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.top, 14)
+            }
+            .allowsHitTesting(false)
+            .transition(.opacity)
         }
     }
 

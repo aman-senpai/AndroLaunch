@@ -21,6 +21,13 @@ protocol DeviceRepositoryProtocol: ObservableObject {
 
     // Previous (stored) wireless devices
     var previousDevicesPublisher: AnyPublisher<[PreviousDevice], Never> { get }
+
+    /// Emulator setup problems (missing SDK command-line tools), or nil when usable.
+    var emulatorSetupIssuePublisher: AnyPublisher<String?, Never> { get }
+
+    /// Re-scans for the SDK command-line tools after the user installs them.
+    @discardableResult
+    func redetectCommandLineTools() -> Bool
     func removePreviousDevice(serialNumber: String)
     func connectToPreviousDevice(_ device: PreviousDevice)
 

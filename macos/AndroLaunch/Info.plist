@@ -2,9 +2,72 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSSystemExtensionUsageDescription</key>
+	<string>AndroLaunch uses its camera extension to make your Android camera available to FaceTime, Zoom and QuickTime.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Required for ADB device discovery</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Needed to detect Android devices</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>com.senpai.AndroLaunch</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>androlaunch</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Send to Android</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>sendFilesToAndroid</string>
+			<key>NSPortName</key>
+			<string>AndroLaunch</string>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.item</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict>
+				<key>NSTextContent</key>
+				<string>NSPasteboardTypeFileURL</string>
+			</dict>
+			<key>NSReturnTypes</key>
+			<array/>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Copy to Android</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>copyToAndroid</string>
+			<key>NSPortName</key>
+			<string>AndroLaunch</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+				<string>public.url</string>
+				<string>NSStringPboardType</string>
+			</array>
+			<key>NSReturnTypes</key>
+			<array/>
+		</dict>
+	</array>
 </dict>
 </plist>

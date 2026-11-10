@@ -200,6 +200,13 @@ extension StatusMenuController {
         configItem.submenu = configMenu
         submenu.addItem(configItem)
         
+        // Feature contributions for this device (clipboard, transfer, connection, notifications).
+        let contributions = sections.flatMap { $0.deviceItems(for: device) }
+        if !contributions.isEmpty {
+            submenu.addItem(NSMenuItem.separator())
+            contributions.forEach { submenu.addItem($0) }
+        }
+        
         submenu.addItem(NSMenuItem.separator())
         
         // Apps Section - check if apps exist for this specific device

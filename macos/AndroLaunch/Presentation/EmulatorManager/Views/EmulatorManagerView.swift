@@ -197,7 +197,9 @@ struct EmulatorManagerView: View {
 
     private var avdListView: some View {
         ZStack {
-            if viewModel.existingAVDs.isEmpty && !viewModel.isLoadingAVDs {
+            if let issue = viewModel.setupIssue, viewModel.existingAVDs.isEmpty {
+                SetupRequiredState(message: issue) { viewModel.checkAgain() }
+            } else if viewModel.existingAVDs.isEmpty && !viewModel.isLoadingAVDs {
                 EmptyDeviceState(
                     onBrowseImages: {
                         selectedSidebarItem = .systemImages
@@ -1207,6 +1209,63 @@ private struct SidebarRow: View {
 }
 
 // MARK: - Empty Device State
+
+/// Shown instead of the empty device list when the SDK command-line tools are missing.
+/// The alert for this problem is raised once per session; this is the durable,
+/// actionable version of it.
+private struct SetupRequiredState: View {
+    var message: String
+    var onRetry: () -> Void
+
+    @State private var didCopy = false
+
+    private let installCommand = "brew install --cask android-commandlinetools"
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "wrench.and.screwdriver")
+                .font(.system(size: 48))
+                .foregroundColor(.secondary.opacity(0.4))
+            Text("Android SDK tools not found")
+                .font(.title2)
+                .fontWeight(.medium)
+            Text(message)
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+                .textSelection(.enabled)
+            HStack(spacing: 12) {
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(installCommand, forType: .string)
+                    didCopy = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { didCopy = false }
+                } label: {
+                    Label(didCopy ? "Copied" : "Copy Install Command", systemImage: didCopy ? "checkmark" : "doc.on.doc")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+
+                Button {
+                    onRetry()
+                } label: {
+                    Label("Check Again", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+            }
+            Text(installCommand)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
 
 private struct EmptyDeviceState: View {
     var onBrowseImages: () -> Void

@@ -34,9 +34,16 @@ final class ADBService: ADBServiceProtocol {
     private var clipboardSyncProcesses: [String: Process] = [:]  // Dedicated clipboard sync processes
 
     // MARK: - Clipboard Sync State
-    private var clipboardSyncDevices: Set<String> = []
+    private var clipboardSyncDevices: Set<String> = []  // Mac -> Android enabled devices
+    private var clipboardReusingMirrorDevices: Set<String> = []  // Android -> Mac via an existing mirror
     private var clipboardTimer: Timer?
-    private var lastClipboardContent: String?
+    private var lastClipboardChangeCount: Int = -1
+    private var lastClipboardText: String?
+    private var clipboardCompanionInstalled: [String: Bool] = [:]
+    private var clipboardCompanionCheckedAt: [String: Date] = [:]
+    private var clipboardCompanionChecksInFlight: Set<String> = []
+    /// Emits health events so `ClipboardBridge` can surface bridge state in the UI.
+    let clipboardEvents = PassthroughSubject<ClipboardSyncEvent, Never>()
 
     // Store last published device list so disconnect can find all connection paths
     private var lastPublishedDevices: [AndroidDevice] = []
@@ -74,7 +81,8 @@ final class ADBService: ADBServiceProtocol {
     }
 
     // MARK: - Private Helper: Execute Shell Command (For ADB commands like list, start-server, fetch packages)
-    private func executeADBCommand(
+    /// Shared for feature extensions (clipboard, notifications, transfers).
+    func executeADBCommand(
         arguments: [String], path: String? = nil,
         completion: @escaping (Bool, String?, String?) -> Void
     ) {
@@ -126,7 +134,7 @@ final class ADBService: ADBServiceProtocol {
     }
 
     // MARK: - Private Helper: Find SCRCPY Executable
-    private func findScrcpyPath() -> String? {
+    func findScrcpyPath() -> String? {
         for path in scrcpyPaths {
             if FileManager.default.fileExists(atPath: path)
                 && FileManager.default.isExecutableFile(atPath: path)
@@ -882,17 +890,94 @@ final class ADBService: ADBServiceProtocol {
 
     // MARK: - Optional Mirroring Function
     // Mirrors the entire device screen using scrcpy (without launching a specific app)
-    // Mirrors the entire device screen using scrcpy (without launching a specific app)
     func mirrorDevice(
         deviceID: String, deviceName: String?, audioEnabled: Bool, clipboardEnabled: Bool,
         maxSize: Int?, maxFPS: Int?, bitRate: Int?, orientation: String?, borderless: Bool,
         flexDisplay: Bool
     ) {
+        let options = MirrorOptions(
+            audioForwarding: audioEnabled,
+            alwaysOnTop: false,
+            screenOff: false,
+            borderless: borderless,
+            clipboard: clipboardEnabled,
+            recording: false,
+            macKeyboard: true)
+        let quality = MirrorQuality(
+            maxSize: maxSize,
+            maxFPS: maxFPS,
+            bitRate: bitRate,
+            orientation: orientation,
+            flexDisplay: flexDisplay)
+        let resolvedName =
+            deviceName ?? lastPublishedDevices.first(where: { $0.id == deviceID })?.name
+        _ = startMirrorSession(
+            deviceID: deviceID,
+            deviceName: resolvedName,
+            quality: quality,
+            options: options,
+            recordPath: nil)
+    }
+
+    // MARK: - Mirror Session (Mirror Controls)
+
+    /// Session lifecycle for the floating mirror panel. The panel must describe
+    /// what actually launched, not what the switches wish had launched.
+    let mirrorSessionEvents = PassthroughSubject<MirrorSessionEvent, Never>()
+
+    private var mirrorSessions: [String: MirrorSessionSnapshot] = [:]
+    private var mirrorSessionTasks: [String: Process] = [:]
+    /// scrcpy processes being stopped on purpose (restart/close), so the shared
+    /// termination handler does not report a failure for a deliberate stop. Keyed
+    /// by process identity so a slow, stale handler can never clear a newer
+    /// session's flag.
+    private var intentionallyStoppedScrcpy: Set<ObjectIdentifier> = []
+
+    /// What was actually launched for this device, if a mirror session is live.
+    func mirrorSession(for deviceID: String) -> MirrorSessionSnapshot? {
+        guard runningScrcpyProcesses[deviceID]?.isRunning == true else { return nil }
+        return mirrorSessions[deviceID]
+    }
+
+    func isMirrorSessionActive(deviceID: String) -> Bool {
+        runningScrcpyProcesses[deviceID]?.isRunning == true && mirrorSessions[deviceID] != nil
+    }
+
+    /// Restart (or start) the mirror for one device with `options`, preserving the
+    /// caller's quality preset. Only the previous mirror process for that device
+    /// is retired — app windows and camera sessions are not killed.
+    @discardableResult
+    func restartMirror(
+        deviceID: String,
+        options: MirrorOptions,
+        quality: MirrorQuality,
+        recordPath: String? = nil
+    ) -> Bool {
+        let name = lastPublishedDevices.first(where: { $0.id == deviceID })?.name
+        return startMirrorSession(
+            deviceID: deviceID,
+            deviceName: name,
+            quality: quality,
+            options: options,
+            recordPath: recordPath)
+    }
+
+    /// The single place that builds and launches a scrcpy mirror process. Both
+    /// `mirrorDevice` and `restartMirror` go through here so the argument list
+    /// cannot drift between call sites.
+    @discardableResult
+    func startMirrorSession(
+        deviceID: String,
+        deviceName: String?,
+        quality: MirrorQuality,
+        options: MirrorOptions,
+        recordPath: String?
+    ) -> Bool {
         guard let adbPath = currentADBPath else {
             let errorMessage = "ADB executable path not set. Cannot mirror device with scrcpy."
             self.error.send(errorMessage)
-            self.findADB()  // Attempt to find ADB
-            return
+            findADB()
+            return false
         }
 
         guard let scrcpyPath = findScrcpyPath() else {
@@ -901,95 +986,35 @@ final class ADBService: ADBServiceProtocol {
                 Please install scrcpy (e.g., `brew install scrcpy` on macOS).
                 """
             self.error.send(errorMessage)
-            #if canImport(AppKit)
-                DispatchQueue.main.async {
-                    // Show alert similar to launchApp
-                    let alert = NSAlert()
-                    alert.messageText = "SCRCPY Not Found"
-                    alert.informativeText =
-                        errorMessage
-                        + "\n\nCommon installation method on macOS:\nOpen Terminal and run: `brew install scrcpy`"
-                    alert.addButton(withTitle: "OK")
-                    alert.addButton(withTitle: "Install with Homebrew")
-                    alert.alertStyle = .warning
-                    let response = alert.runModal()
-                    if response == .alertSecondButtonReturn {
-                        let command =
-                            "clear; echo 'Installing scrcpy via Homebrew...'; brew install scrcpy; echo 'Done! Close this window and try again.'"
-                        let scriptSource =
-                            "tell application \"Terminal\" to activate\ntell application \"Terminal\" to do script \"\(command)\""
-                        if let script = NSAppleScript(source: scriptSource) {
-                            var error: NSDictionary?
-                            script.executeAndReturnError(&error)
-                        }
-                    }
-                }
-            #endif
-            return
+            showScrcpyErrorAlert(errorMessage: errorMessage)
+            mirrorSessionEvents.send(
+                .failed(deviceID: deviceID, message: errorMessage))
+            return false
         }
+
+        // Fast restarts: retire the previous mirror (intentional stop, not a
+        // failure) before this session takes ownership of the per-device keys.
+        retireMirrorSessionIfNeeded(deviceID: deviceID)
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: scrcpyPath)
-
-        // scrcpy arguments for mirroring
-        var args = ["--serial", deviceID, "--window-title", "\(deviceName ?? deviceID)"]
-
-        if flexDisplay {
-            // Skip -m when flex display is enabled
-        } else if let maxSize = maxSize, maxSize > 0 {
-            args.append("-m")
-            args.append("\(maxSize)")
-        }
-
-        if let maxFPS = maxFPS, maxFPS > 0 {
-            args.append("--max-fps")
-            args.append("\(maxFPS)")
-        }
-
-        if let bitRate = bitRate, bitRate > 0 {
-            args.append("--video-bit-rate")
-            args.append("\(bitRate)M")
-        }
-
-        if let orientation = orientation, !orientation.isEmpty, orientation != "Auto" {
-            args.append("--capture-orientation")
-            args.append(orientation)
-        }
-
-        if borderless {
-            args.append("--window-borderless")
-        }
-
-        if !audioEnabled {
-            args.append("--no-audio")
-        }
-
-        if !clipboardEnabled {
-            args.append("--no-clipboard-autosync")
-        }
-        task.arguments = args
-
-        var env = ProcessInfo.processInfo.environment
-        env["ADB"] = adbPath  // Explicitly tell scrcpy where to find adb
-
-        if let javaHome = EnvironmentManager.shared.javaHome {
-            env["JAVA_HOME"] = javaHome
-            env["PATH"] =
-                "\(javaHome)/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
-        } else {
-            env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
-        }
-
-        task.environment = env
+        task.arguments = MirrorScrcpyArguments.build(
+            deviceID: deviceID,
+            deviceName: deviceName,
+            quality: quality,
+            options: options,
+            recordPath: recordPath)
+        task.environment = scrcpyLaunchEnvironment(adbPath: adbPath)
 
         let errorPipe = Pipe()
         task.standardError = errorPipe
-
         let errorFileHandle = errorPipe.fileHandleForReading
         scrcpyErrorOutputs[deviceID] = ""
 
-        // Remove any existing observer for this device before adding a new one
-        if let obs = scrcpyErrorPipeHandlers.removeValue(forKey: deviceID) as? NSObjectProtocol {
+        // Remove any existing observer for this device before adding a new one.
+        if let obs = scrcpyErrorPipeHandlers.removeValue(forKey: deviceID)
+            as? NSObjectProtocol
+        {
             NotificationCenter.default.removeObserver(obs)
         }
 
@@ -1004,12 +1029,10 @@ final class ADBService: ADBServiceProtocol {
                     self.scrcpyErrorOutputs[deviceID, default: ""] += output
                 }
                 errorFileHandle.readInBackgroundAndNotify()
-            } else {
-                if let obs = self.scrcpyErrorPipeHandlers.removeValue(forKey: deviceID)
-                    as? NSObjectProtocol
-                {
-                    NotificationCenter.default.removeObserver(obs)
-                }
+            } else if let obs = self.scrcpyErrorPipeHandlers.removeValue(forKey: deviceID)
+                as? NSObjectProtocol
+            {
+                NotificationCenter.default.removeObserver(obs)
             }
         }
         scrcpyErrorPipeHandlers[deviceID] = observer
@@ -1018,62 +1041,125 @@ final class ADBService: ADBServiceProtocol {
         task.terminationHandler = { [weak self] terminatedTask in
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                let exitCode = terminatedTask.terminationStatus
 
+                // A restarted session owns the per-device keys now; the stale
+                // handler must not clear the new process, observer or error text.
+                guard self.runningScrcpyProcesses[deviceID] === terminatedTask else {
+                    return
+                }
+
+                let exitCode = terminatedTask.terminationStatus
+                let intentional =
+                    self.intentionallyStoppedScrcpy.remove(ObjectIdentifier(terminatedTask))
+                    != nil
                 let collectedErrorOutput =
                     self.scrcpyErrorOutputs[deviceID] ?? "No error output captured."
 
                 self.runningScrcpyProcesses[deviceID] = nil
                 self.scrcpyErrorOutputs[deviceID] = nil
 
-                if exitCode != 0 {
-                    let errorMessage =
-                        "SCRCPY mirroring failed for device \(deviceID) (Exit code: \(exitCode)).\nError Output:\n\(collectedErrorOutput.trimmingCharacters(in: .whitespacesAndNewlines))"
-                    self.error.send(errorMessage)
-                    #if canImport(AppKit)
-                        DispatchQueue.main.async {
-                            let alert = NSAlert()
-                            alert.messageText = "SCRCPY Mirroring Failed"
-                            alert.informativeText = errorMessage
-                            alert.addButton(withTitle: "OK")
-                            alert.alertStyle = .critical
-                            alert.runModal()
-                        }
-                    #endif
+                if self.mirrorSessionTasks[deviceID] === terminatedTask {
+                    self.mirrorSessionTasks[deviceID] = nil
+                    self.mirrorSessions[deviceID] = nil
+                    self.mirrorSessionEvents.send(.stopped(deviceID: deviceID))
                 }
+
                 if let obs = self.scrcpyErrorPipeHandlers.removeValue(forKey: deviceID)
                     as? NSObjectProtocol
                 {
                     NotificationCenter.default.removeObserver(obs)
                 }
+
+                guard exitCode != 0, !intentional else { return }
+
+                let errorMessage =
+                    "SCRCPY mirroring failed for device \(deviceID) (Exit code: \(exitCode)).\nError Output:\n\(collectedErrorOutput.trimmingCharacters(in: .whitespacesAndNewlines))"
+                self.error.send(errorMessage)
+                self.mirrorSessionEvents.send(
+                    .failed(deviceID: deviceID, message: errorMessage))
+                self.showScrcpyErrorAlert(errorMessage: errorMessage)
             }
         }
 
         do {
             try task.run()
             runningScrcpyProcesses[deviceID] = task
-
+            mirrorSessionTasks[deviceID] = task
+            let snapshot = MirrorSessionSnapshot(
+                deviceID: deviceID,
+                deviceName: deviceName,
+                options: options,
+                quality: quality,
+                recordPath: recordPath,
+                startedAt: Date())
+            mirrorSessions[deviceID] = snapshot
+            mirrorSessionEvents.send(.started(snapshot))
+            return true
         } catch {
             let errorMessage =
                 "Failed to launch SCRCPY mirroring process for \(deviceID): \(error.localizedDescription)"
             self.error.send(errorMessage)
-            if let obs = self.scrcpyErrorPipeHandlers.removeValue(forKey: deviceID)
+            if let obs = scrcpyErrorPipeHandlers.removeValue(forKey: deviceID)
                 as? NSObjectProtocol
             {
                 NotificationCenter.default.removeObserver(obs)
             }
             scrcpyErrorOutputs[deviceID] = nil
-            #if canImport(AppKit)
-                DispatchQueue.main.async {
-                    let alert = NSAlert()
-                    alert.messageText = "Mirroring Failed"
-                    alert.informativeText = errorMessage
-                    alert.addButton(withTitle: "OK")
-                    alert.alertStyle = .critical
-                    alert.runModal()
-                }
-            #endif
+            mirrorSessionTasks[deviceID] = nil
+            mirrorSessions[deviceID] = nil
+            mirrorSessionEvents.send(
+                .failed(deviceID: deviceID, message: errorMessage))
+            showScrcpyErrorAlert(errorMessage: errorMessage)
+            return false
         }
+    }
+
+    /// Stops the mirror session for one device on purpose. App windows and the
+    /// camera session are not affected because they are not mirror sessions.
+    func stopMirrorSession(deviceID: String) {
+        guard let task = mirrorSessionTasks[deviceID]
+            ?? (isMirrorSessionActive(deviceID: deviceID)
+                ? runningScrcpyProcesses[deviceID] : nil)
+        else {
+            return
+        }
+        intentionallyStoppedScrcpy.insert(ObjectIdentifier(task))
+        if task.isRunning { task.terminate() }
+        mirrorSessionTasks[deviceID] = nil
+        mirrorSessions[deviceID] = nil
+        mirrorSessionEvents.send(.stopped(deviceID: deviceID))
+    }
+
+    private func retireMirrorSessionIfNeeded(deviceID: String) {
+        guard let task = mirrorSessionTasks[deviceID] else { return }
+        intentionallyStoppedScrcpy.insert(ObjectIdentifier(task))
+        if task.isRunning { task.terminate() }
+        mirrorSessionTasks[deviceID] = nil
+        mirrorSessions[deviceID] = nil
+        if runningScrcpyProcesses[deviceID] === task {
+            runningScrcpyProcesses[deviceID] = nil
+            if let obs = scrcpyErrorPipeHandlers.removeValue(forKey: deviceID)
+                as? NSObjectProtocol
+            {
+                NotificationCenter.default.removeObserver(obs)
+            }
+            scrcpyErrorOutputs[deviceID] = nil
+        }
+    }
+
+    /// The environment `mirrorDevice` has always given scrcpy: an explicit `ADB`
+    /// path plus the user's Java/Homebrew search path.
+    private func scrcpyLaunchEnvironment(adbPath: String) -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        env["ADB"] = adbPath
+        if let javaHome = EnvironmentManager.shared.javaHome {
+            env["JAVA_HOME"] = javaHome
+            env["PATH"] =
+                "\(javaHome)/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+        } else {
+            env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:\(env["PATH"] ?? "")"
+        }
+        return env
     }
 
     // MARK: - Camera Mirroring
@@ -1178,33 +1264,96 @@ final class ADBService: ADBServiceProtocol {
     // MARK: - Clipboard Sync Service
     // MARK: - Clipboard Sync Service
 
-    func startClipboardSync(deviceID: String) {
-        // 1. Start Android -> Mac sync (using scrcpy)
-        if clipboardSyncProcesses[deviceID] == nil {
-            startScrcpyClipboardSync(deviceID: deviceID)
-        }
+    /// Android package that receives Mac clipboard text via the WRITE broadcast.
+    private static let clipboardCompanionPackage = CompanionClient.packageName
+    /// Missing companions are re-checked after this interval; installed ones stay cached.
+    private static let clipboardCompanionRecheckInterval: TimeInterval = 30
 
-        // 2. Start Mac -> Android sync (using adb broadcast)
+    func startClipboardSync(deviceID: String) {
+        // Mac -> Android: opt this device into the shared pasteboard watcher.
         clipboardSyncDevices.insert(deviceID)
         startMacClipboardObserver()
+
+        // Android -> Mac: reuse the mirror session scrcpy already runs for this device
+        // when it forwards the clipboard; only otherwise spawn the hidden session.
+        startAndroidToMacClipboardSync(deviceID: deviceID)
+
+        // Learn whether the companion exists so the UI never promises delivery it cannot do.
+        checkClipboardCompanion(deviceID: deviceID)
+    }
+
+    // MARK: - Android -> Mac
+
+    private func startAndroidToMacClipboardSync(deviceID: String) {
+        if clipboardSyncSessionCanReuseMirror(deviceID: deviceID) {
+            adoptRunningMirrorForClipboard(deviceID: deviceID)
+            return
+        }
+
+        clipboardReusingMirrorDevices.remove(deviceID)
+        guard clipboardSyncProcesses[deviceID] == nil else { return }
+        startScrcpyClipboardSync(deviceID: deviceID)
+    }
+
+    /// A running scrcpy session forwards clipboard changes unless it was started with
+    /// `--no-clipboard-autosync`; only that case still needs its own hidden session.
+    private func clipboardSyncSessionCanReuseMirror(deviceID: String) -> Bool {
+        guard let mirror = runningScrcpyProcesses[deviceID], mirror.isRunning else { return false }
+        return mirror.arguments?.contains("--no-clipboard-autosync") != true
+    }
+
+    /// Marks the device as handled by an existing mirror and retires a dedicated hidden
+    /// session if one is still running, so two scrcpy sessions never compete for it.
+    private func adoptRunningMirrorForClipboard(deviceID: String) {
+        clipboardReusingMirrorDevices.insert(deviceID)
+        if let dedicated = clipboardSyncProcesses.removeValue(forKey: deviceID) {
+            dedicated.terminate()
+        }
+    }
+
+    /// Keeps Android -> Mac sync correct while sharing is enabled: follow a mirror that
+    /// scrcpy starts or stops, without ever running two sessions when one will do.
+    private func reconcileAndroidToMacClipboardSessions() {
+        for deviceID in clipboardSyncDevices {
+            if clipboardSyncSessionCanReuseMirror(deviceID: deviceID) {
+                adoptRunningMirrorForClipboard(deviceID: deviceID)
+                continue
+            }
+            guard clipboardReusingMirrorDevices.contains(deviceID) else { continue }
+            // The mirror ended (or stopped forwarding); fall back to the hidden session.
+            clipboardReusingMirrorDevices.remove(deviceID)
+            if clipboardSyncProcesses[deviceID] == nil {
+                startScrcpyClipboardSync(deviceID: deviceID)
+            }
+        }
+    }
+
+    func stopAllClipboardSync() {
+        let ids = Array(clipboardSyncDevices)
+        for id in ids { stopClipboardSync(deviceID: id) }
     }
 
     func stopClipboardSync(deviceID: String) {
-        // 1. Stop Android -> Mac sync
-        if let task = clipboardSyncProcesses[deviceID] {
+        clipboardSyncDevices.remove(deviceID)
+        clipboardReusingMirrorDevices.remove(deviceID)
+
+        // Only the dedicated hidden session is ours to terminate; a reused mirror stays.
+        if let task = clipboardSyncProcesses.removeValue(forKey: deviceID) {
             task.terminate()
-            clipboardSyncProcesses[deviceID] = nil
             print("Stopped scrcpy clipboard sync for \(deviceID)")
         }
 
-        // 2. Stop Mac -> Android sync
-        clipboardSyncDevices.remove(deviceID)
         if clipboardSyncDevices.isEmpty {
             stopMacClipboardObserver()
         }
     }
 
     private func startScrcpyClipboardSync(deviceID: String) {
+        // Never run two hidden sessions for the same device.
+        if let existing = clipboardSyncProcesses[deviceID], existing.isRunning {
+            return
+        }
+
         guard let adbPath = currentADBPath else {
             error.send("ADB executable path not set. Cannot start clipboard sync.")
             findADB()
@@ -1252,6 +1401,12 @@ final class ADBService: ADBServiceProtocol {
                 // Remove from processes list if it terminated
                 if self.clipboardSyncProcesses[deviceID] == terminatedTask {
                     self.clipboardSyncProcesses[deviceID] = nil
+                    if terminatedTask.terminationStatus != 0 {
+                        self.clipboardEvents.send(
+                            .failed(
+                                deviceID: deviceID,
+                                message: "The hidden scrcpy clipboard session exited unexpectedly."))
+                    }
                 }
             }
         }
@@ -1271,53 +1426,132 @@ final class ADBService: ADBServiceProtocol {
     private func startMacClipboardObserver() {
         guard clipboardTimer == nil else { return }
 
-        // Poll clipboard every 1 second
+        // Seed from the current pasteboard so enabling sharing does not replay stale text.
+        let pasteboard = NSPasteboard.general
+        lastClipboardChangeCount = pasteboard.changeCount
+        lastClipboardText = pasteboard.string(forType: .string)
+
+        // A light timer is enough: reading changeCount is cheap, and the full string is
+        // only read (and synced) when the pasteboard actually changed.
         clipboardTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) {
             [weak self] _ in
             self?.checkMacClipboard()
         }
+        clipboardTimer?.tolerance = 0.25
     }
 
     private func stopMacClipboardObserver() {
         clipboardTimer?.invalidate()
         clipboardTimer = nil
-        lastClipboardContent = nil
+        lastClipboardChangeCount = -1
+        lastClipboardText = nil
     }
 
     private func checkMacClipboard() {
+        // Follow a mirror that starts or stops while sharing is enabled.
+        reconcileAndroidToMacClipboardSessions()
+
         #if canImport(AppKit)
             let pasteboard = NSPasteboard.general
-            if let content = pasteboard.string(forType: .string) {
-                // Only sync if content changed
-                if content != lastClipboardContent {
-                    lastClipboardContent = content
+            guard pasteboard.changeCount != lastClipboardChangeCount else { return }
+            lastClipboardChangeCount = pasteboard.changeCount
 
-                    // Send to all syncing devices
-                    for deviceID in clipboardSyncDevices {
-                        sendClipboardToDevice(deviceID: deviceID, text: content)
-                    }
-                }
+            guard let content = pasteboard.string(forType: .string), !content.isEmpty else {
+                lastClipboardText = nil
+                return
+            }
+
+            // scrcpy mirrors the text we just pushed back onto the pasteboard; do not
+            // bounce that echo to the devices again.
+            guard content != lastClipboardText else { return }
+            lastClipboardText = content
+
+            for deviceID in clipboardSyncDevices {
+                // Deliberately not gated on `clipboardCompanionInstalled`: the user can
+                // install the companion at any time, and a "missing" result cached before
+                // that would silently disable delivery until the toggle was cycled.
+                // Delivery itself is cheap when the channel is already up.
+                sendClipboardToDevice(deviceID: deviceID, text: content)
             }
         #endif
     }
 
-    private func sendClipboardToDevice(deviceID: String, text: String) {
-        // Robustly escape the text for adb shell using single quotes.
-        // We replace every single quote ' with '\'' to close the quote, insert a literal quote, and reopen the quote.
-        // This allows passing any character (including spaces, newlines, double quotes, shell metacharacters) safely.
-        let escapedText = text.replacingOccurrences(of: "'", with: "'\\''")
+    func sendClipboardToDevice(
+        deviceID: String, text: String, completion: ((Bool) -> Void)? = nil
+    ) {
+        guard !text.isEmpty else {
+            completion?(false)
+            return
+        }
 
-        // Using ch.pete.adbclipboard as requested
-        // Command: adb shell am broadcast -a ch.pete.adbclipboard.WRITE -n ch.pete.adbclipboard/.WriteReceiver -e text '...'
-        let command =
-            "am broadcast -a ch.pete.adbclipboard.WRITE -n ch.pete.adbclipboard/.WriteReceiver -e text '\(escapedText)'"
+        // The first-party companion owns clipboard writes. It is reached over the
+        // ADB tunnel (forwarded abstract socket), so there is no third-party app to
+        // install and no shell quoting to get wrong.
+        CompanionClient.shared.pushClipboard(text, deviceID: deviceID) {
+            [weak self] delivered in
+            guard let self else {
+                completion?(false)
+                return
+            }
+            if delivered {
+                self.lastClipboardText = text
+                self.clipboardEvents.send(.sent(deviceID: deviceID, at: Date()))
+                completion?(true)
+                return
+            }
 
-        executeADBCommand(arguments: ["-s", deviceID, "shell", command]) {
-            success, _, errorOutput in
-            if !success {
-                print("Failed to sync clipboard to \(deviceID): \(errorOutput ?? "Unknown error")")
+            self.clipboardEvents.send(
+                .failed(
+                    deviceID: deviceID,
+                    message: "AndroLaunch Comp could not receive the text."))
+            // Delivery failed; the app may have been uninstalled, so re-check quietly.
+            self.checkClipboardCompanion(deviceID: deviceID, forceRefresh: true)
+            completion?(false)
+        }
+    }
+
+    // MARK: - Companion App Detection
+
+    /// Verifies that the AndroLaunch companion is installed, caching positives and
+    /// re-checking missing apps after a short interval. Results are published on
+    /// `clipboardEvents` so `ClipboardBridge` can surface them.
+    func checkClipboardCompanion(deviceID: String, forceRefresh: Bool = false) {
+        if !forceRefresh, let cached = clipboardCompanionInstalled[deviceID] {
+            let checkedAt = clipboardCompanionCheckedAt[deviceID] ?? .distantPast
+            if cached || Date().timeIntervalSince(checkedAt) < Self.clipboardCompanionRecheckInterval
+            {
+                return
             }
         }
+
+        // Menu builds can ask several times before the first result arrives.
+        guard !clipboardCompanionChecksInFlight.contains(deviceID) else { return }
+        clipboardCompanionChecksInFlight.insert(deviceID)
+
+        executeADBCommand(
+            arguments: ["-s", deviceID, "shell", "pm", "path", Self.clipboardCompanionPackage]
+        ) { [weak self] success, output, _ in
+            guard let self else { return }
+            // `pm path` exits 0 for a missing package and simply prints nothing.
+            let installed = success && (output?.contains("package:") == true)
+            DispatchQueue.main.async {
+                self.clipboardCompanionChecksInFlight.remove(deviceID)
+                self.clipboardCompanionInstalled[deviceID] = installed
+                self.clipboardCompanionCheckedAt[deviceID] = Date()
+                self.clipboardEvents.send(
+                    .companionChecked(deviceID: deviceID, installed: installed))
+            }
+        }
+    }
+
+    /// Last known companion state, `nil` before the first check completes.
+    func cachedClipboardCompanionStatus(deviceID: String) -> Bool? {
+        clipboardCompanionInstalled[deviceID]
+    }
+
+    /// Whether Mac -> Android delivery is currently opted in for this device.
+    func isClipboardSyncActive(deviceID: String) -> Bool {
+        clipboardSyncDevices.contains(deviceID)
     }
 
     func uninstallApp(deviceID: String, packageID: String) {
@@ -1379,8 +1613,14 @@ final class ADBService: ADBServiceProtocol {
     // MARK: - Optional Stop Mirroring Function
     func stopMirroring(deviceID: String) {
         if let task = runningScrcpyProcesses[deviceID] {
-            task.terminate()  // Request termination
-            // The terminationHandler will handle cleanup
+            // A deliberate stop is not a mirror failure.
+            intentionallyStoppedScrcpy.insert(ObjectIdentifier(task))
+            task.terminate()  // The terminationHandler handles cleanup
+            if mirrorSessionTasks[deviceID] === task {
+                mirrorSessionTasks[deviceID] = nil
+                mirrorSessions[deviceID] = nil
+                mirrorSessionEvents.send(.stopped(deviceID: deviceID))
+            }
         } else {
             self.error.send("No running SCRCPY process found for device \(deviceID).")
         }
@@ -1413,6 +1653,13 @@ final class ADBService: ADBServiceProtocol {
             return
         }
 
+        // Tell the connection layer this was a deliberate disconnect, so it does not
+        // immediately race the device's remembered endpoints and undo the action.
+        NotificationCenter.default.post(
+            name: .adbIntentionalDisconnect,
+            object: nil,
+            userInfo: ["deviceID": deviceID])
+
         // Find all device IDs sharing the same serial number (e.g. IP + mDNS paths)
         let serial = lastPublishedDevices.first(where: { $0.id == deviceID })?.serialNumber
         let idsToDisconnect: [String]
@@ -1435,11 +1682,22 @@ final class ADBService: ADBServiceProtocol {
     }
 
     func connectToHost(_ hostPort: String, completion: @escaping (Bool) -> Void) {
-        executeADBCommand(arguments: ["connect", hostPort]) { success, output, errorOutput in
-            if success {
-                self.listDevices()
+        // `adb connect` is how the connection coordinator races endpoints. Some ADB
+        // versions exit 0 while printing a failure, so success needs a clean exit
+        // status *and* no failure text in the output.
+        executeADBCommand(arguments: ["connect", hostPort]) {
+            [weak self] success, output, errorOutput in
+            let combined = ((output ?? "") + "\n" + (errorOutput ?? "")).lowercased()
+            let reportedFailure =
+                combined.contains("failed to connect")
+                || combined.contains("failed to authenticate")
+                || combined.contains("cannot connect")
+                || combined.contains("unable to connect")
+            let connected = success && !reportedFailure
+            if connected {
+                self?.listDevices()
             }
-            completion(success)
+            completion(connected)
         }
     }
 

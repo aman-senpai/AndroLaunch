@@ -36,6 +36,9 @@ final class EmulatorManagerViewModel: ObservableObject {
     @Published var imageSearchText: String = ""
     @Published var imagesToDelete: Set<String> = []
     @Published var enabledOsTypes: Set<SystemImageType> = Set(SystemImageType.allCases)
+    /// Non-nil when the SDK command-line tools are missing. The UI explains how to
+    /// install them instead of showing an empty device list.
+    @Published var setupIssue: String?
 
     var commandLineToolsPath: String {
         get { repository.commandLineToolsPath ?? "" }
@@ -116,6 +119,10 @@ final class EmulatorManagerViewModel: ObservableObject {
     }
 
     private func setupBindings() {
+        repository.emulatorSetupIssuePublisher
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$setupIssue)
+
         repository.imagesPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] images in
@@ -179,6 +186,16 @@ final class EmulatorManagerViewModel: ObservableObject {
                 self?.isCreatingAVD = false
             }
             .store(in: &cancellables)
+    }
+
+    /// "Check Again" in the missing-SDK state: re-scan, then reload if it is now usable.
+    func checkAgain() {
+        if repository.redetectCommandLineTools() {
+            refresh()
+        } else {
+            // Re-publish the guidance so the state stays accurate after the re-scan.
+            repository.listAVDs()
+        }
     }
 
     func refresh() {
@@ -313,8 +330,16 @@ final class EmulatorManagerViewModel: ObservableObject {
         pollingTimer = Timer.publish(every: 5.0, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
-                // Only refresh AVDs status, not the full image list
-                self?.repository.listAVDs()
+                guard let self else { return }
+                // Only refresh AVDs status, not the full image list. Without usable
+                // SDK tools there is nothing to poll: the Emulator Manager shows setup
+                // guidance and offers an explicit re-check instead.
+                guard self.repository.commandLineToolsPath != nil else {
+                    self.isLoadingAVDs = false
+                    self.isLoadingImages = false
+                    return
+                }
+                self.repository.listAVDs()
             }
     }
 

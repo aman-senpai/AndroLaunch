@@ -19,13 +19,16 @@ enum AlertPresenter {
     /// Rate-limited and deduplicated to prevent alert spam.
     static func showWarning(message: String, title: String = "Error") {
         guard shouldShow(message: message) else { return }
+        present(message: message, title: title, style: .warning)
+    }
 
+    private static func present(message: String, title: String, style: NSAlert.Style) {
         DispatchQueue.main.async {
             let alert = NSAlert()
             alert.messageText = title
             alert.informativeText = message
             alert.addButton(withTitle: "OK")
-            alert.alertStyle = .warning
+            alert.alertStyle = style
             alert.runModal()
         }
     }

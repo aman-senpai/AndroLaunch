@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 8-9 image clipboard: the image is handed to the pasting app as a
+    FileProvider URI, so only the clipboard cache directory is exposed. Nothing
+    else from the app's private storage is reachable.
+-->
+<paths>
+    <cache-path name="clipboard" path="clipboard/" />
+</paths>

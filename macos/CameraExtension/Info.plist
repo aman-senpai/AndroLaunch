@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>AndroLaunch Camera</string>
+    <key>CFBundleExecutable</key>
+    <string>com.senpai.AndroLaunch.CameraExtension</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.senpai.AndroLaunch.CameraExtension</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>AndroLaunch Camera</string>
+    <key>CFBundlePackageType</key>
+    <string>SYSX</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleSupportedPlatforms</key>
+    <array>
+        <string>MacOSX</string>
+    </array>
+    <key>LSMinimumSystemVersion</key>
+    <string>15.0</string>
+    <key>NSSystemExtensionUsageDescription</key>
+    <string>AndroLaunch uses this camera extension to make your Android camera available to FaceTime, Zoom and QuickTime.</string>
+    <key>CMIOExtension</key>
+    <dict>
+        <key>CMIOExtensionMachServiceName</key>
+        <string>com.senpai.AndroLaunch.camera</string>
+    </dict>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.cmio.dal-extension</string>
+        <key>NSExtensionPrincipalClass</key>
+        <string>AndroLaunchCameraExtension.AndroLaunchCameraProviderSource</string>
+    </dict>
+</dict>
+</plist>

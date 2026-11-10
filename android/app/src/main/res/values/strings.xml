@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    AndroLaunch Comp — UI copy.
+
+    Deliberately terse: labels and one-line states only. The screen reads like a
+    native settings page, not a dashboard. Daemon/notification strings live in
+    strings_service.xml (svc_*).
+-->
+<resources>
+    <string name="app_name">AndroLaunch Comp</string>
+
+    <!-- Section labels -->
+    <string name="ui_section_connection">Connection</string>
+    <string name="ui_section_mirroring">Mirroring</string>
+
+    <!-- Bridge -->
+    <string name="ui_bridge">Bridge</string>
+    <string name="ui_bridge_running_waiting">Running · waiting for Mac</string>
+    <string name="ui_bridge_running_connected">Running · Mac connected</string>
+    <string name="ui_bridge_stopped">Stopped</string>
+
+    <!-- Mirroring -->
+    <string name="ui_mirrored">Mirrored</string>
+    <string name="ui_value_none">—</string>
+    <string name="ui_clipboard">Clipboard</string>
+    <string name="ui_clipboard_ready">Ready</string>
+    <string name="ui_clipboard_off">Off</string>
+    <string name="ui_notifications">Notifications</string>
+    <string name="ui_notifications_allowed">Allowed</string>
+    <string name="ui_notifications_needs">Needs access</string>
+    <string name="ui_allow">Allow</string>
+
+    <!-- Calls -->
+    <string name="ui_call_awareness">Call awareness</string>
+    <string name="ui_calls">Calls</string>
+    <string name="ui_calls_unsupported">Not supported</string>
+    <string name="ui_calls_needs_phone">Needs phone access</string>
+    <string name="ui_calls_off">Off</string>
+    <string name="ui_calls_idle">Idle</string>
+    <string name="ui_calls_ringing">Ringing</string>
+    <string name="ui_calls_in_call">In call</string>
+    <string name="ui_allow_phone">Allow phone access</string>
+    <string name="ui_allow_control">Allow call control</string>
+    <string name="ui_answer">Answer</string>
+    <string name="ui_decline">Decline</string>
+    <string name="ui_end_call">End call</string>
+    <string name="ui_audio_note">Audio stays on the phone.</string>
+
+    <!-- Menu -->
+    <string name="ui_menu_restart">Restart service</string>
+    <string name="ui_menu_copy_adb">Copy ADB command</string>
+    <string name="ui_menu_notification_settings">Notification settings</string>
+    <string name="ui_menu_privacy">Privacy</string>
+    <string name="ui_menu_about">About</string>
+    <string name="ui_more">More options</string>
+    <string name="ui_local_only">Local only · No cloud</string>
+    <string name="ui_protocol_value">2</string>
+    <string name="ui_adb_command">adb forward tcp:27777 tcp:27777\nadb shell am start-foreground-service -n com.senpai.androlaunch.companion/.CompanionService</string>
+
+    <!-- Dialogs and toasts -->
+    <string name="ui_continue">Continue</string>
+    <string name="ui_not_now">Not now</string>
+    <string name="ui_close">Close</string>
+    <string name="ui_copied">Copied</string>
+    <string name="ui_restarting">Restarting…</string>
+    <string name="ui_privacy_message">Clipboard and notification data stay on the local ADB link. No account, no cloud.</string>
+    <string name="ui_about_message">Local ADB companion for macOS.\nVersion %1$s · Protocol %2$s.</string>
+    <string name="ui_notif_rationale_title">Notifications</string>
+    <string name="ui_notif_rationale_message">Show the companion status in the notification shade.</string>
+    <string name="ui_phone_rationale_title">Call awareness</string>
+    <string name="ui_phone_rationale_message">Allow phone access to show call status.</string>
+    <string name="ui_control_rationale_title">Call control</string>
+    <string name="ui_control_rationale_message">Allow call control to answer or decline calls.</string>
+    <string name="ui_toast_start_failed">Couldn\'t start the service</string>
+    <string name="ui_toast_answer_failed">Couldn\'t answer</string>
+    <string name="ui_toast_decline_failed">Couldn\'t decline</string>
+    <string name="ui_toast_phone_denied">Phone access needed</string>
+    <string name="ui_toast_awareness_on">Call awareness on</string>
+    <string name="ui_toast_awareness_off">Call awareness off</string>
+</resources>

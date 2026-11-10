@@ -1,0 +1,13 @@
+# Build outputs
+build/
+app/build/
+AndroLaunchCompanion.apk
+debug.keystore
+
+# Gradle / IDE
+.gradle/
+local.properties
+*.iml
+.idea/
+.kotlin/
+captures/

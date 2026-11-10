@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Large icon for the foreground notification: a full-bleed brand-green disc with
+    a white link glyph, composed for the circular crop that Android applies to
+    notification large icons. The glyph is the same "link" mark as the small icon,
+    scaled into the 108 unit viewport and centred on the disc.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Brand disc (2 units of padding keeps anti-aliased edges clean) -->
+    <path
+        android:fillColor="@color/al_brand"
+        android:pathData="M54,2a52,52 0 1,1 0,104a52,52 0 1,1 0,-104z" />
+
+    <!-- White link glyph, 2.8x the 24dp mark, centred on the disc -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M29.92,54c0,-4.788 3.892,-8.68 8.68,-8.68h11.2V40H38.6c-7.728,0 -14,6.272 -14,14s6.272,14 14,14h11.2v-5.32H38.6c-4.788,0 -8.68,-3.892 -8.68,-8.68zM41.4,56.8h22.4v-5.6H41.4v5.6zM66.6,40h-11.2v5.32h11.2c4.788,0 8.68,3.892 8.68,8.68s-3.892,8.68 -8.68,8.68h-11.2V68h11.2c7.728,0 14,-6.272 14,-14s-6.272,-14 -14,-14z" />
+
+</vector>

@@ -87,3 +87,11 @@ __pycache__/
 # Local verification and Windows SDK build helpers
 .tmp*
 windows/.tools/
+
+# Android / Gradle local state
+.gradle/
+android/local.properties
+
+# Local build/module caches used by the sandboxed build wrapper
+.build-cache/
+.build-tmp/

@@ -27,7 +27,12 @@ final class DeviceMenuItemView: NSView {
     private var trackingArea: NSTrackingArea?
     
     init(deviceName: String, isWireless: Bool) {
-        super.init(frame: NSRect(x: 0, y: 0, width: 250, height: 20))
+        let font = NSFont.menuFont(ofSize: 14)
+        let textWidth = MenuRowMetrics.width - MenuRowMetrics.textLeading - 50
+        // Long device names wrap to a second line; the row grows, the menu does not.
+        let rowHeight = MenuRowMetrics.rowHeight(
+            for: deviceName, font: font, lineLimit: 2, width: textWidth)
+        super.init(frame: NSRect(x: 0, y: 0, width: MenuRowMetrics.width, height: rowHeight))
         let connectionDescription = isWireless ? "Wireless" : "USB"
         toolTip = "\(deviceName) — \(connectionDescription), authorized and ready"
         setAccessibilityLabel("\(deviceName), \(connectionDescription), ready")
@@ -38,16 +43,24 @@ final class DeviceMenuItemView: NSView {
         
         // Device icon (left)
         // Standard menu item icon alignment is usually around 14-16pt from the edge
-        deviceIconView.frame = NSRect(x: 14, y: 2, width: 16, height: 16)
+        deviceIconView.frame = NSRect(
+            x: MenuRowMetrics.leadingInset, y: (rowHeight - 16) / 2, width: 16, height: 16)
         deviceIconView.image = NSImage(systemSymbolName: "iphone", accessibilityDescription: "Device")
         deviceIconView.contentTintColor = .controlTextColor
         addSubview(deviceIconView)
         
         // Device name (center)
         nameLabel.stringValue = deviceName
-        nameLabel.font = NSFont.menuFont(ofSize: 14)
+        nameLabel.font = font
         nameLabel.textColor = .controlTextColor
-        nameLabel.frame = NSRect(x: 38, y: 2, width: 160, height: 16)
+        nameLabel.lineBreakMode = .byWordWrapping
+        nameLabel.maximumNumberOfLines = 2
+        nameLabel.usesSingleLineMode = false
+        nameLabel.allowsDefaultTighteningForTruncation = true
+        nameLabel.cell?.wraps = true
+        nameLabel.cell?.truncatesLastVisibleLine = true
+        nameLabel.frame = NSRect(
+            x: MenuRowMetrics.textLeading, y: 0, width: textWidth, height: rowHeight)
         nameLabel.drawsBackground = false
         nameLabel.isBordered = false
         nameLabel.isEditable = false
@@ -55,14 +68,16 @@ final class DeviceMenuItemView: NSView {
         addSubview(nameLabel)
         
         // Connection type indicator (right)
-        connectionIconView.frame = NSRect(x: 205, y: 2, width: 16, height: 16)
+        connectionIconView.frame = NSRect(
+            x: MenuRowMetrics.width - 45, y: (rowHeight - 16) / 2, width: 16, height: 16)
         let connectionIcon = isWireless ? "wifi" : "cable.connector"
         connectionIconView.image = NSImage(systemSymbolName: connectionIcon, accessibilityDescription: isWireless ? "Wireless" : "USB")
         connectionIconView.contentTintColor = .tertiaryLabelColor
         addSubview(connectionIconView)
         
         // Arrow indicator (far right)
-        let arrowIconView = NSImageView(frame: NSRect(x: 226, y: 3, width: 12, height: 14))
+        let arrowIconView = NSImageView(
+            frame: NSRect(x: MenuRowMetrics.width - 24, y: (rowHeight - 14) / 2, width: 12, height: 14))
         arrowIconView.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Details")
         arrowIconView.contentTintColor = .tertiaryLabelColor
         addSubview(arrowIconView)
@@ -99,6 +114,19 @@ final class DeviceMenuItemView: NSView {
         animateHover(visible: false)
     }
     
+    /// Clears the custom hover overlay without animation. Called when the menu opens
+    /// so a selection painted before the menu closed never survives into the next open.
+    func resetHover() {
+        hoverEffectView.alphaValue = 0
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil {
+            resetHover()
+        }
+    }
+
     private func animateHover(visible: Bool) {
         if visible {
             NSAnimationContext.runAnimationGroup { context in

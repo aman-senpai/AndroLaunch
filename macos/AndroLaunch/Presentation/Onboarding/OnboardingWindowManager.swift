@@ -24,7 +24,7 @@ final class OnboardingWindowManager {
         let onboardingView = OnboardingView(viewModel: viewModel)
         let hostingController = NSHostingController(rootView: onboardingView)
 
-        let contentRect = NSRect(x: 0, y: 0, width: 420, height: 480)
+        let contentRect = NSRect(x: 0, y: 0, width: 620, height: 600)
         let window = NSWindow(
             contentRect: contentRect,
             styleMask: [.titled, .closable],
